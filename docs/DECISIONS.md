@@ -160,6 +160,37 @@ Record material technical decisions here. Keep entries short but include context
   - It scrolls to the bottom, confirms the hidden set changes, and checks every visible native view stays within the workspace's top/bottom bounds.
   - Existing column reflow, native alignment, authentication, lifecycle, and restart checks still pass.
 
+## ADR-006 — Grid drag reorder hides native views to keep pointer events in the shell
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** Dragging a pane header across another pane would cross a native `WebContentsView`, which sits above the shell and receives OS pointer events. The shell would stop receiving pointer moves, so it could neither show a drop target nor complete a reorder reliably.
+
+- **Decision:**
+  1. Grid display order is renderer state, reconciled with pane add/remove but independent of the main-process snapshot order.
+  2. Pointer-down on a pane title row starts a thresholded drag. Once movement exceeds 5 CSS px, the renderer enters drag mode.
+  3. In drag mode, all native panes report `visible: false` through the existing validated bounds path. The shell is therefore exposed across the workspace and continues receiving pointer move/up events.
+  4. Drop targets are calculated from shell pane-card rectangles. A shell outline marks the target; the dragged card is dimmed.
+  5. On drop, order changes through `reorderPaneIds`. Exiting drag mode re-measures and restores native views at their new bounds.
+  6. Buttons, inputs, links, and other interactive child controls inside the title row never start a drag.
+
+- **Alternatives considered:**
+  - **Rely on pointer capture across native views.** Rejected; pointer capture in the shell renderer does not make native views part of the shell hit-test surface.
+  - **Global mouse polling from main.** Rejected for this slice because it needs platform-specific mouse-button tracking and adds latency/complexity.
+  - **HTML5 drag/drop only.** Rejected; it still has to cross the native view hit-test boundary.
+  - **Reorder via menu only.** Rejected as the primary interaction because the spec calls for dragging a pane to change grid order.
+
+- **Consequences:**
+  - Websites are temporarily hidden during a drag; this is intentional and ends on drop/cancel.
+  - Drag reorder is pointer-only for now; keyboard reordering is still needed for accessibility.
+  - Grid order is not persisted across restarts until workspace persistence lands.
+  - Drop-target outlines are shell DOM and visible because native views are hidden for the drag duration.
+
+- **Evidence / verification:**
+  - E2e drags Bob's title row onto Alice, asserts all native views are hidden during the drag, verifies the new card order, and confirms native alignment after views restore.
+  - It drags back to the original order and re-verifies alignment.
+  - Existing column, scrolling, auth, lifecycle, and persistence checks still pass.
+
 ## ADR template
 
 ### ADR-NNN — Title

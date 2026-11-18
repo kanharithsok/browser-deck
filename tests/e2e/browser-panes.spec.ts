@@ -246,6 +246,14 @@ async function readPaneCardRects(
   )
 }
 
+async function readPaneCardOrder(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.pane-card')).map(
+      (element) => element.getAttribute('data-pane-id') ?? ''
+    )
+  )
+}
+
 function rectsAlign(domRects: DomPaneRect[], nativeBounds: Array<{ paneId: string; rect: PaneViewRect }>): boolean {
   if (domRects.length !== nativeBounds.length) {
     return false
@@ -452,6 +460,54 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         )
       })
       .toBe(true)
+    await waitForAlignedBounds(app)
+
+    // Dragging a pane title row reorders the grid. Native views must hide
+    // during the drag so pointer events keep reaching the shell.
+    const bobHeader = await shellPage
+      .locator('.pane-card')
+      .nth(1)
+      .locator('.pane-title-row')
+      .boundingBox()
+    const aliceCard = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!bobHeader || !aliceCard) {
+      throw new Error('Pane drag bounds are unavailable')
+    }
+    await shellPage.mouse.move(bobHeader.x + 30, bobHeader.y + bobHeader.height / 2)
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(
+      aliceCard.x + aliceCard.width / 2,
+      aliceCard.y + aliceCard.height / 2,
+      { steps: 10 }
+    )
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
+      .toBe(0)
+    await shellPage.mouse.up()
+    await expect.poll(() => readPaneCardOrder(shellPage)).toEqual([bobPaneId, alicePaneId])
+    await waitForAlignedBounds(app)
+
+    const bobHeaderAgain = await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .locator('.pane-title-row')
+      .boundingBox()
+    const aliceCardAgain = await shellPage.locator('.pane-card').nth(1).boundingBox()
+    if (!bobHeaderAgain || !aliceCardAgain) {
+      throw new Error('Pane drag bounds are unavailable')
+    }
+    await shellPage.mouse.move(
+      bobHeaderAgain.x + 30,
+      bobHeaderAgain.y + bobHeaderAgain.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(
+      aliceCardAgain.x + aliceCardAgain.width / 2,
+      aliceCardAgain.y + aliceCardAgain.height / 2,
+      { steps: 10 }
+    )
+    await shellPage.mouse.up()
+    await expect.poll(() => readPaneCardOrder(shellPage)).toEqual([alicePaneId, bobPaneId])
     await waitForAlignedBounds(app)
 
     // System light/dark appearance uses the shared design tokens.
@@ -778,6 +834,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         return { top: rect.top, height: rect.height }
       })()`
     )
+    await expect
+      .poll(async () => (await getViewStates(restartApp)).some((state) => !state.visible))
+      .toBe(true)
     const topStates = await getViewStates(restartApp)
     expect(topStates).toHaveLength(4)
     expect(topStates.some((state) => state.visible)).toBe(true)

@@ -278,6 +278,8 @@ function requestClose(): void {
   min-width: 0;
   height: 24px;
   padding: 0 2px;
+  cursor: grab;
+  user-select: none;
 }
 
 .spinner {

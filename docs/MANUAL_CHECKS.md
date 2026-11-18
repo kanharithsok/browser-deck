@@ -32,7 +32,9 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 
 ## Workspace
 
-- [ ] Add, remove, rename, duplicate, and reorder panes. (Add/remove work with grid reflow; rename/duplicate/drag-reorder pending.)
+- [ ] Add, remove, rename, duplicate, and reorder panes. (Add/remove and drag reorder work; rename/duplicate pending.)
+- [x] Drag a pane to change grid order. (E2e drags both directions; native views hide during drag and restore aligned.)
+- [ ] Keyboard pane reordering and other keyboard layout interactions. (Pending.)
 - [x] Grid column changes and reflow. (Selector exposes 1–5; e2e verifies 2 → 5 → 1 → 2 and native alignment.)
 - [x] Add/remove reflows the grid without losing panes. (E2e checks native alignment after add and close.)
 - [x] Grid scrolling when rows exceed the available height. (Workspace scrolls to engine content height.)
