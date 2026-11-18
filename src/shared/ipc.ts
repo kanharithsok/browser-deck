@@ -1,6 +1,6 @@
 import type { ProfileSummary } from './profiles'
 import type { PaneViewport } from './viewports'
-import type { WorkspaceLayout } from './workspace'
+import type { WorkspaceLayout, WorkspaceSummary } from './workspace'
 
 export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
@@ -18,6 +18,12 @@ export const IPC_CHANNELS = {
   renameProfile: 'paneflow:rename-profile',
   clearProfile: 'paneflow:clear-profile',
   deleteProfile: 'paneflow:delete-profile',
+  listWorkspaces: 'paneflow:list-workspaces',
+  createWorkspace: 'paneflow:create-workspace',
+  renameWorkspace: 'paneflow:rename-workspace',
+  duplicateWorkspace: 'paneflow:duplicate-workspace',
+  switchWorkspace: 'paneflow:switch-workspace',
+  deleteWorkspace: 'paneflow:delete-workspace',
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
@@ -39,6 +45,10 @@ export type ScriptResult = { ok: true } | { ok: false; error: string }
 
 export type ProfileListResult =
   | { ok: true; profiles: ProfileSummary[] }
+  | { ok: false; error: string }
+
+export type WorkspaceListResult =
+  | { ok: true; workspaces: WorkspaceSummary[] }
   | { ok: false; error: string }
 
 export interface PaneViewRect {
@@ -71,8 +81,14 @@ export interface ShellSnapshot {
   panes: PaneState[]
 }
 
+export interface WorkspaceIdentity {
+  id: string
+  name: string
+}
+
 export interface ShellState extends ShellSnapshot {
   layout: WorkspaceLayout
+  workspace: WorkspaceIdentity
 }
 
 export interface PaneMenuRequest {
@@ -97,6 +113,12 @@ export interface PaneFlowApi {
   renameProfile(profileId: string, label: string): Promise<ScriptResult>
   clearProfile(profileId: string): Promise<ScriptResult>
   deleteProfile(profileId: string): Promise<ScriptResult>
+  listWorkspaces(): Promise<WorkspaceListResult>
+  createWorkspace(name: string): Promise<ScriptResult>
+  renameWorkspace(workspaceId: string, name: string): Promise<ScriptResult>
+  duplicateWorkspace(workspaceId: string): Promise<ScriptResult>
+  switchWorkspace(workspaceId: string): Promise<ScriptResult>
+  deleteWorkspace(workspaceId: string): Promise<ScriptResult>
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>

@@ -4,7 +4,9 @@ import {
   IPC_CHANNELS,
   type ProfileListResult,
   type ShellState,
-  type ScriptResult
+  type ScriptResult,
+  type WorkspaceIdentity,
+  type WorkspaceListResult
 } from '../shared/ipc'
 import type { WorkspaceLayout } from '../shared/workspace'
 import type { BrowserManager } from './browser-manager'
@@ -14,11 +16,18 @@ interface IpcContext {
   getShellWebContents: () => WebContents | null
   getCanvasSize: () => CanvasSize
   getWorkspaceLayout: () => WorkspaceLayout
+  getWorkspaceIdentity: () => WorkspaceIdentity
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
   clearProfile: (profileId: string) => Promise<ScriptResult>
   deleteProfile: (profileId: string) => Promise<ScriptResult>
+  listWorkspaces: () => Promise<WorkspaceListResult>
+  createWorkspace: (name: string) => Promise<ScriptResult>
+  renameWorkspace: (workspaceId: string, name: string) => Promise<ScriptResult>
+  duplicateWorkspace: (workspaceId: string) => Promise<ScriptResult>
+  switchWorkspace: (workspaceId: string) => Promise<ScriptResult>
+  deleteWorkspace: (workspaceId: string) => Promise<ScriptResult>
 }
 
 const unauthorized: ScriptResult = { ok: false, error: 'Unauthorized sender.' }
@@ -46,11 +55,12 @@ function readFiniteNumber(value: unknown): number | null {
 export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.getState, (event): ShellState => {
     const layout = context.getWorkspaceLayout()
+    const workspace = context.getWorkspaceIdentity()
     if (!isTrustedSender(event, context)) {
-      return { panes: [], layout }
+      return { panes: [], layout, workspace }
     }
     const manager = context.getBrowserManager()
-    return manager ? { ...manager.snapshot(), layout } : { panes: [], layout }
+    return manager ? { ...manager.snapshot(), layout, workspace } : { panes: [], layout, workspace }
   })
 
   ipcMain.handle(IPC_CHANNELS.addPane, async (event, payload: unknown): Promise<ScriptResult> => {
@@ -216,6 +226,61 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   registerProfileAction(IPC_CHANNELS.clearProfile, context.clearProfile)
   registerProfileAction(IPC_CHANNELS.deleteProfile, context.deleteProfile)
+
+  ipcMain.handle(IPC_CHANNELS.listWorkspaces, async (event): Promise<WorkspaceListResult> => {
+    if (!isTrustedSender(event, context)) {
+      return { ok: false, error: 'Unauthorized sender.' }
+    }
+    return context.listWorkspaces()
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.createWorkspace,
+    async (event, nameInput: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const name = readString(nameInput, 200)
+      return name === null
+        ? { ok: false, error: 'Invalid workspace name.' }
+        : context.createWorkspace(name)
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.renameWorkspace,
+    async (event, workspaceIdInput: unknown, nameInput: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const workspaceId = readString(workspaceIdInput, 100)
+      const name = readString(nameInput, 200)
+      if (!workspaceId || name === null) {
+        return { ok: false, error: 'Invalid workspace name.' }
+      }
+      return context.renameWorkspace(workspaceId, name)
+    }
+  )
+
+  const registerWorkspaceAction = (
+    channel: string,
+    action: (workspaceId: string) => Promise<ScriptResult>
+  ): void => {
+    ipcMain.handle(channel, async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const workspaceId = readString(payload, 100)
+      if (!workspaceId) {
+        return { ok: false, error: 'Invalid workspace ID.' }
+      }
+      return action(workspaceId)
+    })
+  }
+
+  registerWorkspaceAction(IPC_CHANNELS.duplicateWorkspace, context.duplicateWorkspace)
+  registerWorkspaceAction(IPC_CHANNELS.switchWorkspace, context.switchWorkspace)
+  registerWorkspaceAction(IPC_CHANNELS.deleteWorkspace, context.deleteWorkspace)
 
   ipcMain.handle(IPC_CHANNELS.bringPaneToFront, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {

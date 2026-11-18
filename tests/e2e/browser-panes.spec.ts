@@ -172,10 +172,10 @@ async function readPaneZOrder(page: Page): Promise<Record<string, string>> {
 
 async function readPersistedAppState(
   userDataDir: string
-): Promise<{ windowBounds?: PaneViewRect } | null> {
+): Promise<{ activeWorkspaceId?: string; windowBounds?: PaneViewRect } | null> {
   try {
     const raw = await readFile(join(userDataDir, 'app-state.json'), 'utf8')
-    return JSON.parse(raw) as { windowBounds?: PaneViewRect }
+    return JSON.parse(raw) as { activeWorkspaceId?: string; windowBounds?: PaneViewRect }
   } catch {
     return null
   }
@@ -1446,6 +1446,116 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await profilesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(profilesDialog).toHaveCount(0)
+    await waitForAlignedBounds(restartApp)
+
+    // Workspace management: create, switch, rename, duplicate, and delete.
+    const originalWorkspaceId = (await getSnapshot(restartApp)).workspace.id
+    await restartShell.locator('.workspace-switcher').click()
+    const workspacesDialog = restartShell.getByRole('dialog', { name: 'Workspaces' })
+    await expect(workspacesDialog).toBeVisible()
+    await expect
+      .poll(async () => (await getViewStates(restartApp)).filter((state) => state.visible).length)
+      .toBe(0)
+    const originalWorkspaceRow = workspacesDialog.locator(
+      `.workspace-row[data-workspace-id="${originalWorkspaceId}"]`
+    )
+    await expect(originalWorkspaceRow).toContainText('Active')
+    await expect(originalWorkspaceRow).toContainText('1 pane')
+
+    const workspaceIdByName = async (name: string): Promise<string> => {
+      const result = await shellEvaluate<{
+        ok: boolean
+        workspaces?: Array<{ id: string; name: string }>
+      }>(restartApp, 'window.paneflow.listWorkspaces()')
+      const id = result.ok ? result.workspaces?.find((workspace) => workspace.name === name)?.id : null
+      if (!id) {
+        throw new Error(`Workspace ${name} is unavailable`)
+      }
+      return id
+    }
+    const workspaceRowById = (id: string) =>
+      workspacesDialog.locator(`.workspace-row[data-workspace-id="${id}"]`)
+
+    await workspacesDialog.getByLabel('New workspace name').fill('Second Workspace')
+    await workspacesDialog.getByRole('button', { name: 'Create' }).click()
+    const secondWorkspaceId = await waitFor(
+      () => workspaceIdByName('Second Workspace').catch(() => ''),
+      (id) => id.length > 0,
+      'second workspace creation'
+    )
+    const secondWorkspaceRow = workspaceRowById(secondWorkspaceId)
+    await expect(secondWorkspaceRow).toHaveCount(1)
+    await expect(secondWorkspaceRow).toContainText('0 panes')
+
+    await secondWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
+    await expect(workspacesDialog).toHaveCount(0)
+    await expect(restartShell.locator('.workspace-switcher')).toContainText('Second Workspace')
+    await expect(restartShell.locator('.empty-state')).toBeVisible()
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 0,
+      'second workspace to become active'
+    )
+
+    await restartShell.locator('.toolbar .toolbar-button.primary').click()
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
+      'pane in the second workspace'
+    )
+
+    await restartShell.locator('.workspace-switcher').click()
+    await expect(workspacesDialog).toBeVisible()
+    const renamedWorkspaceRow = workspaceRowById(secondWorkspaceId)
+    await renamedWorkspaceRow.getByRole('button', { name: 'Rename' }).click()
+    await renamedWorkspaceRow.getByLabel('Workspace name').fill('Responsive QA')
+    await renamedWorkspaceRow.getByRole('button', { name: 'Save' }).click()
+    await expect(renamedWorkspaceRow.locator('.workspace-label-text')).toHaveText('Responsive QA')
+    await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
+    await expect(restartShell.locator('.workspace-switcher')).toContainText('Responsive QA')
+
+    await restartShell.locator('.workspace-switcher').click()
+    await expect(workspacesDialog).toBeVisible()
+    await workspaceRowById(secondWorkspaceId)
+      .getByRole('button', { name: 'Duplicate' })
+      .click()
+    const copyWorkspaceId = await waitFor(
+      () => workspaceIdByName('Responsive QA copy').catch(() => ''),
+      (id) => id.length > 0,
+      'workspace duplicate'
+    )
+    await expect(workspaceRowById(copyWorkspaceId)).toHaveCount(1)
+    await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 pane')
+
+    await originalWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
+    await expect(workspacesDialog).toHaveCount(0)
+    await expect(restartShell.locator('.workspace-switcher')).toContainText('Workspace')
+    const restoredOriginal = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === originalWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === alicePaneId &&
+        (state.panes[0]?.url.includes('/account') ?? false),
+      'original workspace restore'
+    )
+    expect(restoredOriginal.panes[0]?.profileId).toBe(aliceProfileId)
+    await waitForAlignedBounds(restartApp)
+    await expect
+      .poll(async () => (await readPersistedAppState(userDataDir))?.activeWorkspaceId)
+      .toBe(originalWorkspaceId)
+
+    await restartShell.locator('.workspace-switcher').click()
+    await expect(workspacesDialog).toBeVisible()
+    for (const id of [copyWorkspaceId, secondWorkspaceId]) {
+      const row = workspaceRowById(id)
+      await row.getByRole('button', { name: 'Delete' }).click()
+      await row.getByRole('button', { name: 'Delete workspace' }).click()
+      await expect(row).toHaveCount(0)
+    }
+    await expect(workspacesDialog.locator('.workspace-row')).toHaveCount(1)
+    await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
+    await expect(workspacesDialog).toHaveCount(0)
     await waitForAlignedBounds(restartApp)
 
     // Native-aware scrolling: add panes, force an overflowing single-column

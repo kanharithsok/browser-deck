@@ -30,6 +30,16 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.renameProfile, profileId, label),
   clearProfile: (profileId: string) => ipcRenderer.invoke(IPC_CHANNELS.clearProfile, profileId),
   deleteProfile: (profileId: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteProfile, profileId),
+  listWorkspaces: () => ipcRenderer.invoke(IPC_CHANNELS.listWorkspaces),
+  createWorkspace: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.createWorkspace, name),
+  renameWorkspace: (workspaceId: string, name: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.renameWorkspace, workspaceId, name),
+  duplicateWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.duplicateWorkspace, workspaceId),
+  switchWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.switchWorkspace, workspaceId),
+  deleteWorkspace: (workspaceId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.deleteWorkspace, workspaceId),
   bringPaneToFront: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.bringPaneToFront, paneId),
   sendPaneToBack: (paneId: string) =>

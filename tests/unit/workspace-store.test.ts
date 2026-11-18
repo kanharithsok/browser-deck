@@ -122,6 +122,50 @@ describe('WorkspaceStore', () => {
     })
   })
 
+  it('creates, lists, switches, renames, and deletes workspaces', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    await store.initialize([pane(PANE_A, PROFILE_A)])
+
+    await expect(store.createWorkspace('   ')).rejects.toThrow()
+    await expect(store.createWorkspace('Workspace')).rejects.toThrow('already exists')
+    const created = await store.createWorkspace('Second Workspace')
+    expect(created).toMatchObject({
+      name: 'Second Workspace',
+      paneCount: 0,
+      active: false
+    })
+
+    let list = await store.listWorkspaces()
+    expect(list.map((workspace) => workspace.name)).toEqual(['Workspace', 'Second Workspace'])
+    expect(list[0]?.active).toBe(true)
+
+    await store.switchWorkspace(created.id)
+    expect(store.activeWorkspaceId()).toBe(created.id)
+    expect(store.activeWorkspaceName()).toBe('Second Workspace')
+    expect(store.paneDefinitions()).toEqual([])
+
+    await store.renameWorkspace(created.id, 'Responsive QA')
+    expect(store.activeWorkspaceName()).toBe('Responsive QA')
+    list = await store.listWorkspaces()
+    expect(list[0]).toMatchObject({ id: created.id, name: 'Responsive QA', active: true })
+
+    await expect(store.deleteWorkspace(created.id)).rejects.toThrow('Switch to another')
+    await store.switchWorkspace('default')
+    expect(store.paneDefinitions()).toEqual([pane(PANE_A, PROFILE_A)])
+
+    await store.deleteWorkspace(created.id)
+    list = await store.listWorkspaces()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.id).toBe('default')
+
+    const reloaded = new WorkspaceStore(directory)
+    await reloaded.load()
+    expect(reloaded.activeWorkspaceId()).toBe('default')
+    expect(reloaded.activeWorkspaceName()).toBe('Workspace')
+  })
+
   it('preserves a corrupt workspace and starts without stored panes', async () => {
     const directory = await makeDirectory()
     await mkdir(join(directory, 'workspaces'), { recursive: true })

@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 3 complete. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence, and the profile manager are implemented and verified. Phase 4 covers additional polish, workspace management, and macOS packaging.
+> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence, profile management, safe window bounds, and workspace management are implemented and verified. Remaining Phase 4 work covers profile assignment/sharing, performance, polish, and macOS packaging.
 
 ## Technology baseline
 
@@ -187,6 +187,12 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:rename-profile` | Validated profile label update |
 | `paneflow:clear-profile` | Clear cookies, storage, cache, and auth cache for an unused profile |
 | `paneflow:delete-profile` | Clear and remove an unused profile and its partition data |
+| `paneflow:list-workspaces` | Workspace summaries, pane counts, update dates, and active flag |
+| `paneflow:create-workspace` | Create a validated empty workspace |
+| `paneflow:rename-workspace` | Rename a validated workspace with unique-name checks |
+| `paneflow:duplicate-workspace` | Clone a workspace with fresh profiles and mapped pane IDs |
+| `paneflow:switch-workspace` | Persist current panes, tear down views, and restore another workspace |
+| `paneflow:delete-workspace` | Delete an inactive, non-final workspace file |
 | `paneflow:bring-pane-to-front` | Reorder a native pane view to the top of the stack |
 | `paneflow:send-pane-to-back` | Reorder a native pane view to the bottom above the shell |
 | `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
@@ -237,13 +243,17 @@ Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: fa
 
 `app-state.json` also carries optional normal window bounds. Bounds are validated, saved after debounced move/resize events, and restored only if they intersect a connected display's work area. Maximized/fullscreen state is not persisted. Save snapshots capture the target workspace path at enqueue time so an active-workspace change cannot redirect a queued write.
 
-Shutdown flushes queued writes through `will-quit`. Only the default workspace and active-workspace pointer exist today; workspace creation/switching UI is future work.
+Multiple workspace files can coexist under `workspaces/`. The active workspace ID is persisted in `app-state.json`; names are unique case-insensitively. Deleting the active or final workspace is blocked. Switching first persists current pane definitions/layout, flushes the save queue, activates the target store file, destroys the current native manager/views, creates the target panes, and reapplies the target layout. Test hooks read the current manager rather than a captured initial instance.
+
+Duplicating a workspace creates new pane IDs and fresh profiles, then remaps grid/freeform order and geometry to the new IDs. Deleting a workspace leaves its profiles and partition data intact for independent profile-manager cleanup. Workspace switching reloads pages rather than keeping background panes warm.
+
+Shutdown flushes queued writes through `will-quit`.
 
 ## Testing
 
-- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns), retained closed-profile cookies, profile-manager usage/rename/clear/delete and in-use protection, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
-- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace restore smoke check, and alignment on macOS.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns, window bounds), retained closed-profile cookies, profile-manager usage/rename/clear/delete and in-use protection, workspace create/switch/rename/duplicate/delete with active-state persistence, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace/profile dialog review, workspace restore smoke check, and alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
 
@@ -252,11 +262,12 @@ The Playwright test inspects the main process through a test hook that is only i
 - DOM content cannot be drawn over native browser views. Future contextual UI must use native menus, hide/shift the view, or introduce a separately proven overlay view.
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
-- Only the default workspace exists; there is no workspace creation/switching/rename UI yet.
+- Workspace switching tears down and recreates native pane views; pages reload instead of staying warm in the background.
+- Duplicated workspaces receive fresh profiles immediately, even if the duplicate is never opened.
 - Theme preference and maximized/fullscreen state are not persisted. Window bounds restore only when visible on a current display.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
 - Profile clear/delete require all panes using the profile to be closed; there is no close-and-delete flow.
-- Profile assignment/sharing and workspace create/switch UI are not implemented.
+- Profile assignment/sharing, workspace import/export, and background-warm switching are not implemented.
 - Partition-directory deletion is best-effort after session data is cleared.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
 - Grid drag reordering is pointer-only; keyboard reordering remains.

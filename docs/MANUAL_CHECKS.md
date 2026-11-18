@@ -60,10 +60,11 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Corrupt workspace and app-state files recover safely. (Unit tests verify `.corrupt-<timestamp>` preservation and safe defaults.)
 - [x] Invalid workspace pane URLs/viewports are rejected before writing. (Unit tests reject `javascript:` URLs and malformed profiles/panes.)
 - [x] Normal window bounds restore safely after restart. (E2e saves a distinctive 1120 × 760 window, verifies app-state, and compares bounds after relaunch.)
-- [ ] Theme preference and multiple workspaces restore. (Only the active default workspace ID and normal window bounds are persisted.)
+- [ ] Theme preference restores. (Active workspace ID and normal window bounds are persisted; theme preference is not.)
 - [ ] Maximized/fullscreen window state restores. (Intentionally not persisted.)
 - [ ] Maximized/focused state restores. (Intentionally not persisted.)
-- [ ] Workspace create/rename/duplicate/switch/delete. (Not implemented; only the default workspace exists.)
+- [x] Workspace create/rename/duplicate/switch/delete. (E2e creates a second workspace, switches, adds a pane, renames, duplicates with fresh profiles, switches back to the authenticated original, verifies active-state persistence, and deletes the extras.)
+- [ ] Workspace switching keeps background pages warm. (Switching destroys and recreates native views; pages reload.)
 - [ ] Explicit profile assignment/sharing across panes. (Not implemented.)
 
 ## Viewport emulation
