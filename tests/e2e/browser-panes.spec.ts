@@ -638,6 +638,31 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(shellViewport.width).toBe(initialContentBounds.width)
     expect(shellViewport.height).toBe(initialContentBounds.height)
 
+    // macOS uses a hidden-inset title bar: content fills the window, the toolbar
+    // is the drag region, and space is reserved for the native traffic lights.
+    const macWindowChrome = await app.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('PaneFlow window is unavailable')
+      }
+      return {
+        bounds: window.getBounds(),
+        content: window.getContentBounds(),
+        buttonPosition: window.getWindowButtonPosition()
+      }
+    })
+    expect(macWindowChrome.content.width).toBe(macWindowChrome.bounds.width)
+    expect(macWindowChrome.content.height).toBe(macWindowChrome.bounds.height)
+    expect(macWindowChrome.buttonPosition).toEqual({ x: 16, y: 16 })
+    const toolbarChrome = await shellPage.locator('.toolbar').evaluate((element) => ({
+      region: getComputedStyle(element).getPropertyValue('-webkit-app-region'),
+      left: element.getBoundingClientRect().left,
+      brandLeft: element.querySelector('.brand')?.getBoundingClientRect().left ?? 0
+    }))
+    expect(toolbarChrome.region).toBe('drag')
+    expect(toolbarChrome.left).toBe(0)
+    expect(toolbarChrome.brandLeft).toBeGreaterThanOrEqual(76)
+
     const aliceDomRect = (await readDomPaneRects(app)).find((entry) => entry.paneId === alicePaneId)
     const aliceViewport = await alicePage.evaluate(() => ({
       width: window.innerWidth,

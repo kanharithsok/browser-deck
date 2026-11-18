@@ -48,6 +48,7 @@ const paneRenameRequests = ref<Record<string, number>>({})
 const layoutMode = ref<LayoutMode>('grid')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
+const usesMacTitlebar = navigator.platform.startsWith('Mac')
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
 const gridColumns = ref(DEFAULT_GRID_COLUMNS)
@@ -1664,7 +1665,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'is-dragging': isDragging }">
+  <div
+    class="app-shell"
+    :class="{ 'is-dragging': isDragging, 'mac-titlebar': usesMacTitlebar }"
+  >
     <header class="toolbar">
       <h1 class="brand">PaneFlow</h1>
 
@@ -2251,6 +2255,19 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   user-select: none;
+}
+
+.app-shell.mac-titlebar .toolbar {
+  padding-left: 84px;
+  -webkit-app-region: drag;
+}
+
+.app-shell.mac-titlebar .toolbar button,
+.app-shell.mac-titlebar .toolbar select,
+.app-shell.mac-titlebar .toolbar .layout-switch,
+.app-shell.mac-titlebar .toolbar .grid-control,
+.app-shell.mac-titlebar .toolbar .workspace-switcher {
+  -webkit-app-region: no-drag;
 }
 
 .brand {

@@ -27,6 +27,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Per-pane viewport emulation with responsive, mobile, tablet, laptop, and desktop presets, custom width/height/DPR, and fit/actual display scale. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
 - Versioned workspace persistence: pane IDs, profile references, URLs, viewport settings, grid columns/order, grid/freeform mode, and freeform geometry restore after restart. Profile partitions and sessions are retained.
 - Safe normal window-bounds restoration: saved bounds are validated and applied only when visible on a connected display.
+- Hidden-inset macOS title bar: traffic lights sit inside the compact toolbar, the shell fills the full window content, and empty toolbar space drags the window.
 - Persisted System/Light/Dark theme from the native View menu, with matching window chrome and shell tokens.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
 - Profile manager dialog with creation dates, live pane usage, rename, and confirmed clear/delete. In-use profiles can be closed and deleted through a single explicit confirmation.
