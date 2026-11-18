@@ -4,15 +4,32 @@ import PaneCard from './components/PaneCard.vue'
 import type { PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import {
   DEFAULT_GRID_COLUMNS,
+  DEFAULT_MIN_PANE_HEIGHT,
+  DEFAULT_MIN_PANE_WIDTH,
+  bringToFront,
   isRectFullyVisible,
   layoutGrid,
+  moveRect,
+  normalizedToRect,
+  rectToNormalized,
   reorderPaneIds,
+  resizeRect,
+  snapRect,
   type GridLayout,
-  type Size
+  type NormalizedRect,
+  type Rect,
+  type ResizeHandle,
+  type Size,
+  type SnapGuides
 } from '../../shared/layout'
+
+type LayoutMode = 'grid' | 'freeform'
 
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
+const layoutMode = ref<LayoutMode>('grid')
+const freeformGeometries = ref<Record<string, NormalizedRect>>({})
+const freeformOrder = ref<string[]>([])
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
 const gridColumns = ref(DEFAULT_GRID_COLUMNS)
@@ -20,11 +37,15 @@ const suspendedPaneIds = ref<ReadonlySet<string>>(new Set())
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
+const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
 
 interface DragState {
+  kind: 'reorder' | 'move' | 'resize'
   paneId: string
   startX: number
   startY: number
+  startRect?: Rect
+  handle?: ResizeHandle
 }
 
 const dragState = ref<DragState | null>(null)
@@ -80,7 +101,41 @@ const placementByPane = computed(() => {
 
 const gridContentHeight = computed(() => gridLayout.value?.contentHeight ?? 0)
 
+const freeformPixelRects = computed(() => {
+  const rects = new Map<string, Rect>()
+  if (workspaceSize.value.width < 1 || workspaceSize.value.height < 1) {
+    return rects
+  }
+
+  const minSize = {
+    width: DEFAULT_MIN_PANE_WIDTH,
+    height: DEFAULT_MIN_PANE_HEIGHT
+  }
+  for (const paneId of freeformOrder.value) {
+    const normalized = freeformGeometries.value[paneId]
+    if (!normalized) {
+      continue
+    }
+    const rect = normalizedToRect(normalized, workspaceSize.value, minSize)
+    if (rect) {
+      rects.set(paneId, rect)
+    }
+  }
+  return rects
+})
+
+const slotRects = computed(() =>
+  layoutMode.value === 'grid' ? placementByPane.value : freeformPixelRects.value
+)
+
+const paneGridHeight = computed(() =>
+  layoutMode.value === 'grid' ? gridContentHeight.value : workspaceSize.value.height
+)
+
 const gridNotice = computed(() => {
+  if (layoutMode.value !== 'grid') {
+    return null
+  }
   const layout = gridLayout.value
   if (!layout) {
     return null
@@ -120,17 +175,24 @@ function readWorkspaceSize(): void {
 }
 
 function paneSlotStyle(paneId: string): Record<string, string> {
-  const rect = placementByPane.value.get(paneId)
+  const rect = slotRects.value.get(paneId)
   if (!rect) {
     return { visibility: 'hidden' }
   }
 
-  return {
+  const style: Record<string, string> = {
     left: `${rect.x}px`,
     top: `${rect.y}px`,
     width: `${rect.width}px`,
     height: `${rect.height}px`
   }
+
+  if (layoutMode.value === 'freeform') {
+    const index = freeformOrder.value.indexOf(paneId)
+    style.zIndex = String(10 + Math.max(0, index))
+  }
+
+  return style
 }
 
 function handleWindowResize(): void {
@@ -144,6 +206,182 @@ function updateSuspendedPanes(next: ReadonlySet<string>): void {
     return
   }
   suspendedPaneIds.value = next
+}
+
+function freeformMinSize(): Size {
+  return { width: DEFAULT_MIN_PANE_WIDTH, height: DEFAULT_MIN_PANE_HEIGHT }
+}
+
+function defaultFreeformGeometry(index: number): NormalizedRect {
+  const offset = Math.min(0.4, 0.08 + index * 0.04)
+  return { x: offset, y: offset, width: 0.5, height: 0.5 }
+}
+
+function ensureFreeformGeometry(): void {
+  if (layoutMode.value !== 'freeform' || workspaceSize.value.width < 1) {
+    return
+  }
+
+  const next = { ...freeformGeometries.value }
+  const paneIds = new Set(orderedPanes.value.map((pane) => pane.id))
+  let changed = false
+
+  for (const paneId of Object.keys(next)) {
+    if (!paneIds.has(paneId)) {
+      delete next[paneId]
+      changed = true
+    }
+  }
+
+  orderedPanes.value.forEach((pane, index) => {
+    if (next[pane.id]) {
+      return
+    }
+
+    const gridRect = placementByPane.value.get(pane.id)
+    const normalized = gridRect
+      ? rectToNormalized(gridRect, workspaceSize.value)
+      : defaultFreeformGeometry(index)
+    if (!normalized) {
+      return
+    }
+
+    const clamped = normalizedToRect(normalized, workspaceSize.value, freeformMinSize())
+    if (!clamped) {
+      return
+    }
+    const safe = rectToNormalized(clamped, workspaceSize.value)
+    if (safe) {
+      next[pane.id] = safe
+      changed = true
+    }
+  })
+
+  if (changed) {
+    freeformGeometries.value = next
+  }
+}
+
+function tidyFreeform(): void {
+  if (layoutMode.value !== 'freeform' || workspaceSize.value.width < 1) {
+    return
+  }
+
+  const result = layoutGrid(
+    orderedPanes.value.map((pane) => pane.id),
+    workspaceSize.value,
+    { columns: gridColumns.value, padding: 10, gap: 10 }
+  )
+  if (!result.ok) {
+    return
+  }
+
+  const next: Record<string, NormalizedRect> = {}
+  for (const placement of result.layout.placements) {
+    const normalized = rectToNormalized(placement.rect, workspaceSize.value)
+    if (normalized) {
+      next[placement.paneId] = normalized
+    }
+  }
+  freeformGeometries.value = next
+  freeformOrder.value = orderedPanes.value.map((pane) => pane.id)
+  guides.value = { vertical: [], horizontal: [] }
+  void nextTick(scheduleMeasure)
+}
+
+function raisePane(paneId: string): void {
+  if (layoutMode.value !== 'freeform') {
+    return
+  }
+  const nextOrder = bringToFront(freeformOrder.value, paneId)
+  if (nextOrder) {
+    freeformOrder.value = nextOrder
+  }
+  void window.paneflow.bringPaneToFront(paneId).catch(() => undefined)
+}
+
+function applyFreeformRect(paneId: string, rect: Rect): void {
+  const normalized = rectToNormalized(rect, workspaceSize.value)
+  if (!normalized) {
+    return
+  }
+  freeformGeometries.value = {
+    ...freeformGeometries.value,
+    [paneId]: normalized
+  }
+}
+
+function updateGuidesFromSnap(snapped: SnapGuides): void {
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    guides.value = { vertical: [], horizontal: [] }
+    return
+  }
+  const rect = workspace.getBoundingClientRect()
+  guides.value = {
+    vertical: snapped.vertical.map((value) => value - rect.x),
+    horizontal: snapped.horizontal.map((value) => value - rect.y)
+  }
+}
+
+function updateFreeformInteraction(event: PointerEvent, state: DragState): void {
+  if (!state.startRect || workspaceSize.value.width < 1 || workspaceSize.value.height < 1) {
+    return
+  }
+
+  const canvas = workspaceSize.value
+  const minSize = freeformMinSize()
+  const deltaX = event.clientX - state.startX
+  const deltaY = event.clientY - state.startY
+
+  const baseRect =
+    state.kind === 'move'
+      ? moveRect(state.startRect, deltaX, deltaY, canvas, minSize)
+      : state.handle
+        ? resizeRect(state.startRect, state.handle, deltaX, deltaY, canvas, minSize)
+        : null
+
+  if (!baseRect) {
+    return
+  }
+
+  const neighbors = [...freeformPixelRects.value.entries()]
+    .filter(([paneId]) => paneId !== state.paneId)
+    .map(([, rect]) => rect)
+
+  const snapped = snapRect(baseRect, {
+    canvas,
+    neighbors,
+    threshold: 8,
+    snapToCanvas: true,
+    snapToNeighbors: true
+  })
+  if (!snapped) {
+    return
+  }
+
+  updateGuidesFromSnap(snapped.guides)
+  applyFreeformRect(state.paneId, snapped.rect)
+}
+
+function beginInteraction(state: DragState): void {
+  dragState.value = state
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', finishDrag)
+  window.addEventListener('pointercancel', finishDrag)
+}
+
+function isResizeHandle(value: string | undefined): value is ResizeHandle {
+  return (
+    value === 'n' ||
+    value === 's' ||
+    value === 'e' ||
+    value === 'w' ||
+    value === 'ne' ||
+    value === 'nw' ||
+    value === 'se' ||
+    value === 'sw'
+  )
 }
 
 function applyState(state: ShellState): void {
@@ -161,14 +399,26 @@ function applyState(state: ShellState): void {
     .map((pane) => pane.id)
     .filter((paneId) => !retainedIds.has(paneId))
   paneOrder.value = [...retained, ...appended]
+
+  const retainedZ = freeformOrder.value.filter((paneId) => nextIds.has(paneId))
+  const retainedZIds = new Set(retainedZ)
+  const appendedZ = state.panes
+    .map((pane) => pane.id)
+    .filter((paneId) => !retainedZIds.has(paneId))
+  freeformOrder.value = [...retainedZ, ...appendedZ]
+
   panes.value = state.panes
 
   void nextTick(() => {
+    if (layoutMode.value === 'freeform') {
+      ensureFreeformGeometry()
+    }
     if (addedPane) {
       focusPaneAddress(addedPane.id)
     } else if (removedPane && document.activeElement === document.body) {
       recoverFocus()
     }
+    scheduleMeasure()
   })
 }
 
@@ -262,9 +512,10 @@ function finishDrag(): void {
   dragState.value = null
   dropTargetId.value = null
   isDragging.value = false
+  guides.value = { vertical: [], horizontal: [] }
   document.body.classList.remove('paneflow-dragging')
 
-  if (wasDragging && state && target) {
+  if (wasDragging && state?.kind === 'reorder' && target) {
     const fromIndex = paneOrder.value.indexOf(state.paneId)
     const targetIndex = paneOrder.value.indexOf(target)
     if (fromIndex >= 0 && targetIndex >= 0 && fromIndex !== targetIndex) {
@@ -295,7 +546,13 @@ function onPointerMove(event: PointerEvent): void {
   }
 
   event.preventDefault()
-  dropTargetId.value = findDropTarget(event.clientX, event.clientY, state.paneId)
+
+  if (state.kind === 'reorder') {
+    dropTargetId.value = findDropTarget(event.clientX, event.clientY, state.paneId)
+    return
+  }
+
+  updateFreeformInteraction(event, state)
 }
 
 function onWorkspacePointerDown(event: PointerEvent): void {
@@ -305,12 +562,6 @@ function onWorkspacePointerDown(event: PointerEvent): void {
 
   const target = event.target
   if (!(target instanceof Element)) {
-    return
-  }
-  if (!target.closest('.pane-title-row')) {
-    return
-  }
-  if (target.closest('button, a, input, select, textarea, form, [role="button"]')) {
     return
   }
 
@@ -323,14 +574,56 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     return
   }
 
-  dragState.value = {
+  if (layoutMode.value === 'freeform') {
+    const resizeTarget = target.closest<HTMLElement>('[data-resize]')
+    const handle = resizeTarget?.dataset.resize
+    if (isResizeHandle(handle)) {
+      const startRect = slotRects.value.get(paneId)
+      if (!startRect) {
+        return
+      }
+      raisePane(paneId)
+      beginInteraction({
+        kind: 'resize',
+        paneId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startRect,
+        handle
+      })
+      return
+    }
+  }
+
+  if (!target.closest('.pane-title-row')) {
+    return
+  }
+  if (target.closest('button, a, input, select, textarea, form, [role="button"]')) {
+    return
+  }
+
+  if (layoutMode.value === 'freeform') {
+    const startRect = slotRects.value.get(paneId)
+    if (!startRect) {
+      return
+    }
+    raisePane(paneId)
+    beginInteraction({
+      kind: 'move',
+      paneId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startRect
+    })
+    return
+  }
+
+  beginInteraction({
+    kind: 'reorder',
     paneId,
     startX: event.clientX,
     startY: event.clientY
-  }
-  window.addEventListener('pointermove', onPointerMove)
-  window.addEventListener('pointerup', finishDrag)
-  window.addEventListener('pointercancel', finishDrag)
+  })
 }
 
 function scheduleMeasure(): void {
@@ -410,9 +703,36 @@ watch([actionError, layoutError], () => {
 watch(
   [paneLayoutKey, gridColumns, () => workspaceSize.value.width, () => workspaceSize.value.height],
   () => {
+    if (layoutMode.value === 'freeform') {
+      ensureFreeformGeometry()
+    }
     void nextTick(scheduleMeasure)
   }
 )
+
+watch(layoutMode, (mode) => {
+  guides.value = { vertical: [], horizontal: [] }
+  dropTargetId.value = null
+  isDragging.value = false
+  dragState.value = null
+  document.body.classList.remove('paneflow-dragging')
+  if (workspaceEl.value) {
+    workspaceEl.value.scrollTop = 0
+  }
+
+  if (mode === 'freeform') {
+    const ids = orderedPanes.value.map((pane) => pane.id)
+    const idSet = new Set(ids)
+    const retained = freeformOrder.value.filter((paneId) => idSet.has(paneId))
+    const retainedSet = new Set(retained)
+    freeformOrder.value = [...retained, ...ids.filter((paneId) => !retainedSet.has(paneId))]
+  }
+
+  void nextTick(() => {
+    ensureFreeformGeometry()
+    scheduleMeasure()
+  })
+})
 
 watch(isDragging, () => {
   void nextTick(scheduleMeasure)
@@ -463,12 +783,40 @@ onBeforeUnmount(() => {
 
       <span class="toolbar-spacer"></span>
 
-      <label v-if="panes.length > 0" class="grid-control">
+      <div class="layout-switch" role="group" aria-label="Layout mode">
+        <button
+          type="button"
+          :class="{ active: layoutMode === 'grid' }"
+          :aria-pressed="layoutMode === 'grid'"
+          @click="layoutMode = 'grid'"
+        >
+          Grid
+        </button>
+        <button
+          type="button"
+          :class="{ active: layoutMode === 'freeform' }"
+          :aria-pressed="layoutMode === 'freeform'"
+          @click="layoutMode = 'freeform'"
+        >
+          Freeform
+        </button>
+      </div>
+
+      <label v-if="panes.length > 0 && layoutMode === 'grid'" class="grid-control">
         <span class="grid-label">Columns</span>
         <select v-model.number="gridColumns" class="grid-select" aria-label="Grid columns">
           <option v-for="column in 5" :key="column" :value="column">{{ column }}</option>
         </select>
       </label>
+
+      <button
+        v-if="panes.length > 0 && layoutMode === 'freeform'"
+        class="toolbar-button"
+        type="button"
+        @click="tidyFreeform"
+      >
+        Tidy
+      </button>
 
       <span class="pane-count" role="status" aria-live="polite">{{ paneCountLabel }}</span>
       <button
@@ -519,7 +867,7 @@ onBeforeUnmount(() => {
       <div
         v-if="orderedPanes.length > 0"
         class="pane-grid"
-        :style="{ height: `${gridContentHeight}px` }"
+        :style="{ height: `${paneGridHeight}px` }"
       >
         <div
           v-for="pane in orderedPanes"
@@ -533,11 +881,26 @@ onBeforeUnmount(() => {
         >
           <PaneCard
             :pane="pane"
+            :freeform="layoutMode === 'freeform'"
             :suspended="suspendedPaneIds.has(pane.id)"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
           />
         </div>
+        <span
+          v-for="(guide, index) in guides.vertical"
+          :key="`v-${index}`"
+          class="alignment-guide vertical"
+          :style="{ left: `${guide}px` }"
+          aria-hidden="true"
+        ></span>
+        <span
+          v-for="(guide, index) in guides.horizontal"
+          :key="`h-${index}`"
+          class="alignment-guide horizontal"
+          :style="{ top: `${guide}px` }"
+          aria-hidden="true"
+        ></span>
       </div>
 
       <div v-else class="empty-state">
@@ -619,6 +982,31 @@ onBeforeUnmount(() => {
 .grid-select:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
+}
+
+.layout-switch {
+  display: inline-flex;
+  height: 26px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-inset);
+}
+
+.layout-switch button {
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.layout-switch button:hover {
+  color: var(--text);
+}
+
+.layout-switch button.active {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .toolbar-button {
@@ -766,6 +1154,25 @@ onBeforeUnmount(() => {
   border-radius: 11px;
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.alignment-guide {
+  position: absolute;
+  z-index: 1000;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.alignment-guide.vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.alignment-guide.horizontal {
+  right: 0;
+  left: 0;
+  height: 1px;
 }
 
 .empty-state {

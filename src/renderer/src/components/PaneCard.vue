@@ -5,9 +5,11 @@ import type { PaneState, ScriptResult } from '../../../shared/ipc'
 const props = withDefaults(
   defineProps<{
     pane: PaneState
+    freeform?: boolean
     suspended?: boolean
   }>(),
   {
+    freeform: false,
     suspended: false
   }
 )
@@ -109,7 +111,12 @@ function requestClose(): void {
 </script>
 
 <template>
-  <article class="pane-card" :data-pane-id="pane.id" :aria-label="`${pane.title} pane`">
+  <article
+    class="pane-card"
+    :class="{ 'pane-card-freeform': freeform }"
+    :data-pane-id="pane.id"
+    :aria-label="`${pane.title} pane`"
+  >
     <header class="pane-header">
       <div class="pane-title-row">
         <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
@@ -243,11 +250,23 @@ function requestClose(): void {
         </div>
       </div>
     </div>
+
+    <div v-if="freeform" class="resize-handles" aria-hidden="true">
+      <span class="resize-handle resize-n" data-resize="n"></span>
+      <span class="resize-handle resize-s" data-resize="s"></span>
+      <span class="resize-handle resize-e" data-resize="e"></span>
+      <span class="resize-handle resize-w" data-resize="w"></span>
+      <span class="resize-handle resize-ne" data-resize="ne"></span>
+      <span class="resize-handle resize-nw" data-resize="nw"></span>
+      <span class="resize-handle resize-se" data-resize="se"></span>
+      <span class="resize-handle resize-sw" data-resize="sw"></span>
+    </div>
   </article>
 </template>
 
 <style scoped>
 .pane-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -259,6 +278,10 @@ function requestClose(): void {
   background: var(--surface);
   overflow: hidden;
   container-type: inline-size;
+}
+
+.pane-card-freeform .pane-body {
+  padding: 6px;
 }
 
 .pane-header {
@@ -435,6 +458,86 @@ function requestClose(): void {
   display: flex;
   min-height: 0;
   background: var(--pane-canvas);
+}
+
+.resize-handle {
+  position: absolute;
+  z-index: 3;
+}
+
+.resize-n {
+  top: 0;
+  right: 8px;
+  left: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.resize-s {
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.resize-e {
+  top: 8px;
+  right: 0;
+  bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.resize-w {
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.resize-ne,
+.resize-nw,
+.resize-se,
+.resize-sw {
+  width: 10px;
+  height: 10px;
+}
+
+.resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.resize-se {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.resize-se::after {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-right: 1px solid var(--text-faint);
+  border-bottom: 1px solid var(--text-faint);
+  content: '';
+}
+
+.resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
 }
 
 .pane-content {

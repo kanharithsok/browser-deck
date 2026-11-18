@@ -18,6 +18,8 @@ const api: PaneFlowApi = {
   reloadAll: () => ipcRenderer.invoke(IPC_CHANNELS.reloadAll),
   setPaneBounds: (updates: PaneBoundsUpdate[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.setPaneBounds, updates),
+  bringPaneToFront: (paneId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.bringPaneToFront, paneId),
   showPaneMenu: (request: PaneMenuRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.showPaneMenu, request),
   onStateChanged: (listener) => {
