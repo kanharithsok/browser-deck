@@ -1,3 +1,5 @@
+import type { PaneViewport } from './viewports'
+
 export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
   addPane: 'paneflow:add-pane',
@@ -8,6 +10,7 @@ export const IPC_CHANNELS = {
   reload: 'paneflow:reload',
   reloadAll: 'paneflow:reload-all',
   setPaneBounds: 'paneflow:set-pane-bounds',
+  setPaneViewport: 'paneflow:set-pane-viewport',
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
@@ -50,6 +53,7 @@ export interface PaneState {
   canGoBack: boolean
   canGoForward: boolean
   error: string | null
+  viewport: PaneViewport
 }
 
 export interface ShellState {
@@ -72,6 +76,7 @@ export interface PaneFlowApi {
   reload(paneId: string): Promise<ScriptResult>
   reloadAll(): Promise<ScriptResult>
   setPaneBounds(updates: PaneBoundsUpdate[]): Promise<ScriptResult>
+  setPaneViewport(paneId: string, viewport: PaneViewport): Promise<ScriptResult>
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>

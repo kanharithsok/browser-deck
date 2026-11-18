@@ -7,6 +7,7 @@ import {
   type PaneMenuRequest,
   type ShellState
 } from '../shared/ipc'
+import type { PaneViewport } from '../shared/viewports'
 
 const api: PaneFlowApi = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<ShellState>,
@@ -19,6 +20,8 @@ const api: PaneFlowApi = {
   reloadAll: () => ipcRenderer.invoke(IPC_CHANNELS.reloadAll),
   setPaneBounds: (updates: PaneBoundsUpdate[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.setPaneBounds, updates),
+  setPaneViewport: (paneId: string, viewport: PaneViewport) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setPaneViewport, paneId, viewport),
   bringPaneToFront: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.bringPaneToFront, paneId),
   sendPaneToBack: (paneId: string) =>

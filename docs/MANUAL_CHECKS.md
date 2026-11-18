@@ -50,11 +50,15 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 
 ## Viewport emulation
 
-- [ ] Each pane can use a different viewport. (Pending.)
-- [ ] Fixture `window.innerWidth` matches configured width. (Pending; native pages report viewport for future checks.)
-- [ ] Fixture `window.innerHeight` matches configured height. (Pending.)
-- [ ] Device scale factor behavior documented and verified for emulation. (Pending; physical Retina DPR behavior verified.)
-- [ ] Fit and actual display modes behave as specified. (Pending.)
+- [x] Each pane can use a different viewport. (E2e sets Alice to mobile 390 × 844 and Bob to tablet 820 × 1180 at the same time.)
+- [x] Fixture `window.innerWidth` matches configured width. (E2e: mobile 390, tablet 820, custom 500.)
+- [x] Fixture `window.innerHeight` matches configured height. (E2e: mobile 844, tablet 1180, custom 700.)
+- [x] Device scale factor behavior documented and verified for emulation. (E2e: mobile DPR 3, tablet DPR 2, custom DPR 2; see ADR-010.)
+- [x] Fit and actual display modes behave as specified. (E2e asserts fit scale below 1, actual scale 1, and unchanged CSS viewport values. Manual macOS capture shows fit scaled inside the pane and actual at 1:1; actual clips a viewport taller than the pane.)
+- [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
+- [x] Pane chrome remains usable at five grid columns. (E2e asserts no horizontal header overflow and a usable address width; controls wrap to a second row.)
+- [ ] Pane-level scrolling/panning for an actual-mode viewport larger than the pane. (Not implemented; the oversized surface is clipped.)
+- [ ] Optional per-pane user-agent override. (Not implemented.)
 
 ## Accessibility and appearance
 

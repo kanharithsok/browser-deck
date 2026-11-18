@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaneCard from './components/PaneCard.vue'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
+import type { PaneViewport } from '../../shared/viewports'
 import {
   DEFAULT_GRID_COLUMNS,
   DEFAULT_MIN_PANE_HEIGHT,
@@ -528,6 +529,22 @@ async function openPaneMenu(paneId: string, position: { x: number; y: number }):
   }
 }
 
+async function setPaneViewport(paneId: string, viewport: PaneViewport): Promise<void> {
+  actionError.value = null
+  try {
+    const result = await window.paneflow.setPaneViewport(paneId, viewport)
+    if (!result.ok) {
+      actionError.value = result.error
+    }
+  } catch {
+    actionError.value = 'Could not apply the viewport.'
+  }
+}
+
+function onPaneLayoutChanged(): void {
+  void nextTick(scheduleMeasure)
+}
+
 function dismissErrors(): void {
   actionError.value = null
   layoutError.value = null
@@ -1022,6 +1039,8 @@ onBeforeUnmount(() => {
             @toggle-maximize="toggleMaximize(pane.id)"
             @raise-pane="raisePane(pane.id)"
             @lower-pane="lowerPane(pane.id)"
+            @set-viewport="setPaneViewport(pane.id, $event)"
+            @layout-changed="onPaneLayoutChanged"
           />
         </div>
         <span

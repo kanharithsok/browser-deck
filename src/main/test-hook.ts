@@ -1,10 +1,16 @@
 import { app } from 'electron'
 import type { PaneViewRect, ShellState } from '../shared/ipc'
+import type { PaneViewport } from '../shared/viewports'
 
 export interface PaneflowTestHook {
   snapshot: () => ShellState
   viewBounds: () => Array<{ paneId: string; rect: PaneViewRect }>
   viewStates: () => Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>
+  emulationState: (paneId: string) => {
+    enabled: boolean
+    scale: number
+    viewport: PaneViewport
+  } | null
   viewOrder: () => string[]
   readCookie: (paneId: string) => Promise<string | null>
   webContentsId: (paneId: string) => number | null

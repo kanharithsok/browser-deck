@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–2 complete. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, and native Pane-menu commands. Phase 3 adds viewport emulation, workspace/profile persistence, and the profile manager; macOS packaging follows.
+> **Project status:** Phases 0–2 complete; Phase 3 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, and per-pane viewport emulation. Workspace/profile persistence and the profile manager remain in Phase 3; macOS packaging follows.
 
 ## Current capabilities
 
@@ -23,9 +23,10 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Freeform mode with normalized pane geometry, title-row dragging, eight resize handles, snapping guides, explicit bring-front/send-back controls, and a Tidy action.
 - Temporary maximize/restore with unrelated native views hidden and the prior arrangement preserved.
 - Native **Pane** menu commands for add, close, reload active/all, maximize, and grid/freeform toggle, with an active pane inferred from shell/native focus.
-- Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass.
+- Per-pane viewport emulation with responsive, mobile, tablet, laptop, and desktop presets, custom width/height/DPR, and fit/actual display scale. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
+- Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass and viewport-emulation checks.
 
-The current build does **not** include viewport emulation, workspace/profile persistence, the profile manager, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
+The current build does **not** include workspace/profile persistence, the profile manager, optional user-agent overrides, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -111,7 +112,7 @@ The Playwright suite requires a local macOS GUI session. Unit tests include the 
 
 The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. A native Pane menu routes typed commands to the active pane. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`, and viewport presets, validation, and fit-scale math live in `src/shared/viewports.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. A native Pane menu routes typed commands to the active pane. Pane headers expose viewport preset, fit/actual, and custom size controls; the main process applies them through Electron device emulation. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -149,11 +150,14 @@ opencode.jsonc        Project-level OpenCode configuration
 
 ## Known limitations
 
-- The workspace still lacks viewport emulation and a profile manager.
+- The workspace still lacks workspace/profile persistence and a profile manager.
+- Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
+- In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
+- Viewport settings reset on restart until workspace persistence lands.
 - Partially visible grid panes are hidden while scrolling and only become interactive when fully in view.
 - A fully covered freeform pane may be unreachable until the covering pane moves.
 - Raw keyboard accelerators are configured in the native menu; menu command routing is tested, raw key chords are not yet automated.
-- Freeform geometry, selected columns, grid order, layout mode, and maximize state reset on restart until Phase 3 persistence arrives.
+- Freeform geometry, selected columns, grid order, layout mode, and viewport settings reset on restart until workspace persistence arrives.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
 - Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.

@@ -12,12 +12,14 @@ import {
   type Page
 } from '@playwright/test'
 import type { PaneViewRect, ShellState } from '../../src/shared/ipc'
+import type { PaneViewport } from '../../src/shared/viewports'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
 
 interface TestHook {
   snapshot(): ShellState
   viewBounds(): Array<{ paneId: string; rect: PaneViewRect }>
   viewStates(): Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>
+  emulationState(paneId: string): { enabled: boolean; scale: number; viewport: PaneViewport } | null
   viewOrder(): string[]
   readCookie(paneId: string): Promise<string | null>
   webContentsId(paneId: string): number | null
@@ -108,6 +110,19 @@ async function getViewStates(
     }
     return hook.viewStates()
   })
+}
+
+async function getEmulationState(
+  app: ElectronApplication,
+  paneId: string
+): Promise<{ enabled: boolean; scale: number; viewport: PaneViewport } | null> {
+  return app.evaluate((_electron, id) => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    if (!hook) {
+      throw new Error('Test hook is not installed')
+    }
+    return hook.emulationState(id)
+  }, paneId)
 }
 
 async function getViewOrder(app: ElectronApplication): Promise<string[]> {
@@ -446,6 +461,119 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(Math.abs(aliceViewport.width - (aliceDomRect?.rect.width ?? 0))).toBeLessThanOrEqual(1)
     expect(Math.abs(aliceViewport.height - (aliceDomRect?.rect.height ?? 0))).toBeLessThanOrEqual(1)
 
+    // Per-pane viewport emulation: presets, custom dimensions, validation,
+    // independent pane settings, fit/actual, and return to responsive sizing.
+    const alicePaneCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+    const bobPaneCard = shellPage.locator(`.pane-card[data-pane-id="${bobPaneId}"]`)
+    const viewportSelect = alicePaneCard.locator('.viewport-select')
+    const scaleSelect = alicePaneCard.locator('.scale-select')
+    const paneMetrics = (paneId: string) =>
+      evaluateInPane<{ width: number; height: number; dpr: number }>(
+        app as ElectronApplication,
+        paneId,
+        '({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio })'
+      )
+    const aliceMetrics = () => paneMetrics(alicePaneId as string)
+    const bobMetrics = () => paneMetrics(bobPaneId as string)
+
+    await viewportSelect.selectOption('mobile')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.preset === 'mobile',
+      'mobile viewport state'
+    )
+    await expect.poll(aliceMetrics).toMatchObject({ width: 390, height: 844, dpr: 3 })
+    const mobileFitEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(mobileFitEmulation?.enabled).toBe(true)
+    expect(mobileFitEmulation?.scale).toBeGreaterThan(0)
+    expect(mobileFitEmulation?.scale).toBeLessThan(1)
+    await waitForAlignedBounds(app)
+
+    // A second pane can hold a different emulated viewport at the same time.
+    await bobPaneCard.locator('.viewport-select').selectOption('tablet')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[1]?.viewport.preset === 'tablet',
+      'tablet viewport state for the second pane'
+    )
+    await expect.poll(bobMetrics).toMatchObject({ width: 820, height: 1180, dpr: 2 })
+    await expect.poll(aliceMetrics).toMatchObject({ width: 390, height: 844, dpr: 3 })
+    await waitForAlignedBounds(app)
+
+    await viewportSelect.selectOption('custom')
+    const customRow = alicePaneCard.locator('.viewport-custom')
+    await expect(customRow).toBeVisible()
+    await customRow.getByLabel('Custom viewport width').fill('100')
+    await customRow.getByLabel('Custom viewport height').fill('700')
+    await customRow.getByLabel('Custom device scale factor').fill('2')
+    await customRow.getByRole('button', { name: 'Apply' }).click()
+    await expect(customRow.getByRole('alert')).toContainText('between 200 and 7680')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.preset === 'mobile',
+      'invalid custom viewport to leave the preset unchanged'
+    )
+
+    await customRow.getByLabel('Custom viewport width').fill('500')
+    await customRow.getByRole('button', { name: 'Apply' }).click()
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes[0]?.viewport.preset === 'custom' &&
+        state.panes[0]?.viewport.width === 500 &&
+        state.panes[0]?.viewport.height === 700,
+      'custom viewport state'
+    )
+    await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 700, dpr: 2 })
+    await waitForAlignedBounds(app)
+
+    await scaleSelect.selectOption('actual')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.displayScale === 'actual',
+      'actual display scale state'
+    )
+    await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 700, dpr: 2 })
+    const actualEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(actualEmulation?.enabled).toBe(true)
+    expect(actualEmulation?.scale).toBe(1)
+    await waitForAlignedBounds(app)
+
+    await viewportSelect.selectOption('responsive')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.preset === 'responsive',
+      'responsive viewport state'
+    )
+    const responsiveEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(responsiveEmulation?.enabled).toBe(false)
+    expect(responsiveEmulation?.scale).toBe(0)
+    await expect
+      .poll(async () => {
+        const rect = (await readDomPaneRects(app as ElectronApplication)).find(
+          (entry) => entry.paneId === alicePaneId
+        )
+        const metrics = await aliceMetrics()
+        return (
+          rect !== undefined &&
+          Math.abs(metrics.width - rect.rect.width) <= 1 &&
+          Math.abs(metrics.height - rect.rect.height) <= 1 &&
+          metrics.dpr > 1
+        )
+      })
+      .toBe(true)
+    await waitForAlignedBounds(app)
+
+    // The other pane keeps its emulated viewport until changed.
+    await expect.poll(bobMetrics).toMatchObject({ width: 820, height: 1180, dpr: 2 })
+    await bobPaneCard.locator('.viewport-select').selectOption('responsive')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[1]?.viewport.preset === 'responsive',
+      'responsive viewport state for the second pane'
+    )
+    await waitForAlignedBounds(app)
+
     // Grid mode: the column control reflows cards and native views together.
     const columnSelect = shellPage.getByLabel('Grid columns')
     await expect(columnSelect).toHaveValue('2')
@@ -466,6 +594,35 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         )
       })
       .toBe(true)
+
+    // Five columns produce the narrowest grid panes. The header must wrap
+    // instead of clipping its address and viewport controls.
+    const narrowHeaders = await shellPage.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('.pane-card')).map((card) => {
+        const nav = card.querySelector<HTMLElement>('.pane-nav-row')
+        const title = card.querySelector<HTMLElement>('.pane-title-row')
+        const address = card.querySelector<HTMLElement>('.address-input')
+        const viewport = card.querySelector<HTMLElement>('.viewport-select')
+        const scale = card.querySelector<HTMLElement>('.scale-select')
+        return {
+          navClient: nav?.clientWidth ?? 0,
+          navScroll: nav?.scrollWidth ?? 0,
+          titleClient: title?.clientWidth ?? 0,
+          titleScroll: title?.scrollWidth ?? 0,
+          addressWidth: address?.getBoundingClientRect().width ?? 0,
+          viewportWidth: viewport?.getBoundingClientRect().width ?? 0,
+          scaleWidth: scale?.getBoundingClientRect().width ?? 0
+        }
+      })
+    )
+    expect(narrowHeaders).toHaveLength(2)
+    for (const header of narrowHeaders) {
+      expect(header.navScroll).toBeLessThanOrEqual(header.navClient + 1)
+      expect(header.titleScroll).toBeLessThanOrEqual(header.titleClient + 1)
+      expect(header.addressWidth).toBeGreaterThanOrEqual(79)
+      expect(header.viewportWidth).toBeGreaterThanOrEqual(77)
+      expect(header.scaleWidth).toBeGreaterThanOrEqual(45)
+    }
     await waitForAlignedBounds(app)
 
     await columnSelect.selectOption('1')
