@@ -135,7 +135,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** In progress. Grid mode, native-aware scrolling, drag reordering, freeform manipulation, maximize/restore, and explicit z-order controls are wired; keyboard layout interactions and the 8-pane exit test remain.
+- **Status:** Complete; uncommitted working-tree changes await repository-owner review. Phase 3 not started.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -193,6 +193,14 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
   - the renderer z-order list updates slot stacking, while typed IPC reorders the native child views;
   - test-only inspection verifies native child order;
   - e2e brings Bob forward, verifies native order and DOM z-index, then sends Bob back and verifies both orders reverse.
+- Keyboard and menu actions:
+  - a native **Pane** menu exposes add, close, reload active/all, maximize, and grid/freeform toggle commands with accelerators;
+  - commands route through preload to the trusted shell and act on the active pane;
+  - active-pane tracking follows shell pointer/focus and native pane focus events;
+  - e2e invokes the menu commands for add/close/maximize/layout and verifies behavior.
+- Eight-pane Phase 2 stress:
+  - e2e resets to a two-column grid, adds enough panes for eight total, and verifies all native bounds align across four rows;
+  - switches the eight-pane workspace to freeform, drags/overlaps and resizes a pane, exercises explicit z-order and maximize/restore, checks visible native counts, and restores grid alignment.
 
 ### Verification commands and results
 
@@ -202,28 +210,28 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 | `npm run test:unit` | Passed: 5 files, 72 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 4.6 s. Verifies native/auth/lifecycle/persistence behavior, grid column reflow, drag reorder, native-aware scrolling, freeform move/resize with mode preserve, maximize/restore, and explicit z-order actions. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (38.53 kB), preload (2.23 kB), and the renderer bundle. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 6.7 s. Verifies native/auth/lifecycle/persistence behavior, grid reflow, drag reorder, scrolling, freeform move/resize/mode preserve, maximize/restore, explicit z-order, menu commands, and an eight-pane alignment/freeform stress pass. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (40.01 kB), preload (2.83 kB), and the renderer bundle. |
 | Manual grid check | Passed. Two-column grid rendered with the new `Columns` control at 623 × 696 pane viewports and aligned native views. |
 
 ### Exit criteria
 
-Not yet met. Phase 2 still requires keyboard layout interactions, workspace persistence of arrangements (Phase 3), and the 8-pane native-view alignment test.
+Met in the automated macOS run: eight panes were arranged in grid and freeform, moved, resized, z-ordered, maximized/restored, and interacted with while DOM content rectangles and native view bounds remained aligned. Pane state/session handling stayed intact. Keyboard accelerators are defined in the native menu and their command path is exercised through menu clicks; raw key-chord automation is still a follow-up.
 
 ### Known issues / risks
 
 - Partially visible grid panes hide their native view while scrolling; the page is only interactive when fully in view.
 - Freeform geometry, grid order, column count, layout mode, and maximize state are not persisted across restarts (Phase 3; maximize is intentionally temporary).
-- Freeform z-order raises a pane on drag/resize and has explicit front/back actions, but clicking a fully covered native pane cannot reach its hidden header.
-- Freeform drag/resize and mode switching are pointer-only; keyboard layout interactions are pending.
+- Freeform drag/resize and mode switching are pointer-only; menu accelerators are configured but raw keystrokes are not e2e-tested.
+- A fully covered pane can be unreachable until the covering pane moves.
 - The engine's default minimum pane card is 160 × 140 CSS px, while main enforces a minimum native view of 80 × 60. Tested sizes produce valid bounds; the two contracts should still be unified and checked at the minimum window size.
 - Snapping is unit-tested and wired into moves/resizes, but guide visibility is not asserted by e2e.
-- The native scroll path is verified at one window size with four panes; more stress and performance measurement remain.
-- The 8-pane Phase 2 exit scenario is not yet automated.
+- The 8-pane run uses four blank added panes; the four loaded fixture panes exercise native visibility.
+- Native scroll behavior is verified at one small-window configuration; more stress/performance measurement remains.
 
 ### Next smallest slice
 
-Add keyboard pane/layout actions (add, close, reload focused/all, toggle maximize, mode switch) with visible shortcut discoverability, then implement the 8-pane native alignment/stress test and close Phase 2.
+Phase 3: implement per-pane viewport presets and custom dimensions with Electron device emulation, verify `window.innerWidth`, `window.innerHeight`, and `devicePixelRatio` from the local fixture, and add fit/actual display scale handling without changing native bounds validation.
 
 ## Phase 3 — Viewport emulation and persistence
 

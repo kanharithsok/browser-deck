@@ -226,6 +226,16 @@ async function readIndexedDbProbe(page: Page): Promise<string | null> {
   })
 }
 
+async function clickAppMenuCommand(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(({ Menu }, menuItemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(menuItemId)
+    if (!item) {
+      throw new Error(`Menu item ${menuItemId} is unavailable`)
+    }
+    item.click()
+  }, id)
+}
+
 async function shellEvaluate<T>(app: ElectronApplication, script: string): Promise<T> {
   return app.evaluate(async ({ webContents }, source) => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -709,6 +719,33 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }
     expect(Math.abs(restoredMaximizeRect.x - preMaximizeRect.x)).toBeLessThanOrEqual(2)
     expect(Math.abs(restoredMaximizeRect.width - preMaximizeRect.width)).toBeLessThanOrEqual(2)
+
+    // Application menu commands route through preload to the active pane.
+    await clickAppMenuCommand(app, 'pane-add')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.length === 3,
+      'menu add pane'
+    )
+    await clickAppMenuCommand(app, 'pane-close')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.length === 2,
+      'menu close pane'
+    )
+    await clickAppMenuCommand(app, 'pane-maximize')
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
+      .toBe(1)
+    await clickAppMenuCommand(app, 'pane-maximize')
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
+      .toBe(2)
+    await clickAppMenuCommand(app, 'pane-layout')
+    await expect(freeformButton).toHaveAttribute('aria-pressed', 'true')
+    await clickAppMenuCommand(app, 'pane-layout')
+    await expect(gridButton).toHaveAttribute('aria-pressed', 'true')
+    await waitForAlignedBounds(app)
     await shellPage.emulateMedia({ colorScheme: 'light' })
     expect(
       await shellPage.evaluate(() =>
@@ -1079,6 +1116,104 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         workspaceBounds.top + workspaceBounds.height + 1
       )
     }
+
+    // Eight-pane Phase 2 stress check: reset to a comfortable two-column grid,
+    // add four more panes, and verify all native views remain aligned.
+    await restartShell.getByLabel('Grid columns').selectOption('2')
+    await restartApp.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('PaneFlow window not found')
+      }
+      window.setSize(1280, 860)
+    })
+    await restartShell.evaluate(() => {
+      const workspace = document.querySelector('.workspace')
+      if (workspace instanceof HTMLElement) {
+        workspace.scrollTop = 0
+      }
+    })
+    for (let count = 5; count <= 8; count += 1) {
+      await clickAppMenuCommand(restartApp, 'pane-add')
+      await waitFor(
+        () => getSnapshot(restartApp),
+        (state) => state.panes.length === count,
+        `${count} panes after menu add`
+      )
+    }
+    await waitForAlignedBounds(restartApp)
+    const eightPaneRects = await readPaneCardRects(restartShell)
+    expect(eightPaneRects).toHaveLength(8)
+    expect(new Set(eightPaneRects.map((rect) => Math.round(rect.y))).size).toBeGreaterThanOrEqual(4)
+
+    // Exercise the full 8-pane workspace in freeform: tidy, drag/overlap,
+    // resize, explicit z-order, and maximize/restore with alignment intact.
+    await restartShell.getByRole('button', { name: 'Freeform' }).click()
+    await waitForAlignedBounds(restartApp)
+    const eightHeader = await restartShell
+      .locator('.pane-card')
+      .nth(0)
+      .locator('.pane-title-row')
+      .boundingBox()
+    if (!eightHeader) {
+      throw new Error('Eight-pane freeform header is unavailable')
+    }
+    await restartShell.mouse.move(eightHeader.x + 30, eightHeader.y + eightHeader.height / 2)
+    await restartShell.mouse.down()
+    await restartShell.mouse.move(eightHeader.x + 130, eightHeader.y + 80, { steps: 10 })
+    await restartShell.mouse.up()
+    await waitForAlignedBounds(restartApp)
+
+    const eightResize = await restartShell
+      .locator('.pane-card')
+      .nth(0)
+      .locator('[data-resize="se"]')
+      .boundingBox()
+    if (!eightResize) {
+      throw new Error('Eight-pane freeform resize handle is unavailable')
+    }
+    await restartShell.mouse.move(
+      eightResize.x + eightResize.width / 2,
+      eightResize.y + eightResize.height / 2
+    )
+    await restartShell.mouse.down()
+    await restartShell.mouse.move(eightResize.x + 45, eightResize.y + 35, { steps: 8 })
+    await restartShell.mouse.up()
+    await waitForAlignedBounds(restartApp)
+
+    await restartShell
+      .locator('.pane-card')
+      .nth(0)
+      .getByRole('button', { name: 'Send pane to back' })
+      .click()
+    await restartShell
+      .locator('.pane-card')
+      .nth(0)
+      .getByRole('button', { name: 'Bring pane to front' })
+      .click()
+    const visibleBeforeMaximize = (await getViewStates(restartApp)).filter(
+      (state) => state.visible
+    ).length
+    expect(visibleBeforeMaximize).toBeGreaterThan(0)
+    await restartShell
+      .locator('.pane-card')
+      .nth(0)
+      .getByRole('button', { name: 'Maximize pane' })
+      .click()
+    await expect
+      .poll(async () => (await getViewStates(restartApp)).filter((s) => s.visible).length)
+      .toBe(1)
+    await restartShell
+      .locator('.pane-card')
+      .nth(0)
+      .getByRole('button', { name: 'Restore pane' })
+      .click()
+    await expect
+      .poll(async () => (await getViewStates(restartApp)).filter((s) => s.visible).length)
+      .toBe(visibleBeforeMaximize)
+    await waitForAlignedBounds(restartApp)
+    await restartShell.getByRole('button', { name: 'Grid' }).click()
+    await waitForAlignedBounds(restartApp)
   } finally {
     if (app) {
       await app.close().catch(() => undefined)

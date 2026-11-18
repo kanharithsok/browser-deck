@@ -8,7 +8,7 @@ import {
   WebContentsView,
   type MenuItemConstructorOptions
 } from 'electron'
-import { IPC_CHANNELS } from '../shared/ipc'
+import { IPC_CHANNELS, type PaneCommand } from '../shared/ipc'
 import { isLoopbackHostname, normalizeAddress } from '../shared/url'
 import type { CanvasSize } from '../shared/geometry'
 import { BrowserManager } from './browser-manager'
@@ -67,10 +67,59 @@ function readInitialUrls(): string[] {
 
 function buildApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
+
+  const sendCommand = (command: PaneCommand): void => {
+    if (shellView && !shellView.webContents.isDestroyed()) {
+      shellView.webContents.send(IPC_CHANNELS.paneCommand, command)
+    }
+  }
+
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
     { role: 'fileMenu' },
     { role: 'editMenu' },
+    {
+      label: 'Pane',
+      submenu: [
+        {
+          id: 'pane-add',
+          label: 'Add Pane',
+          accelerator: 'CmdOrCtrl+T',
+          click: () => sendCommand('add-pane')
+        },
+        {
+          id: 'pane-close',
+          label: 'Close Pane',
+          accelerator: 'CmdOrCtrl+Shift+W',
+          click: () => sendCommand('close-pane')
+        },
+        {
+          id: 'pane-reload',
+          label: 'Reload Pane',
+          accelerator: 'CmdOrCtrl+Alt+R',
+          click: () => sendCommand('reload-pane')
+        },
+        {
+          id: 'pane-reload-all',
+          label: 'Reload All Panes',
+          accelerator: 'CmdOrCtrl+Alt+Shift+R',
+          click: () => sendCommand('reload-all')
+        },
+        { type: 'separator' },
+        {
+          id: 'pane-maximize',
+          label: 'Toggle Maximize',
+          accelerator: 'CmdOrCtrl+Shift+M',
+          click: () => sendCommand('toggle-maximize')
+        },
+        {
+          id: 'pane-layout',
+          label: 'Toggle Grid / Freeform',
+          accelerator: 'CmdOrCtrl+Shift+L',
+          click: () => sendCommand('toggle-layout')
+        }
+      ]
+    },
     {
       label: 'View',
       submenu: [
@@ -244,6 +293,11 @@ async function createWindow(): Promise<void> {
     onStateChanged: (state) => {
       if (!shell.webContents.isDestroyed()) {
         shell.webContents.send(IPC_CHANNELS.stateChanged, state)
+      }
+    },
+    onPaneFocused: (paneId) => {
+      if (!shell.webContents.isDestroyed()) {
+        shell.webContents.send(IPC_CHANNELS.paneFocused, paneId)
       }
     }
   })

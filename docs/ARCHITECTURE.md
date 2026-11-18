@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0 and 1 complete; Phase 2 in progress. The native-view composition and per-profile browser session foundation are implemented and verified. Grid mode, native-aware vertical scrolling, drag reordering, freeform manipulation, maximize/restore, and explicit z-order controls are wired; keyboard actions and the 8-pane exit test remain. See `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
+> Status: Phases 0–2 complete; Phase 3 not started. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, and keyboard/menu actions are implemented and verified. Phase 3 adds viewport emulation, persistence, and profile management.
 
 ## Technology baseline
 
@@ -84,6 +84,12 @@ Freeform mode stores per-pane normalized geometry and a separate z-order list. S
 
 Maximize is renderer-only temporary state layered over the current grid/freeform arrangement. The maximized pane takes a fixed workspace-inset slot; every other pane keeps its DOM geometry for measurement but is visually hidden, and its native view reports `visible: false`. Restoring clears the state, so the untouched grid/freeform model returns without a separate geometry snapshot.
 
+## Keyboard and menu commands
+
+A native **Pane** menu defines accelerators and sends typed commands to the trusted shell. The renderer tracks an active pane from shell pointer/focus and native pane focus notifications. Commands cover add, close, reload active/all, toggle maximize, and toggle grid/freeform. The shell remains the only frame that receives these events; remote pages have no bridge.
+
+Menu command routing is tested by invoking menu items from the Electron main process; raw key-chord automation remains a follow-up.
+
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 
 The main process re-validates every rectangle in `parsePaneBounds`:
@@ -152,6 +158,8 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:set-pane-bounds` | Validated native view rectangles and visible/hidden state |
 | `paneflow:bring-pane-to-front` | Reorder a native pane view to the top of the stack |
 | `paneflow:send-pane-to-back` | Reorder a native pane view to the bottom above the shell |
+| `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
+| `paneflow:pane-focused` | Main → shell notification when a native pane gains focus |
 | `paneflow:show-pane-menu` | Native pane actions menu |
 | `paneflow:state-changed` | Main → shell state snapshots |
 | `paneflow:request-measurement` | Main → shell re-measure request |
@@ -191,7 +199,7 @@ Only profile metadata and Electron-managed partition data exist so far. Workspac
 ## Testing
 
 - **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, and visual alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
@@ -202,10 +210,11 @@ The Playwright test inspects the main process through a test hook that is only i
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
 - Grid drag reordering is pointer-only and not persisted; keyboard reordering and Phase 3 persistence remain.
-- Freeform mode is pointer-only: keyboard manipulation and persistence remain.
+- Freeform mode is pointer-only; menu accelerators are configured but raw keystrokes are not automated.
 - Maximize is temporary and intentionally not persisted.
-- Freeform explicit z-order controls update native/dom order, but a pane fully covered by another can still be unreachable until the covering pane moves.
-- Keyboard pane/layout actions and the 8-pane Phase 2 exit test remain.
+- A fully covered pane can be unreachable until the covering pane moves.
+- Keyboard menu commands act on the active pane inferred from shell/native focus; there is no explicit focused-pane outline yet.
+- Freeform geometry, grid order, column count, layout mode, and maximize state are not persisted across restarts (Phase 3).
 - Freeform snapping guides are wired but not asserted by e2e.
 - The selected 1–5 column count, grid order, freeform geometry, and layout mode are not persisted across restarts (Phase 3).
 - Freeform move/resize/snap/z-order/maximize are engine-only; UI wiring is pending.

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaneCard from './components/PaneCard.vue'
-import type { PaneState, ScriptResult, ShellState } from '../../shared/ipc'
+import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import {
   DEFAULT_GRID_COLUMNS,
   DEFAULT_MIN_PANE_HEIGHT,
@@ -28,6 +28,7 @@ type LayoutMode = 'grid' | 'freeform'
 
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
+const activePaneId = ref<string | null>(null)
 const layoutMode = ref<LayoutMode>('grid')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
@@ -56,6 +57,8 @@ const isDragging = ref(false)
 
 let disposeStateListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
+let disposeCommandListener: (() => void) | null = null
+let disposeFocusListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
 let focusManagementEnabled = false
@@ -447,6 +450,15 @@ function applyState(state: ShellState): void {
   if (maximizedPaneId.value && !nextIds.has(maximizedPaneId.value)) {
     maximizedPaneId.value = null
   }
+  if (activePaneId.value && !nextIds.has(activePaneId.value)) {
+    activePaneId.value = null
+  }
+  if (addedPane) {
+    activePaneId.value = addedPane.id
+  }
+  if (!activePaneId.value) {
+    activePaneId.value = state.panes[0]?.id ?? null
+  }
 
   panes.value = state.panes
 
@@ -533,6 +545,58 @@ function toggleMaximize(paneId: string): void {
   }
   guides.value = { vertical: [], horizontal: [] }
   void nextTick(scheduleMeasure)
+}
+
+function currentPane(): PaneState | undefined {
+  return panes.value.find((pane) => pane.id === activePaneId.value)
+}
+
+async function reloadActivePane(): Promise<void> {
+  const pane = currentPane()
+  if (!pane) {
+    await reloadAll()
+    return
+  }
+  await window.paneflow.reload(pane.id).catch(() => undefined)
+}
+
+function handlePaneCommand(command: PaneCommand): void {
+  const pane = currentPane()
+  switch (command) {
+    case 'add-pane':
+      void addPane()
+      break
+    case 'close-pane':
+      if (pane) {
+        void closePane(pane.id)
+      }
+      break
+    case 'reload-pane':
+      void reloadActivePane()
+      break
+    case 'reload-all':
+      void reloadAll()
+      break
+    case 'toggle-maximize':
+      if (pane) {
+        toggleMaximize(pane.id)
+      }
+      break
+    case 'toggle-layout':
+      layoutMode.value = layoutMode.value === 'grid' ? 'freeform' : 'grid'
+      break
+  }
+}
+
+function onWorkspaceFocusIn(event: FocusEvent): void {
+  const target = event.target
+  if (!(target instanceof Element)) {
+    return
+  }
+  const paneId = target.closest<HTMLElement>('[data-pane-id]')?.dataset.paneId
+  if (paneId) {
+    activePaneId.value = paneId
+  }
 }
 
 function findDropTarget(x: number, y: number, draggedPaneId: string): string | null {
@@ -628,6 +692,7 @@ function onWorkspacePointerDown(event: PointerEvent): void {
   if (!paneId) {
     return
   }
+  activePaneId.value = paneId
 
   if (layoutMode.value === 'freeform') {
     const resizeTarget = target.closest<HTMLElement>('[data-resize]')
@@ -800,6 +865,12 @@ watch(isDragging, () => {
 onMounted(async () => {
   disposeStateListener = window.paneflow.onStateChanged(applyState)
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
+  disposeCommandListener = window.paneflow.onPaneCommand(handlePaneCommand)
+  disposeFocusListener = window.paneflow.onPaneFocused((paneId) => {
+    if (panes.value.some((pane) => pane.id === paneId)) {
+      activePaneId.value = paneId
+    }
+  })
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -823,6 +894,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   disposeStateListener?.()
   disposeMeasureListener?.()
+  disposeCommandListener?.()
+  disposeFocusListener?.()
   resizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('pointermove', onPointerMove)
@@ -922,6 +995,7 @@ onBeforeUnmount(() => {
       aria-label="Browser workspace"
       @scroll.passive="scheduleMeasure"
       @pointerdown="onWorkspacePointerDown"
+      @focusin="onWorkspaceFocusIn"
     >
       <div
         v-if="orderedPanes.length > 0"

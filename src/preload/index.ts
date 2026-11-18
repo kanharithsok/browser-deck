@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC_CHANNELS,
   type PaneBoundsUpdate,
+  type PaneCommand,
   type PaneFlowApi,
   type PaneMenuRequest,
   type ShellState
@@ -40,6 +41,24 @@ const api: PaneFlowApi = {
     ipcRenderer.on(IPC_CHANNELS.requestMeasurement, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.requestMeasurement, wrapped)
+    }
+  },
+  onPaneCommand: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, command: PaneCommand): void => {
+      listener(command)
+    }
+    ipcRenderer.on(IPC_CHANNELS.paneCommand, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.paneCommand, wrapped)
+    }
+  },
+  onPaneFocused: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, paneId: string): void => {
+      listener(paneId)
+    }
+    ipcRenderer.on(IPC_CHANNELS.paneFocused, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.paneFocused, wrapped)
     }
   }
 }
