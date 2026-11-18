@@ -307,7 +307,7 @@ function requestClose(): void {
     class="pane-card"
     :class="{ 'pane-card-freeform': freeform, 'pane-card-active': active }"
     :data-pane-id="pane.id"
-    :aria-label="`${pane.title} pane`"
+    :aria-label="`Browser pane: ${pane.title}`"
     :aria-current="active ? 'true' : undefined"
   >
     <header class="pane-header">

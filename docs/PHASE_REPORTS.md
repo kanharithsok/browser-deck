@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, automated accessibility checks, and a 50-cycle loaded-page soak are implemented and verified; a VoiceOver/screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -416,6 +416,21 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - darkened light-theme `--text-faint` from `#73726c` to `#6f6e68` so its weakest background ratio rises from 4.42 to 4.69;
   - all checked pairs now meet 4.5:1 for text or 3:1 for UI/focus;
   - `npm run check:contrast` runs in CI.
+- Accessibility automation and audit:
+  - added `tests/e2e/accessibility.spec.ts`, a second Playwright Electron test that launches the built app independently and inspects the shell toolbar, pane cards, profile dialog, and workspace dialog;
+  - role/accessible-name assertions cover the level-1 heading, banner, browser-workspace main landmark, layout group and pressed states, column selector, pane count status, dialog triggers, pane articles, address/viewport/scale controls, and icon-only actions;
+  - keyboard checks verify toolbar → pane control tab order, disabled Back/Forward skipping, visible 2 px focus outlines, active-pane `aria-current` updates, dialog focus trapping with Tab/Shift+Tab, Escape closing, and focus return to the trigger;
+  - Chromium's native accessibility tree is inspected through CDP `Accessibility.getFullAXTree` for the shell and both open dialogs;
+  - axe-core 4.11.0 runs against the rendered document with WCAG 2.0/2.1/2.2 A/AA and best-practice tags; it is evaluated through CDP `Runtime.evaluate` because the shell CSP correctly blocks inline script injection (`page.addScriptTag` fails under `script-src 'self'`);
+  - the audit is clean for the shell with two loaded panes and for both dialogs after creating a second workspace;
+  - fixed confirmed defects: the shell had no level-1 heading; dialog `<header>` elements created duplicate banner landmarks; repeated profile/workspace row actions had context-free names (`Clear`, `Delete`, `Switch`, etc.); pane articles were named `Pane one pane`; the keyboard-focused dialog container had no visible focus ring;
+  - profile/workspace row actions now include the profile or workspace label in their accessible names while retaining the visible labels;
+  - VoiceOver/screen-reader order and announcements remain a manual check; axe and the CDP tree cannot verify the spoken experience.
+- 50-cycle loaded-page soak:
+  - `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` exercised 50 round trips between the authenticated original workspace and a four-pane stress workspace with two loaded fixture pages;
+  - non-destroyed webContents returned to the baseline of 2 after every cycle, and the active native view count returned to 1 after every return;
+  - whole-app working set was 581 MB before and 677 MB after the 50 cycles on the merged branch; an earlier isolated run measured 577 MB → 577 MB. This is a before/after sample, not a peak or per-process measurement;
+  - the merged-branch run took ≈18.7 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
 
 ### Verification commands and results
 
@@ -425,10 +440,11 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 12.2 s, including workspace cycling via both real menu items, custom pane rename/persistence/reset, duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
+| `npm run test:e2e` | Passed: 2 Playwright tests, 13.6 s. The integration test covers native/session/lifecycle/workspace/rename/shortcut behavior; the accessibility test covers roles, accessible names, focus/focus-visible behavior, dialog traps and focus return, the CDP accessibility tree, and axe audits. |
 | `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
 | `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (107.01 kB), preload (5.75 kB), renderer bundle (270.52 kB), and CSS (22.69 kB). |
+| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 18.7 s on the merged branch. Fifty cycles ended with 2 webContents, 1 visible native view, and working set 581 MB → 677 MB; an earlier isolated 50-cycle run measured 577 MB → 577 MB. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (107.01 kB), preload (5.75 kB), renderer bundle (271.17 kB), and CSS (22.81 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -447,12 +463,14 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Imported workspaces are created inactive and contain fresh profiles; authentication state is intentionally not imported.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
-- Leak stress covers four panes with two loaded fixture pages; the longest soak is 25 cycles (≈14.5 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
-- Working-set sampling is informational, not a pass/fail memory threshold; the 25-cycle run grew by ~70 MB.
+- Automated accessibility checks cover roles, names, focus order/traps, landmarks, and axe rules; VoiceOver spoken order, live-region timing, and the practical usability of focus rings still require a manual screen-reader pass.
+- axe-core audits the trusted shell only; remote fixture/website content inside native panes is untrusted and not included in the shell accessibility audit.
+- Leak stress covers four panes with two loaded fixture pages; the longest soak is now 50 cycles (≈19 s on the merged branch), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
+- Working-set sampling is informational, not a pass/fail memory threshold; the merged-branch 50-cycle run grew from 581 MB to 677 MB, so it does not establish long-term memory stability.
 - Duplicate pane copies URL/viewport/custom title; sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 - Shortcut e2e coverage invokes the real native menu items and verifies accelerator metadata; it does not synthesize OS-level key chords.
 - Workspace cycling order is alphabetical by name; there is no user-defined workspace order.
 
 ### Next smallest slice
 
-Finish remaining accessibility and visual polish; then add long-duration memory/CPU profiling with loaded pages.
+Run a manual VoiceOver pass across the toolbar, pane chrome, status announcements, and both dialogs; then add longer CPU/memory profiling with loaded third-party pages and finish signed/notarized distribution.

@@ -1561,12 +1561,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       `.profile-row[data-profile-id="${bobProfileId}"]`
     )
     await expect(aliceProfileRow).toContainText('In use by')
-    await expect(aliceProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
-    await expect(aliceProfileRow.getByRole('button', { name: 'Delete' })).toBeEnabled()
+    await expect(aliceProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
+    await expect(aliceProfileRow.getByRole('button', { name: /^Delete/ })).toBeEnabled()
     await expect(bobProfileRow).toContainText('Unused')
-    await expect(bobProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
+    await expect(bobProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
 
-    await bobProfileRow.getByRole('button', { name: 'Rename' }).click()
+    await bobProfileRow.getByRole('button', { name: /^Rename/ }).click()
     const renameInput = bobProfileRow.getByLabel('Profile name')
     await expect(renameInput).toHaveValue('Profile 2')
     await renameInput.fill('Bob QA')
@@ -1576,7 +1576,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await readPersistedProfiles(userDataDir)).find((p) => p.id === bobProfileId)?.label)
       .toBe('Bob QA')
 
-    await bobProfileRow.getByRole('button', { name: 'Clear' }).click()
+    await bobProfileRow.getByRole('button', { name: /^Clear/ }).click()
     await expect(
       bobProfileRow.getByRole('group', { name: /Confirm clear/ })
     ).toContainText('Clear cookies')
@@ -1597,8 +1597,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toBe(0)
     await expect(profilesDialog.getByRole('status')).toContainText('Cleared browser data')
 
-    await bobProfileRow.getByRole('button', { name: 'Delete' }).click()
-    await bobProfileRow.getByRole('button', { name: 'Delete profile' }).click()
+    await bobProfileRow.getByRole('button', { name: /^Delete/ }).click()
+    await bobProfileRow.getByRole('button', { name: 'Delete profile', exact: true }).click()
     await expect(bobProfileRow).toHaveCount(0)
     await expect(profilesDialog.getByRole('status')).toContainText('Deleted profile')
     await expect
@@ -1613,7 +1613,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const sharedProfileRow = profilesDialog.locator(
       `.profile-row[data-profile-id="${sharedProfileId}"]`
     )
-    await sharedProfileRow.getByRole('button', { name: 'Open pane' }).click()
+    await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     await waitFor(
       () => getSnapshot(restartApp),
@@ -1622,7 +1622,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
-    await sharedProfileRow.getByRole('button', { name: 'Open pane' }).click()
+    await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     const sharedState = await waitFor(
       () => getSnapshot(restartApp),
@@ -1666,9 +1666,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
     await expect(sharedProfileRow).toContainText('2 panes:')
-    await expect(sharedProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
-    await expect(sharedProfileRow.getByRole('button', { name: 'Delete' })).toBeEnabled()
-    await sharedProfileRow.getByRole('button', { name: 'Delete' }).click()
+    await expect(sharedProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
+    await expect(sharedProfileRow.getByRole('button', { name: /^Delete/ })).toBeEnabled()
+    await sharedProfileRow.getByRole('button', { name: /^Delete/ }).click()
     await expect(
       sharedProfileRow.getByRole('group', { name: /Confirm delete/ })
     ).toContainText('Close 2 panes')
@@ -1739,7 +1739,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
       .toBe(true)
 
-    await secondWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
+    await secondWorkspaceRow.getByRole('button', { name: /^Switch/ }).click()
     await expect(workspacesDialog).toHaveCount(0)
     await expect(restartShell.locator('.workspace-switcher')).toContainText('Second Workspace')
     await expect(restartShell.locator('.empty-state')).toBeVisible()
@@ -1761,7 +1761,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await restartShell.locator('.workspace-switcher').click()
     await expect(workspacesDialog).toBeVisible()
     const renamedWorkspaceRow = workspaceRowById(secondWorkspaceId)
-    await renamedWorkspaceRow.getByRole('button', { name: 'Rename' }).click()
+    await renamedWorkspaceRow.getByRole('button', { name: /^Rename/ }).click()
     await renamedWorkspaceRow.getByLabel('Workspace name').fill('Responsive QA')
     await renamedWorkspaceRow.getByRole('button', { name: 'Save' }).click()
     await expect(renamedWorkspaceRow.locator('.workspace-label-text')).toHaveText('Responsive QA')
@@ -1771,7 +1771,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await restartShell.locator('.workspace-switcher').click()
     await expect(workspacesDialog).toBeVisible()
     await workspaceRowById(secondWorkspaceId)
-      .getByRole('button', { name: 'Duplicate' })
+      .getByRole('button', { name: /^Duplicate/ })
       .click()
     const copyWorkspaceId = await waitFor(
       () => workspaceIdByName('Responsive QA copy').catch(() => ''),
@@ -1879,7 +1879,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await restartShell.locator('.workspace-switcher').click()
     await expect(workspacesDialog).toBeVisible()
-    await originalWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
+    await originalWorkspaceRow.getByRole('button', { name: /^Switch/ }).click()
     await expect(workspacesDialog).toHaveCount(0)
     await expect(restartShell.locator('.workspace-switcher')).toContainText('Workspace')
     const restoredOriginal = await waitFor(
@@ -1901,8 +1901,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(workspacesDialog).toBeVisible()
     for (const id of [copyWorkspaceId, secondWorkspaceId]) {
       const row = workspaceRowById(id)
-      await row.getByRole('button', { name: 'Delete' }).click()
-      await row.getByRole('button', { name: 'Delete workspace' }).click()
+      await row.getByRole('button', { name: /^Delete workspace/ }).click()
+      await row.getByRole('button', { name: 'Delete workspace', exact: true }).click()
       await expect(row).toHaveCount(0)
     }
     await expect(workspacesDialog.locator('.workspace-row')).toHaveCount(1)

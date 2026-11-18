@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, close-and-delete profile lifecycle, workspace import/export, and active-pane accessibility are implemented and verified. Remaining Phase 4 work covers polish, import/export, and signed/notarized distribution.
+> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated accessibility audits, and a 50-cycle loaded-page soak are implemented and verified. Remaining Phase 4 work covers the VoiceOver/manual screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution.
 
 ## Technology baseline
 
@@ -15,7 +15,7 @@
 | Build tooling | electron-vite 6.0.0, Vite 8.3.8 |
 | Packaging | electron-builder 26.18.0, unsigned arm64 DMG/ZIP |
 | License | MIT |
-| Tests | Vitest 5.1.1, Playwright 1.65.1 (Electron integration) |
+| Tests | Vitest 5.1.1, Playwright 1.65.1 (Electron integration), axe-core 4.11.0 (accessibility audit) |
 | Package manager | npm 11.19.1 with committed `package-lock.json` |
 
 TypeScript 6 is pinned rather than TypeScript 7 because the current `typescript-eslint` release supports `<6.1.0`. Revisit when the lint toolchain supports TypeScript 7.
@@ -49,7 +49,7 @@ src/
     url.ts              address normalization and scheme policy
 tests/
   unit/                 Vitest tests for pure modules and profile storage
-  e2e/                  Playwright integration test against the built app
+  e2e/                  Playwright Electron integration and accessibility audits
   fixtures/             deterministic local HTTP + authentication fixture server
 scripts/
   dev.mjs               starts fixtures + electron-vite dev
@@ -91,6 +91,14 @@ Maximize is renderer-only temporary state layered over the current grid/freeform
 A native **Pane** menu defines accelerators and sends typed commands to the trusted shell. The renderer tracks an active pane from shell pointer/focus and native pane focus notifications; the active card gets an accent border and `aria-current="true"`. Commands cover add, duplicate, close, reload active/all, toggle maximize, and toggle grid/freeform. The shell remains the only frame that receives these events; remote pages have no bridge.
 
 Menu command routing is tested by invoking menu items from the Electron main process; raw key-chord automation remains a follow-up.
+
+## Accessibility
+
+The shell exposes one level-1 heading (`PaneFlow`), a banner toolbar, and a named `Browser workspace` main landmark. Pane cards are named articles (`Browser pane: <title>`) with per-pane address, viewport, scale, navigation, maximize, menu, and close controls. Icon-only controls have names and tooltips. Dialog triggers expose `aria-haspopup="dialog"`, `aria-expanded`, and a workspace-aware name.
+
+Profile and workspace dialogs use `role="dialog"`, `aria-modal`, `aria-labelledby`, and `aria-describedby`, focus the dialog container on open, trap Tab/Shift+Tab within the dialog, close on Escape, and return focus to the trigger. Repeated row actions include the profile or workspace label in their accessible names (`Delete profile QA`, `Switch to workspace QA`) so button-list navigation remains distinguishable. Focus-visible styling uses the shared `--focus` token; the dialog container draws the same ring when opened from the keyboard. Dialog header wrappers are plain `div`s so they do not create a second `banner` landmark.
+
+`tests/e2e/accessibility.spec.ts` automates the trusted shell and both dialogs with Playwright roles/names, tab-order and focus-visible assertions, focus-trap/focus-return checks, Chromium's CDP `Accessibility.getFullAXTree`, and axe-core. Axe is evaluated through CDP `Runtime.evaluate` because the shell CSP deliberately blocks inline script injection; the production CSP is unchanged. The axe run covers WCAG 2.0/2.1/2.2 A/AA and best-practice rules. This is regression coverage, not a substitute for a VoiceOver pass: axe and the CDP tree cannot verify spoken order, live-region timing, or whether a focus indicator is practically usable.
 
 ## Viewport emulation
 
@@ -263,10 +271,11 @@ Shutdown flushes queued writes through `will-quit`.
 
 - **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, workspace export/import serialization/profile stripping/fresh-ID materialization, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
 - **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, duplicate pane with fresh profile/URL/viewport, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns, window bounds, theme), retained closed-profile cookies, profile-manager usage/rename/clear/delete and explicit close-panes flows, shared-profile panes with shared localStorage and profile deletion, workspace create/switch/rename/duplicate/delete with active-state persistence, repeated workspace switching with loaded fixture pages, configurable soak cycles, baseline webContents/native-view counts and working-set sampling, window resize alignment, address/back controls, focus handoff, active-pane border/`aria-current`, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Accessibility:** `tests/e2e/accessibility.spec.ts` verifies toolbar/pane/dialog roles and accessible names, named dialog triggers and expanded state, 2 px focus-visible outlines, forward/reverse tab order, active-pane `aria-current`, dialog focus traps and focus return, and unique contextual row-action names. It reads Chromium's CDP accessibility tree and runs axe-core with WCAG 2.0/2.1/2.2 A/AA plus best-practice tags against the shell and both dialogs. Axe is injected with CDP `Runtime.evaluate` rather than an inline script because the shell CSP blocks the latter.
 - **Contrast:** `npm run check:contrast` computes WCAG ratios for text, muted/faint, accent, focus, and danger token pairs in explicit light/dark themes.
-- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace/profile dialog review, theme menu/token review, workspace restore smoke check, packaged unsigned app launch, and alignment on macOS.
+- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, VoiceOver/screen-reader order and announcements, workspace/profile dialog visual review, theme menu/token review, workspace restore smoke check, packaged unsigned app launch, and alignment on macOS.
 
-The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
+The Playwright tests inspect the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
 
 ## Packaging
 
@@ -280,7 +289,7 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
 - Workspace switching tears down and recreates native pane views; pages reload instead of staying warm in the background.
-- Leak stress is count-based (webContents/native views) over a short switch loop, not long-duration memory profiling.
+- Leak stress is count-based (webContents/native views) over a 50-cycle switch loop, not long-duration memory profiling; memory is sampled before/after rather than peak/per-process, and observed 50-cycle growth ranged from 0 MB in one run to ~96 MB on the merged branch.
 - Duplicated workspaces receive fresh profiles immediately, even if the duplicate is never opened.
 - Maximized/fullscreen state is not persisted. Window bounds restore only when visible on a current display.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
@@ -295,11 +304,11 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Freeform mode is pointer-only; menu accelerators are configured but raw keystrokes are not automated.
 - Maximize is temporary and intentionally not persisted.
 - A fully covered pane can be unreachable until the covering pane moves.
-- Keyboard menu commands act on the active pane; the active card is outlined and marked with `aria-current`. Dialog triggers expose `aria-haspopup`/`aria-expanded`, and the toolbar collapses secondary labels at narrow widths, but a full screen-reader/contrast audit remains.
+- Keyboard menu commands act on the active pane; the active card is outlined and marked with `aria-current`. Dialog triggers expose `aria-haspopup`/`aria-expanded`, and the toolbar collapses secondary labels at narrow widths. Automated axe/role/AX checks cover the shell and dialogs, but a VoiceOver/screen-reader pass and practical focus-visibility review remain manual.
 - Freeform snapping guides are wired but not asserted by e2e.
 - The layout engine's default 160 × 140 card minimum and main's 80 × 60 native view minimum still need to be unified and verified at the minimum window size.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
-- Workspace import/export and long-duration profiling remain.
+- Workspace import/export and long-duration, third-party-page CPU/memory profiling remain.
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
 - Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.
