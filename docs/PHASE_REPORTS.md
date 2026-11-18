@@ -318,11 +318,11 @@ Met in the automated macOS run. Different panes used independent viewport config
 
 ### Next smallest slice
 
-Phase 4: accessibility and visual polish, performance stress, import/export, and signed/notarized distribution. Workspace management, safe window bounds, explicit profile sharing, theme persistence, and unsigned arm64 packaging are complete. The unsigned artifacts are local builds, not notarized releases.
+Phase 4: accessibility and visual polish, performance stress, import/export, and unsigned arm64 packaging. Workspace management, safe window bounds, explicit profile sharing, theme persistence, and unsigned arm64 packaging are complete.
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, automated accessibility checks, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified; a VoiceOver/screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution remain.
+- **Status:** Complete. The Phase 4 exit condition is met: the SPEC Definition of Done is satisfied, required checks pass, known limitations are documented, and the macOS app packages locally as an unsigned arm64 app. Signed/notarized distribution, manual VoiceOver review, and long-duration profiling are post-MVP follow-ups.
 
 ### Delivered so far
 
@@ -443,8 +443,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - 50-cycle loaded-page soak:
   - `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` exercised 50 round trips between the authenticated original workspace and a four-pane stress workspace with two loaded fixture pages;
   - non-destroyed webContents returned to the baseline of 2 after every cycle, and the active native view count returned to 1 after every return;
-  - whole-app working set was 588 MB before and 682 MB after the 50 cycles on the final merged branch; earlier runs measured 577 MB → 577 MB and 581 MB → 677 MB. This is a before/after sample, not a peak or per-process measurement;
-  - the final merged-branch run took ≈19.7 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
+  - whole-app working set was 589 MB before and 684 MB after the 50 cycles on `main` after the final merge; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB. This is a before/after sample, not a peak or per-process measurement;
+  - the final `main` run took ≈20.1 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
 
 ### Verification commands and results
 
@@ -454,12 +454,12 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
 | `npm run lint` | Passed with no warnings or errors. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 2 Playwright tests, 13.8 s. Integration coverage includes native/session/lifecycle/workspace/rename/shortcut behavior, `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection, and blocked remote `file:`/`data:` navigation; the accessibility test covers roles, names, focus, dialogs, the CDP tree, and axe audits. |
+| `npm run test:e2e` | Passed: 2 Playwright tests, 14.0 s on final `main`. Integration coverage includes native/session/lifecycle/workspace/rename/shortcut behavior, `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection, and blocked remote `file:`/`data:` navigation; the accessibility test covers roles, names, focus, dialogs, the CDP tree, and axe audits. |
 | `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
 | `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 19.7 s on the final merged branch. Fifty cycles ended with 2 webContents and working set 588 MB → 682 MB. Earlier 50-cycle runs measured 577 MB → 577 MB and 581 MB → 677 MB. |
+| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 20.1 s on `main` after the final merge. Fifty cycles ended with 2 webContents and working set 589 MB → 684 MB. Earlier 50-cycle runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (114.38 kB), preload (5.75 kB), renderer bundle (271.17 kB), and CSS (22.81 kB). |
-| `npm run package:dir` | Passed on the final merged branch. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
+| `npm run package:dir` | Passed on final `main`. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
 | `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; embedded ASAR integrity and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
 | `npm run package:mac` | Passed earlier in Phase 4: produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt after the security merge; `package:dir` exercised the merged fuse configuration. |
 | Packaged bundle inspection | Passed earlier: binary arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`; unsigned/ad-hoc. |
@@ -484,6 +484,14 @@ The security slice was verified before merging the rename and accessibility bran
 | Development shell smoke | Passed. `npx electron-vite dev --remoteDebuggingPort 9335` served the shell at `http://localhost:5173/`; CDP evaluation reported `title: "PaneFlow"`, `.toolbar` present, one `#app` child, and no static CSP meta tag. The development process was terminated after inspection. |
 | `npm audit --omit=dev` | Passed: 0 runtime vulnerabilities. Full `npm audit` reports 6 moderate advisories in the development toolchain (`minimatch` via `electron-builder`); the offered fix requires a breaking downgrade and was not applied. |
 
+### Exit criteria
+
+- [x] The SPEC §20 Definition of Done is met for the unsigned local macOS MVP.
+- [x] Typecheck, lint, contrast, unit, e2e, build, and local packaging checks pass.
+- [x] Known limitations and post-MVP items are documented.
+- [x] The macOS arm64 application packages locally as an unsigned/ad-hoc app.
+- [x] Signed/notarized distribution is explicitly outside the MVP per SPEC §21 and remains credential-gated; unsigned local builds are the supported distribution until an Apple Developer account exists.
+
 ### Known issues / risks
 
 - Maximized/fullscreen state is not persisted.
@@ -506,12 +514,17 @@ The security slice was verified before merging the rename and accessibility bran
 - The packaged launch smoke check fetched the shell URL over Chromium remote debugging, then terminated the process rather than exercising a full interactive packaged session.
 - Automated accessibility checks cover roles, names, focus order/traps, landmarks, and axe rules; VoiceOver spoken order, live-region timing, and the practical usability of focus rings still require a manual screen-reader pass.
 - axe-core audits the trusted shell only; remote fixture/website content inside native panes is untrusted and not included in the shell accessibility audit.
-- Leak stress covers four panes with two loaded fixture pages; the longest soak is 50 cycles (≈19 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
-- Working-set sampling is informational, not a pass/fail memory threshold; the final merged-branch 50-cycle run grew from 588 MB to 682 MB, so it does not establish long-term memory stability.
+- Leak stress covers four panes with two loaded fixture pages; the longest soak is 50 cycles (≈20 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
+- Working-set sampling is informational, not a pass/fail memory threshold; the final `main` 50-cycle run grew from 589 MB to 684 MB, so it does not establish long-term memory stability.
 - Duplicate pane copies URL/viewport/custom title; sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 - Shortcut e2e coverage invokes the real native menu items and verifies accelerator metadata; it does not synthesize OS-level key chords.
 - Workspace cycling order is alphabetical by name; there is no user-defined workspace order.
 
-### Next smallest slice
+### Post-MVP follow-ups
 
-Run a manual VoiceOver pass across the toolbar, pane chrome, status announcements, and both dialogs; then add longer CPU/memory profiling with loaded third-party pages. Security hardening is complete for the unsigned/local build; Developer ID signing and notarization remain credential-gated.
+The MVP is complete. These items are post-MVP hardening and validation, not Phase 4 blockers:
+
+- Manual VoiceOver/screen-reader pass across the toolbar, pane chrome, status announcements, and both dialogs.
+- Multi-hour CPU/memory profiling with loaded third-party pages, plus CPU/frame measurement during drag, resize, and scrolling.
+- Developer ID signing, notarization, and stapling when a paid Apple Developer account exists; the supported distribution remains the unsigned local arm64 build until then.
+- Windows/Linux packaging and release automation, which SPEC §19 explicitly defers.
