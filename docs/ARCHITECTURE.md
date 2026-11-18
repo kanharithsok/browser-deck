@@ -294,7 +294,7 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Freeform mode is pointer-only; menu accelerators are configured but raw keystrokes are not automated.
 - Maximize is temporary and intentionally not persisted.
 - A fully covered pane can be unreachable until the covering pane moves.
-- Keyboard menu commands act on the active pane; the active card is outlined and marked with `aria-current`, but a full screen-reader/contrast audit remains.
+- Keyboard menu commands act on the active pane; the active card is outlined and marked with `aria-current`. Dialog triggers expose `aria-haspopup`/`aria-expanded`, and the toolbar collapses secondary labels at narrow widths, but a full screen-reader/contrast audit remains.
 - Freeform snapping guides are wired but not asserted by e2e.
 - The layout engine's default 160 × 140 card minimum and main's 80 × 60 native view minimum still need to be unified and verified at the minimum window size.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.

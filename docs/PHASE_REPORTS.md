@@ -390,6 +390,11 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - shell focus/pointer and native pane focus continue to drive the active pane;
   - e2e verifies exactly one active card, moves focus to another pane, and confirms the border/`aria-current` follow;
   - the existing reduced-motion media rule disables animations/transitions/smooth scrolling when requested.
+- Minimum-window and dialog semantics:
+  - at 760 px width the toolbar hides the grid label visually and moves the pane count to a screen-reader-only state, avoiding horizontal overflow;
+  - workspace and profile dialog triggers expose `aria-haspopup="dialog"` and `aria-expanded`;
+  - the workspace trigger includes the current workspace name in its accessible label;
+  - e2e verifies no toolbar overflow, dialog-trigger semantics, and expanded state.
 
 ### Verification commands and results
 
@@ -398,8 +403,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 9 files, 104 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.2 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, and active-pane accessibility. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle and CSS (21.72 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.2 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |

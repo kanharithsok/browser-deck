@@ -93,7 +93,8 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Contrast audit across every control and state. (Small-text tokens were improved during review; full audit remains.)
 - [x] Reduced-motion behavior. (Global media rule disables animations/transitions/smooth scrolling when requested.)
 - [x] Active pane is visible and announced. (E2e verifies one accent-bordered `aria-current` card and updates it from focus.)
-- [ ] Narrow-window and minimum-pane-width control usability. (Container query exists; dedicated check pending.)
+- [x] Narrow-window and minimum-pane-width control usability. (E2e verifies no toolbar overflow at 760 px; pane headers wrap at five columns.)
+- [x] Dialog triggers expose `aria-haspopup`/`aria-expanded` and named workspace state. (E2e assertions.)
 - [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
 
 ## Performance and lifecycle

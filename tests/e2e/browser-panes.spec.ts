@@ -1856,6 +1856,24 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(() =>
         restartShell.evaluate(() => {
+          const toolbar = document.querySelector('.toolbar')
+          return toolbar instanceof HTMLElement
+            ? toolbar.scrollWidth <= toolbar.clientWidth + 1
+            : false
+        })
+      )
+      .toBe(true)
+    await expect(restartShell.locator('.workspace-switcher')).toHaveAttribute(
+      'aria-haspopup',
+      'dialog'
+    )
+    await expect(
+      restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' })
+    ).toHaveAttribute('aria-expanded', 'false')
+
+    await expect
+      .poll(() =>
+        restartShell.evaluate(() => {
           const workspace = document.querySelector('.workspace')
           const grid = document.querySelector('.pane-grid')
           return Boolean(
