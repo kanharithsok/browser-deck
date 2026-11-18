@@ -6,10 +6,12 @@ const props = withDefaults(
   defineProps<{
     pane: PaneState
     freeform?: boolean
+    maximized?: boolean
     suspended?: boolean
   }>(),
   {
     freeform: false,
+    maximized: false,
     suspended: false
   }
 )
@@ -17,6 +19,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: []
   menu: [position: { x: number; y: number }]
+  'toggle-maximize': []
 }>()
 
 const addressInput = ref<HTMLInputElement | null>(null)
@@ -141,6 +144,20 @@ function requestClose(): void {
 
         <span class="pane-spacer"></span>
 
+        <button
+          class="icon-button"
+          type="button"
+          :title="maximized ? 'Restore pane' : 'Maximize pane'"
+          :aria-label="maximized ? 'Restore pane' : 'Maximize pane'"
+          @click="emit('toggle-maximize')"
+        >
+          <svg v-if="maximized" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6 3H3v3M10 3h3v3M6 13H3v-3M10 13h3v-3" />
+          </svg>
+          <svg v-else viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+          </svg>
+        </button>
         <button
           class="icon-button"
           type="button"

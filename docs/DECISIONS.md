@@ -224,6 +224,35 @@ Record material technical decisions here. Keep entries short but include context
   - It resizes from SE and NW handles, verifies both dimensions change, switches back to grid, and then back to freeform to confirm both arrangements are preserved.
   - Existing grid reflow, scrolling, drag reorder, auth, lifecycle, and restart checks still pass.
 
+## ADR-008 — Maximize is temporary renderer state over the preserved arrangement
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** A pane needs to temporarily fill the workspace without destroying or overwriting the user’s grid/freeform arrangement. Multiple native views cannot all remain visible in the same rectangle, and maximize must not be persisted.
+
+- **Decision:**
+  1. `maximizedPaneId` is renderer-only temporary state. It is cleared on close, mode switch, and app restart.
+  2. The maximized pane gets a fixed workspace-inset slot. Other pane slots keep their normal DOM rectangles for measurement but are visually hidden and report `visible: false`; their native views hide through the existing validated visibility path.
+  3. The underlying grid/freeform model is not mutated, so restore simply clears the state and returns to the prior arrangement.
+  4. Native bounds for the maximized pane are re-measured like any other layout change; no special main-process geometry path is used.
+  5. Dragging/resizing is disabled while maximized.
+
+- **Alternatives considered:**
+  - **Overwrite the pane geometry with a maximized rect.** Rejected because restore would need an ad-hoc snapshot and could drift from the engine state.
+  - **Destroy/hide pane DOM for non-maximized panes.** Rejected because the shell would stop reporting their native bounds, leaving their views visible or stale.
+  - **Persist maximize state.** Rejected; the specification treats focus/maximize as temporary state.
+
+- **Consequences:**
+  - Non-maximized pane cards remain in the shell DOM but are invisible; their native views are hidden.
+  - The workspace scrolls to the top when maximizing.
+  - Restore returns to the current arrangement, including changes made to freeform normalized geometry while unmaximized.
+  - Explicit z-order controls remain separate work.
+
+- **Evidence / verification:**
+  - E2e maximizes the first pane, verifies only one native view remains visible, confirms the card fills the workspace and visible bounds align.
+  - Restoring shows both views, verifies native alignment, and checks the original grid position/width are restored within 2px.
+  - Existing grid, scroll, drag, freeform, auth, lifecycle, and restart checks still pass.
+
 ## ADR template
 
 ### ADR-NNN — Title

@@ -135,7 +135,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** In progress. Grid mode, native-aware scrolling, drag reordering, and core freeform manipulation are wired; maximize/restore, explicit z-order controls, keyboard layout interactions, and the 8-pane exit test remain.
+- **Status:** In progress. Grid mode, native-aware scrolling, drag reordering, freeform manipulation, and temporary maximize/restore are wired; explicit send-to-back controls, keyboard layout interactions, and the 8-pane exit test remain.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -183,6 +183,11 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
   - dragged/resized panes are raised through a new typed `bringPaneToFront` IPC that reorders the native child view;
   - **Tidy** arranges freeform panes into the current grid column count;
   - e2e moves and resizes a pane, verifies native alignment and hidden native views during manipulation, switches grid → freeform → grid → freeform, and confirms both arrangements are preserved.
+- Temporary maximize/restore:
+  - a pane header action fills the workspace without modifying grid/freeform arrangement state;
+  - unrelated native views are hidden through the existing validated visibility path while the maximized pane stays aligned;
+  - restoring returns to the prior grid geometry with all native views aligned;
+  - maximize state is temporary and is cleared on close or mode switch.
 
 ### Verification commands and results
 
@@ -192,19 +197,19 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 | `npm run test:unit` | Passed: 5 files, 72 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 4.6 s. Verifies native/auth/lifecycle/persistence behavior, grid column reflow, drag reorder, native-aware scrolling, and freeform move/resize with mode-switch preservation. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 4.5 s. Verifies native/auth/lifecycle/persistence behavior, grid column reflow, drag reorder, native-aware scrolling, freeform move/resize with mode-switch preservation, and maximize/restore with unrelated native views hidden. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (37.47 kB), preload (2.08 kB), and the renderer bundle. |
 | Manual grid check | Passed. Two-column grid rendered with the new `Columns` control at 623 × 696 pane viewports and aligned native views. |
 
 ### Exit criteria
 
-Not yet met. Phase 2 still requires maximize/restore, explicit bring-forward/send-backward controls, keyboard layout interactions, workspace persistence of arrangements (Phase 3), and the 8-pane native-view alignment test.
+Not yet met. Phase 2 still requires explicit bring-forward/send-backward controls, keyboard layout interactions, workspace persistence of arrangements (Phase 3), and the 8-pane native-view alignment test.
 
 ### Known issues / risks
 
 - Partially visible grid panes hide their native view while scrolling; the page is only interactive when fully in view.
-- Freeform geometry, grid order, column count, and layout mode are not persisted across restarts (Phase 3).
-- Maximize/restore and explicit send-to-back controls are not implemented.
+- Freeform geometry, grid order, column count, layout mode, and maximize state are not persisted across restarts (Phase 3; maximize is intentionally temporary).
+- Explicit send-to-back controls are not implemented; freeform raises panes on manipulation only.
 - Freeform z-order raises a pane on drag/resize, but clicking a fully covered native pane cannot reach its hidden header.
 - Freeform drag/resize and mode switching are pointer-only; keyboard layout interactions are pending.
 - The engine's default minimum pane card is 160 × 140 CSS px, while main enforces a minimum native view of 80 × 60. Tested sizes produce valid bounds; the two contracts should still be unified and checked at the minimum window size.
@@ -213,7 +218,7 @@ Not yet met. Phase 2 still requires maximize/restore, explicit bring-forward/sen
 
 ### Next smallest slice
 
-Add maximize/restore and explicit z-order actions, then keyboard pane actions and the 8-pane alignment/stress test to close Phase 2. Keep maximize temporary and non-persisted, hide unrelated native views, and verify restoration to the prior grid/freeform geometry.
+Add explicit send-to-back z-order actions, keyboard pane/layout actions (add, close, reload, focus/maximize), and the 8-pane alignment/stress test to close Phase 2.
 
 ## Phase 3 — Viewport emulation and persistence
 
