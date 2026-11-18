@@ -222,6 +222,17 @@ async function readDomPaneRects(app: ElectronApplication): Promise<DomPaneRect[]
   )
 }
 
+async function readPaneCardRects(
+  page: Page
+): Promise<Array<{ x: number; y: number; width: number; height: number }>> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.pane-card')).map((element) => {
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    })
+  )
+}
+
 function rectsAlign(domRects: DomPaneRect[], nativeBounds: Array<{ paneId: string; rect: PaneViewRect }>): boolean {
   if (domRects.length !== nativeBounds.length) {
     return false
@@ -360,6 +371,54 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(Math.abs(aliceViewport.width - (aliceDomRect?.rect.width ?? 0))).toBeLessThanOrEqual(1)
     expect(Math.abs(aliceViewport.height - (aliceDomRect?.rect.height ?? 0))).toBeLessThanOrEqual(1)
 
+    // Grid mode: the column control reflows cards and native views together.
+    const columnSelect = shellPage.getByLabel('Grid columns')
+    await expect(columnSelect).toHaveValue('2')
+    const twoColumnCards = await readPaneCardRects(shellPage)
+    expect(twoColumnCards).toHaveLength(2)
+    expect(Math.abs((twoColumnCards[0]?.y ?? 0) - (twoColumnCards[1]?.y ?? 0))).toBeLessThanOrEqual(1)
+    expect(twoColumnCards[1]?.x ?? 0).toBeGreaterThan(twoColumnCards[0]?.x ?? 0)
+
+    await columnSelect.selectOption('5')
+    await expect
+      .poll(async () => {
+        const cards = await readPaneCardRects(shellPage)
+        return (
+          cards.length === 2 &&
+          Math.abs((cards[0]?.y ?? 0) - (cards[1]?.y ?? 0)) <= 1 &&
+          Math.abs((cards[0]?.width ?? 0) - (cards[1]?.width ?? 0)) <= 1 &&
+          (cards[0]?.width ?? 0) < (twoColumnCards[0]?.width ?? 0)
+        )
+      })
+      .toBe(true)
+    await waitForAlignedBounds(app)
+
+    await columnSelect.selectOption('1')
+    await expect
+      .poll(async () => {
+        const cards = await readPaneCardRects(shellPage)
+        return (
+          cards.length === 2 &&
+          Math.abs((cards[0]?.x ?? 0) - (cards[1]?.x ?? 0)) <= 1 &&
+          (cards[1]?.y ?? 0) > (cards[0]?.y ?? 0)
+        )
+      })
+      .toBe(true)
+    await waitForAlignedBounds(app)
+
+    await columnSelect.selectOption('2')
+    await expect
+      .poll(async () => {
+        const cards = await readPaneCardRects(shellPage)
+        return (
+          cards.length === 2 &&
+          Math.abs((cards[0]?.y ?? 0) - (cards[1]?.y ?? 0)) <= 1 &&
+          (cards[1]?.x ?? 0) > (cards[0]?.x ?? 0)
+        )
+      })
+      .toBe(true)
+    await waitForAlignedBounds(app)
+
     // System light/dark appearance uses the shared design tokens.
     await shellPage.emulateMedia({ colorScheme: 'light' })
     expect(
@@ -490,6 +549,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(() => shellPage.evaluate(() => document.activeElement?.className ?? ''))
       .toContain('address-input')
+    await waitForAlignedBounds(app)
 
     const destroyed = await app.evaluate(({ webContents }, id) => {
       const target = id === null ? null : webContents.fromId(id)
@@ -527,6 +587,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         )
       )
       .toBe(newPane?.id)
+    await waitForAlignedBounds(app)
 
     // A page can destroy its own webContents. The manager must remove the pane
     // rather than leave a stale control surface whose commands throw.

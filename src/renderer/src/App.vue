@@ -2,9 +2,17 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaneCard from './components/PaneCard.vue'
 import type { PaneState, ScriptResult, ShellState } from '../../shared/ipc'
+import {
+  DEFAULT_GRID_COLUMNS,
+  layoutGrid,
+  type GridLayout,
+  type Size
+} from '../../shared/layout'
 
 const panes = ref<PaneState[]>([])
 const workspaceEl = ref<HTMLElement | null>(null)
+const workspaceSize = ref<Size>({ width: 0, height: 0 })
+const gridColumns = ref(DEFAULT_GRID_COLUMNS)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
@@ -23,6 +31,42 @@ const paneCountLabel = computed(() => {
 const paneLayoutKey = computed(() => panes.value.map((pane) => pane.id).join('|'))
 const errorMessage = computed(() => actionError.value ?? layoutError.value)
 
+const gridLayout = computed<GridLayout | null>(() => {
+  if (panes.value.length === 0 || workspaceSize.value.width < 1 || workspaceSize.value.height < 1) {
+    return null
+  }
+
+  const result = layoutGrid(
+    panes.value.map((pane) => pane.id),
+    workspaceSize.value,
+    { columns: gridColumns.value, padding: 10, gap: 10 }
+  )
+
+  return result.ok ? result.layout : null
+})
+
+const placementByPane = computed(() => {
+  const placements = new Map<string, { x: number; y: number; width: number; height: number }>()
+  for (const placement of gridLayout.value?.placements ?? []) {
+    placements.set(placement.paneId, placement.rect)
+  }
+  return placements
+})
+
+const gridNotice = computed(() => {
+  const layout = gridLayout.value
+  if (!layout) {
+    return null
+  }
+  if (layout.needsVerticalScroll) {
+    return 'This window is too short for all panes. Enlarge it or use more columns.'
+  }
+  if (layout.columnTooNarrow) {
+    return 'Columns are narrower than the recommended pane width. Widen the window or use fewer columns.'
+  }
+  return null
+})
+
 function focusPaneAddress(paneId: string): void {
   const input = document.querySelector<HTMLInputElement>(
     `[data-pane-id="${paneId}"] .address-input`
@@ -36,6 +80,38 @@ function recoverFocus(): void {
     document.querySelector<HTMLInputElement>('[data-pane-id] .address-input') ??
     document.querySelector<HTMLButtonElement>('.empty-state .toolbar-button')
   target?.focus()
+}
+
+function readWorkspaceSize(): void {
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    return
+  }
+
+  const width = Math.max(0, Math.round(workspace.clientWidth))
+  const height = Math.max(0, Math.round(workspace.clientHeight))
+  if (width !== workspaceSize.value.width || height !== workspaceSize.value.height) {
+    workspaceSize.value = { width, height }
+  }
+}
+
+function paneSlotStyle(paneId: string): Record<string, string> {
+  const rect = placementByPane.value.get(paneId)
+  if (!rect) {
+    return { visibility: 'hidden' }
+  }
+
+  return {
+    left: `${rect.x}px`,
+    top: `${rect.y}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`
+  }
+}
+
+function handleWindowResize(): void {
+  readWorkspaceSize()
+  scheduleMeasure()
 }
 
 function applyState(state: ShellState): void {
@@ -174,21 +250,26 @@ watch([actionError, layoutError], () => {
   void nextTick(scheduleMeasure)
 })
 
-watch(paneLayoutKey, () => {
-  void nextTick(scheduleMeasure)
-})
+watch(
+  [paneLayoutKey, gridColumns, () => workspaceSize.value.width, () => workspaceSize.value.height],
+  () => {
+    void nextTick(scheduleMeasure)
+  }
+)
 
 onMounted(async () => {
   disposeStateListener = window.paneflow.onStateChanged(applyState)
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
 
   resizeObserver = new ResizeObserver(() => {
+    readWorkspaceSize()
     scheduleMeasure()
   })
   if (workspaceEl.value) {
     resizeObserver.observe(workspaceEl.value)
   }
-  window.addEventListener('resize', scheduleMeasure)
+  window.addEventListener('resize', handleWindowResize)
+  readWorkspaceSize()
 
   try {
     applyState(await window.paneflow.getState())
@@ -203,7 +284,7 @@ onBeforeUnmount(() => {
   disposeStateListener?.()
   disposeMeasureListener?.()
   resizeObserver?.disconnect()
-  window.removeEventListener('resize', scheduleMeasure)
+  window.removeEventListener('resize', handleWindowResize)
   if (measureFrame !== 0) {
     window.cancelAnimationFrame(measureFrame)
   }
@@ -216,6 +297,13 @@ onBeforeUnmount(() => {
       <span class="brand">PaneFlow</span>
 
       <span class="toolbar-spacer"></span>
+
+      <label v-if="panes.length > 0" class="grid-control">
+        <span class="grid-label">Columns</span>
+        <select v-model.number="gridColumns" class="grid-select" aria-label="Grid columns">
+          <option v-for="column in 5" :key="column" :value="column">{{ column }}</option>
+        </select>
+      </label>
 
       <span class="pane-count" role="status" aria-live="polite">{{ paneCountLabel }}</span>
       <button
@@ -252,16 +340,24 @@ onBeforeUnmount(() => {
         </svg>
       </button>
     </div>
+    <div v-else-if="gridNotice" class="grid-notice" role="status">
+      {{ gridNotice }}
+    </div>
 
     <main ref="workspaceEl" class="workspace" aria-label="Browser workspace">
       <div v-if="panes.length > 0" class="pane-grid">
-        <PaneCard
+        <div
           v-for="pane in panes"
           :key="pane.id"
-          :pane="pane"
-          @close="closePane(pane.id)"
-          @menu="openPaneMenu(pane.id, $event)"
-        />
+          class="pane-slot"
+          :style="paneSlotStyle(pane.id)"
+        >
+          <PaneCard
+            :pane="pane"
+            @close="closePane(pane.id)"
+            @menu="openPaneMenu(pane.id, $event)"
+          />
+        </div>
       </div>
 
       <div v-else class="empty-state">
@@ -314,6 +410,35 @@ onBeforeUnmount(() => {
   color: var(--text-faint);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
+}
+
+.grid-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.grid-label {
+  color: var(--text-faint);
+}
+
+.grid-select {
+  height: 26px;
+  min-width: 44px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.grid-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .toolbar-button {
@@ -402,6 +527,15 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.grid-notice {
+  flex: none;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .dismiss-button {
   flex: none;
   display: inline-flex;
@@ -428,18 +562,19 @@ onBeforeUnmount(() => {
 }
 
 .workspace {
+  position: relative;
   flex: 1;
   min-height: 0;
-  padding: 10px;
   overflow: hidden;
 }
 
 .pane-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  gap: 10px;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.pane-slot {
+  position: absolute;
 }
 
 .empty-state {
@@ -449,6 +584,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 6px;
   height: 100%;
+  padding: 10px;
   color: var(--text-muted);
   text-align: center;
 }

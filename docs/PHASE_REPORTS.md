@@ -135,7 +135,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** In progress. The pure layout engine is complete and unit-tested; renderer/freeform integration is not started.
+- **Status:** In progress. Grid mode is wired to the layout engine; freeform, native-aware scrolling, and keyboard layout interactions remain pending.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -156,6 +156,13 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 - Ordering and z-order helpers: move, bring to front, send to back.
 - Maximize geometry with the previous rectangle returned for restore.
 - 33 unit tests covering valid layouts, errors, reflow, resizing, normalized adaptation, snapping, ordering, and maximize/restore.
+- Renderer grid mode:
+  - pane cards are absolutely positioned from `layoutGrid` results rather than CSS auto-fit;
+  - compact toolbar control selects 1–5 columns;
+  - the workspace is re-measured after column changes, window resizes, and pane add/remove;
+  - existing focus handoff, native bounds measurement, sessions, and teardown remain intact;
+  - narrow columns and vertical overflow surface an honest workspace notice instead of silently changing layout;
+  - e2e verifies 2 → 5 → 1 → 2 column reflow, native bounds alignment at each step, and alignment after pane add/close.
 
 ### Verification commands and results
 
@@ -165,25 +172,28 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 | `npm run test:unit` | Passed: 5 files, 67 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 1.9 s; existing native, auth, lifecycle, and persistence behavior is unchanged. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (35.44 kB) and the existing renderer bundle. The engine is not imported by the renderer yet. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 1.9 s. Verifies native/auth/lifecycle/persistence behavior plus 2 → 5 → 1 → 2 column reflow, native alignment after each layout, and alignment after add/close. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (35.44 kB) and the renderer bundle including the layout engine. |
+| Manual grid check | Passed. Two-column grid rendered with the new `Columns` control at 623 × 696 pane viewports and aligned native views. |
 
 ### Exit criteria
 
-Not yet met. Phase 2 still requires grid mode and dynamic pane management in the UI, freeform drag/resize/snapping/z-order/maximize integration, keyboard interactions, and the 8-pane native-view alignment test.
+Not yet met. Phase 2 still requires native-aware grid scrolling/clipping, freeform drag/resize/snapping/z-order/maximize integration, keyboard interactions, and the 8-pane native-view alignment test.
 
 ### Known issues / risks
 
-- The renderer still uses its existing CSS auto-fit grid; the new engine is not wired in yet.
-- The engine reports vertical overflow and narrow columns, but the renderer has not implemented scroll-aware native-view clipping.
+- Grid overflow is reported but not scrollable yet. Panes below the window are clipped and inaccessible until native-aware scrolling lands; the shell shows a warning instead of risking native views outside the workspace.
+- Native views are still not clipped by DOM scroll containers.
 - Freeform move/resize/snap/z-order/maximize helpers are not exposed through the renderer yet.
-- The engine's default minimum pane card is 160 × 120 CSS px, while main currently enforces a minimum native view of 80 × 60. The UI wiring slice must reconcile these boundaries.
+- Pane drag reorder in grid mode is not implemented; add/remove reflow works.
+- The selected column count is not persisted across restarts (Phase 3).
+- The engine's default minimum pane card is 160 × 120 CSS px, while main enforces a minimum native view of 80 × 60. The current grid produces valid bounds in tested sizes, but the two contracts should be unified.
 - Snap calculations use CSS-pixel/DIP distances; zoom is still excluded from the shell.
-- The e2e suite does not exercise the layout engine yet because it has no UI entry point.
+- The column selector and overflow warning are not covered at the minimum window size by e2e yet.
 
 ### Next smallest slice
 
-Wire the grid engine into the renderer: add a compact 1–5 column selector, position pane cards from `layoutGrid`, preserve native bounds measurement and focus behavior, and extend the Playwright test to verify column changes and native alignment after reflow. Implement vertical scrolling/clipping only after the basic grid path is proven.
+Implement native-aware vertical scrolling/clipping for grid overflow: allow the grid to grow to `contentHeight`, scroll the workspace, keep native views aligned for fully visible panes, and safely hide views that are partially off-screen. Add an e2e case with enough panes to require scrolling and verify no native view covers the toolbar or escapes the workspace.
 
 ## Phase 3 — Viewport emulation and persistence
 
