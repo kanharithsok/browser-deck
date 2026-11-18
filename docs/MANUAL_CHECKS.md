@@ -1,0 +1,71 @@
+# Manual Verification Checklist
+
+Use local fixture pages and test accounts only. Never record real credentials or private page content.
+
+Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1, Apple M4, Retina display, Electron 45.3.4. Unchecked items belong to later phases or still need a separate check.
+
+## Native views and interaction
+
+- [x] Two or more browser views load independently. (Two fixture panes; e2e and manual run.)
+- [x] Pane controls and address chrome are visible and clickable. (Address, back, close, add exercised with Playwright input.)
+- [x] Clicks reach the intended pane or control. (Shell clicks and a real click inside a native fixture page affected only that pane.)
+- [x] Native view bounds align with pane content after initial layout and a window resize. (Within 1 CSS pixel; e2e.)
+- [ ] Views align after maximize/restore, pane drag, and pane resize. (Pane drag/resize not implemented.)
+- [ ] Z-order and overlapping panes behave predictably. (Overlapping panes not implemented; native menu overlay was checked.)
+- [x] Menus/dialogs/overlays render above browser content without breaking layout. (Native pane menu rendered above native content; manual check.)
+- [x] Closing a pane destroys its view and `webContents`. (E2e checks the closed `webContents` and remaining pane.)
+- [x] Retina coordinate behavior. (DPR 2; bounds remained aligned.)
+
+## Browser isolation
+
+- [x] Separate profiles do not share cookies. (`alice` and `bob` cookies read independently.)
+- [x] Separate profiles do not share localStorage. (Fixture click wrote only one pane; the other stayed empty.)
+- [x] The same fixture origin can be used by different sessions in separate panes. (Same origin, different profile cookies.)
+- [x] Persistent cookie/profile data survives app restart. (E2e relaunched with the same user data; profile IDs and cookies persisted.)
+- [x] Closing one pane does not sign out or navigate another. (Remaining pane cookie unchanged; e2e.)
+- [x] New and duplicated panes receive a fresh profile by default. (New-pane profile ID checked; pane duplication is not implemented yet.)
+- [ ] Explicitly shared profiles share expected cookie/storage state. (Sharing UI not implemented.)
+- [ ] IndexedDB isolation and two-account sign-in flow. (Deferred to Phase 1 integration tests.)
+- [ ] Document session-only cookie and `sessionStorage` limitations in product docs. (Already documented in `SPEC.md`; final product documentation pending.)
+
+## Workspace
+
+- [ ] Add, remove, rename, duplicate, and reorder panes. (Add/remove work; rename/duplicate/reorder pending.)
+- [ ] Grid column changes and reflow. (Automatic CSS grid only; selectable columns pending.)
+- [ ] Freeform drag, resize, overlap, z-order, and snap behavior. (Pending.)
+- [ ] Switching modes preserves both arrangements. (Pending.)
+- [ ] Maximize/restore returns to the prior geometry. (Pending.)
+- [ ] Layout restores after app restart. (Pending.)
+
+## Viewport emulation
+
+- [ ] Each pane can use a different viewport. (Pending.)
+- [ ] Fixture `window.innerWidth` matches configured width. (Pending; native pages report viewport for future checks.)
+- [ ] Fixture `window.innerHeight` matches configured height. (Pending.)
+- [ ] Device scale factor behavior documented and verified for emulation. (Pending; physical Retina DPR behavior verified.)
+- [ ] Fit and actual display modes behave as specified. (Pending.)
+
+## Accessibility and appearance
+
+- [x] Icon-only controls have accessible names and tooltips. (Code review and Playwright role-based clicks.)
+- [x] Keyboard focus is visible on shell controls. (Focus ring improved to use the accent color; address error is linked with `aria-describedby`.)
+- [x] Focus moves to the new pane after add and recovers to an address control after close. (E2e assertions.)
+- [ ] Keyboard focus can enter native browser content and return to chrome. (Native pane focus handoff is Phase 2.)
+- [ ] Full screen-reader pass across toolbar, pane chrome, and status announcements. (Not run.)
+- [x] System light/dark tokens resolve correctly. (E2e emulates both color schemes; dark appearance manually reviewed.)
+- [ ] Contrast audit across every control and state. (Small-text tokens were improved during review; full audit remains.)
+- [ ] Reduced-motion behavior. (CSS preference handling exists; no dedicated manual check.)
+- [ ] Narrow-window and minimum-pane-width control usability. (Container query exists; dedicated check pending.)
+- [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
+
+## Security and failure handling
+
+- [x] Dangerous URL schemes are rejected. (Main-process navigation test rejects `javascript:`; unit tests cover `data:`, `file:`, `chrome:`.)
+- [x] Remote pages cannot access the app preload bridge or Node APIs. (E2e checks `window.paneflow`, `require`, and `process` are undefined.)
+- [x] IPC rejects malformed payloads. (Unknown pane IDs and malformed bounds rejected in e2e/unit tests.)
+- [ ] IPC rejects an invalid sender. (Sender identity and shell-main-frame checks are implemented; a dedicated cross-webContents test is still pending.)
+- [x] Popups and permissions follow the documented policy. (Popup and notification request denied in e2e.)
+- [x] A page that destroys its own `webContents` removes the pane cleanly. (E2e invokes `window.close()` in a pane; the other pane remains.)
+- [ ] Renderer crash/navigation failure does not crash the app shell. (Failure UI exists; crash recovery needs a dedicated check.)
+- [x] No secrets appear in logs, exports, fixtures, or repository files. (Repository review; fixtures contain only synthetic identities.)
+- [ ] Window shutdown leaves no orphaned views/processes. (Teardown implemented and e2e closes panes/windows; repeat after Phase 2.)

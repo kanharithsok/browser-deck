@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "build",
+  "permissions": [
+    // Keep normal coding workflows usable, but prevent accidental publishing
+    // and destructive Git/filesystem operations from the agent.
+    { "action": "shell", "resource": "git push", "effect": "deny" },
+    { "action": "shell", "resource": "git push *", "effect": "deny" },
+    { "action": "shell", "resource": "git reset --hard", "effect": "deny" },
+    { "action": "shell", "resource": "git reset --hard *", "effect": "deny" },
+    { "action": "shell", "resource": "git clean *", "effect": "deny" },
+    { "action": "shell", "resource": "git checkout -- *", "effect": "deny" },
+    { "action": "shell", "resource": "git restore --worktree *", "effect": "deny" },
+    { "action": "shell", "resource": "rm -rf*", "effect": "ask" },
+    { "action": "shell", "resource": "gh release create*", "effect": "ask" }
+  ]
+}
