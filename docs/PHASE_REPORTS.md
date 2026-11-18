@@ -265,7 +265,7 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
   - pane definitions are created before the shell reads state, so the renderer sees the restored workspace on its first read;
   - existing profile IDs and partitions are reused; missing profile metadata is reconstructed against the same partition ID;
   - grid/freeform arrangements and selected columns restore independently;
-  - maximized/focused state is intentionally not persisted.
+  - maximized/focused state was intentionally not persisted at Phase 3; post-MVP ADR-027 added application-window maximize/full-screen restore, while pane maximize remains temporary.
 - Renderer layout persistence:
   - the shell sends normalized layout state through a typed `save-workspace-layout` IPC after committed changes, but not during active drags;
   - freeform rectangles are copied into plain objects before IPC (Vue reactive proxies cannot be structured-cloned);
@@ -308,7 +308,7 @@ Met in the automated macOS run. Different panes used independent viewport config
 - Optional user-agent overrides from `SPEC.md` §10.2 are not implemented; no UA spoofing is performed.
 - At Phase 3 completion only the default workspace existed; Phase 4 added create/rename/duplicate/switch/delete management on top of the active-ID pointer.
 - Theme preference and multiple workspace files are not part of restored state yet; normal window bounds are now handled in Phase 4.
-- Maximized/focused state is intentionally not persisted.
+- Maximized/focused state was intentionally not persisted at Phase 3; post-MVP ADR-027 added application-window maximize/full-screen restore, while pane maximize remains temporary.
 - At Phase 3 completion, profile clear/delete required all panes using the profile to be closed first; Phase 4 added close-and-delete.
 - At Phase 3 completion, profile sharing UI was not implemented; Phase 4 added the profile-manager Open pane flow.
 - Partition-directory removal after delete is best-effort; session data is cleared first, and leftover Chromium cache files are inaccessible through the profile manager.
@@ -329,7 +329,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Extended `app-state.json` with optional normal window bounds (`x`, `y`, `width`, `height`).
 - Bounds are validated (minimum 720 × 520, maximum 10,000 px dimensions, finite positions) and ignored when invalid.
 - On startup, saved bounds restore only when at least 120 × 80 px intersects a connected display's work area; otherwise the default window is used.
-- Normal bounds are persisted after debounced move/resize/maximize/fullscreen changes and flushed on close. Maximized/fullscreen state itself is not persisted.
+- Normal bounds and `maximized`/`fullScreen` flags are persisted after debounced move/resize/maximize/fullscreen changes and flushed on close. Post-MVP ADR-027 restores presentation only when the saved normal bounds remain visible; pane maximize remains temporary.
 - App-state writes capture the workspace path at enqueue time, preventing a queued save from writing into a different active workspace.
 - 2 new unit tests cover window-bounds validation and store persistence; the restart e2e sets a distinctive 1120 × 760 window, verifies the bounds in `app-state.json`, and checks restoration after relaunch.
 - Workspace shortcuts:
@@ -450,7 +450,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 11 files, 121 tests. Includes workspace cycling, custom-title validation, CSP/trusted-shell-url/asset-path tests, partition-directory validation, credential/oversized URL rejection, and import validation. |
+| `npm run test:unit` | Passed: 11 files, 123 tests. Includes workspace cycling, custom-title validation, window presentation parsing/persistence, CSP/trusted-shell-url/asset-path tests, partition-directory validation, credential/oversized URL rejection, and import validation. |
 | `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
 | `npm run lint` | Passed with no warnings or errors. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
@@ -494,7 +494,7 @@ The security slice was verified before merging the rename and accessibility bran
 
 ### Known issues / risks
 
-- Maximized/fullscreen state is not persisted.
+- Window bounds and maximized/full-screen state restore only when the saved normal bounds remain visible on a current display; pane maximize is temporary.
 - Window restoration checks visibility against current displays but does not clamp oversized windows to the work area.
 - Workspace switching tears down and recreates native pane views; pages reload rather than staying warm in the background.
 - Duplicated workspaces immediately create fresh profiles even before the duplicate is opened; unused profiles remain in the profile manager.

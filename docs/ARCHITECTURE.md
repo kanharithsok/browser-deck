@@ -262,9 +262,9 @@ The trusted shell's default session receives the same deny-by-default policy. Re
 - Pane records are created from the stored workspace before the shell loads, so the renderer's first state read sees the restored panes and layout.
 - Profile IDs are reused, preserving persistent sessions. If profile metadata is missing but the workspace references a valid ID, `ProfileStore.ensure` reconstructs the record for the same partition.
 - The renderer owns layout state and sends normalized updates through `save-workspace-layout`; the main process validates and normalizes pane references. Saves are skipped during active drags and committed after the interaction.
-- Maximized/focused state is intentionally not persisted. No cookies, tokens, page contents, or credentials are written to workspace JSON.
+- Pane maximize remains temporary renderer state; application-window maximized/full-screen state is persisted in `app-state.json`. No cookies, tokens, page contents, or credentials are written to workspace JSON.
 
-`app-state.json` also carries optional normal window bounds and a `system`/`light`/`dark` theme preference. Bounds are validated, saved after debounced move/resize events, and restored only if they intersect a connected display's work area. Maximized/fullscreen state is not persisted. Save snapshots capture the target workspace path at enqueue time so an active-workspace change cannot redirect a queued write.
+`app-state.json` also carries optional normal window bounds, `maximized`/`fullScreen` flags, and a `system`/`light`/`dark` theme preference. Bounds are validated, saved after debounced move/resize/maximize/fullscreen events and before close, and restored only if they intersect a connected display's work area. Maximized/full-screen presentation restores only when those safe bounds are available; minimized and focused state are not persisted. Save snapshots capture the target workspace path at enqueue time so an active-workspace change cannot redirect a queued write.
 
 The native **View → Theme** radio menu updates `nativeTheme.themeSource`, window/shell backgrounds, persistence, and the shell state. Because renderer `prefers-color-scheme` propagation is unreliable for pre-created windows in the tested Electron/Playwright environment, the shell applies an explicit `data-theme` attribute with duplicated light/dark token sets; `system` removes the attribute and follows the media query. Theme preferences are application-wide, not per workspace.
 
@@ -302,7 +302,7 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Workspace switching tears down and recreates native pane views; pages reload instead of staying warm in the background.
 - Leak stress is count-based (webContents/native views) over a 50-cycle switch loop, not long-duration memory profiling; memory is sampled before/after rather than peak/per-process, and observed 50-cycle growth ranged from 0 MB in one run to ~95 MB on final `main`.
 - Duplicated workspaces receive fresh profiles immediately, even if the duplicate is never opened.
-- Maximized/fullscreen state is not persisted. Window bounds restore only when visible on a current display.
+- Normal window bounds and maximized/full-screen state restore only when the saved normal bounds still intersect a current display.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
 - Profile clear/delete of in-use profiles closes all panes using them after confirmation.
 - Profile sharing is initiated only from the profile manager; there is no profile picker in the main Add pane flow.
