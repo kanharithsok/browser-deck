@@ -253,6 +253,7 @@ async function createWindow(): Promise<void> {
     snapshot: () => manager.snapshot(),
     viewBounds: () => manager.viewBounds(),
     viewStates: () => manager.viewStates(),
+    viewOrder: () => manager.viewOrder(),
     readCookie: (paneId) => manager.readCookie(paneId),
     webContentsId: (paneId) => manager.getWebContentsId(paneId),
     shellWebContentsId: () => (shell.webContents.isDestroyed() ? null : shell.webContents.id),

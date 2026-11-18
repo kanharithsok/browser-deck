@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, and window resizing. Grid mode has a 1–5 column selector, scrolling, and drag reorder; freeform mode supports move/resize, snapping, z-order raising, tidy, and temporary maximize/restore. Explicit send-to-back controls, keyboard layout actions, and the 8-pane exit test remain. Viewport emulation and packaging arrive in later phases.
+> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, and window resizing. Grid mode has a 1–5 column selector, scrolling, and drag reorder; freeform mode supports move/resize, snapping, explicit z-order, tidy, and temporary maximize/restore. Keyboard layout actions and the 8-pane exit test remain. Viewport emulation and packaging arrive in later phases.
 
 ## Current capabilities
 
@@ -20,11 +20,11 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Engine-driven grid mode with a compact 1–5 column selector, equal-width reflow, native bounds alignment, and add/remove reflow.
 - Native-aware vertical grid scrolling: partially off-screen panes hide their browser view so it cannot cover chrome or escape the workspace.
 - Grid drag reordering from the pane title row, with native views temporarily hidden so pointer movement stays in the shell.
-- Freeform mode with normalized pane geometry, title-row dragging, eight resize handles, snapping guides, z-order raising, and a Tidy action.
+- Freeform mode with normalized pane geometry, title-row dragging, eight resize handles, snapping guides, explicit bring-front/send-back controls, and a Tidy action.
 - Temporary maximize/restore with unrelated native views hidden and the prior arrangement preserved.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test.
 
-The current build does **not** include explicit send-to-back controls, keyboard layout actions, workspace persistence, viewport presets, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
+The current build does **not** include keyboard layout actions, workspace persistence, viewport presets, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -81,6 +81,7 @@ The e2e test launches the built app against local fixtures and verifies:
 - drag reordering with native views hidden during drag and alignment restored afterward;
 - freeform move/resize with hidden native views and preserved geometry across mode switches;
 - temporary maximize/restore with unrelated native views hidden;
+- explicit freeform z-order changes reflected in native child order;
 - overflowing grid scrolling with native views hidden when partially off-screen;
 - real address-bar navigation and history controls;
 - rejecting unsupported URLs and unknown pane IDs in main;
@@ -132,7 +133,7 @@ opencode.jsonc        Project-level OpenCode configuration
 
 ## Known limitations
 
-- The workspace still lacks explicit send-to-back controls, keyboard layout actions, viewport emulation, and a profile manager.
+- The workspace still lacks keyboard layout actions, viewport emulation, and a profile manager.
 - Partially visible grid panes are hidden while scrolling and only become interactive when fully in view.
 - Freeform manipulation is pointer-only; a fully covered pane may be unreachable until the covering pane moves.
 - Maximize is temporary and not persisted.
