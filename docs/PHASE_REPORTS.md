@@ -281,7 +281,7 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
   - rename updates metadata and live pane labels, rejecting empty/duplicate names;
   - clear removes cookies, storage, cache, and auth cache only after an inline confirmation;
   - delete clears data, removes metadata, and removes the partition directory only after confirmation;
-  - clear/delete are blocked while any pane uses the profile;
+  - at Phase 3 completion, clear/delete were blocked while any pane used the profile; Phase 4 added the close-and-delete flow;
   - e2e verifies in-use protection, rename persistence, cookie clearing, and metadata deletion.
 
 ### Verification commands and results
@@ -309,7 +309,7 @@ Met in the automated macOS run. Different panes used independent viewport config
 - At Phase 3 completion only the default workspace existed; Phase 4 added create/rename/duplicate/switch/delete management on top of the active-ID pointer.
 - Theme preference and multiple workspace files are not part of restored state yet; normal window bounds are now handled in Phase 4.
 - Maximized/focused state is intentionally not persisted.
-- Profile clear/delete require all panes using the profile to be closed first; there is no close-and-delete flow.
+- At Phase 3 completion, profile clear/delete required all panes using the profile to be closed first; Phase 4 added close-and-delete.
 - At Phase 3 completion, profile sharing UI was not implemented; Phase 4 added the profile-manager Open pane flow.
 - Partition-directory removal after delete is best-effort; session data is cleared first, and leftover Chromium cache files are inaccessible through the profile manager.
 - The display scale selector is hidden only by wrapping, not collapsed into the pane menu; very narrow freeform panes produce a taller three-row chrome block.
@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management, profile sharing, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; import/export, close-and-delete flows, and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management, profile sharing/close-and-delete, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; import/export, accessibility polish, and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -346,7 +346,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - a validated `add-pane-with-profile` IPC creates a pane with the selected profile and default viewport;
   - pane headers show `· N panes` when a profile is referenced by multiple panes, and the profile manager usage reads `N panes: titles`;
   - shared-profile panes use the same persistent partition, so cookies and site storage are intentionally shared;
-  - clear/delete remain blocked while any shared pane is open;
+  - clear/delete support confirmed close-all-panes flows for shared profiles;
   - e2e opens two panes with one unused profile, verifies distinct pane IDs and shared localStorage, checks the shared count, verifies clear/delete protection, closes both panes, and confirms the remaining workspace is unchanged.
 - Theme preference:
   - `app-state.json` stores `system`, `light`, or `dark`; invalid values are ignored.
@@ -366,6 +366,12 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - after every return to the original workspace, asserts the non-destroyed webContents count equals the baseline and native view states equal the active pane count;
   - verifies four stress-workspace native views during each stress activation, then deletes the stress workspace;
   - this covers BrowserManager teardown/recreation, profile reuse, renderer reset, and workspace-file persistence under repeated switching.
+- Close-and-delete profile lifecycle:
+  - Clear/Delete remain available for in-use profiles instead of being disabled.
+  - The confirmation text names how many panes will be closed; the confirm button reads **Close panes & clear** or **Close panes & delete**.
+  - Main validates the explicit `closePanes` flag, destroys all panes using that profile, verifies usage is empty, then clears the session and optionally removes profile metadata/partition.
+  - The profile manager reports that panes were closed and refreshes usage.
+  - E2e deletes the two-pane shared profile through this flow, verifies both panes close, the profile row disappears, Alice remains, and native alignment restores.
 
 ### Verification commands and results
 
@@ -374,8 +380,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 8 files, 99 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.0 s, including window-bounds persistence, workspace lifecycle/switching, profile management, explicit profile sharing, theme restore, and repeated-switch leak stress. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (88.46 kB), preload (4.79 kB), renderer bundle (263.46 kB), and CSS (21.41 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.2 s, including window-bounds persistence, workspace lifecycle/switching, profile management/sharing/close-and-delete, theme restore, and repeated-switch leak stress. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (89.43 kB), preload (4.85 kB), renderer bundle (263.84 kB), and CSS (21.41 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -389,11 +395,11 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Deleting a workspace does not delete profiles that were referenced only by that workspace.
 - Profile sharing is initiated from the profile manager; the toolbar Add pane action always creates a fresh profile.
 - Shared profiles are intentional but still share one Chromium partition; there is no clone-profile-with-session feature.
-- Close-and-delete profile flows, workspace import/export, and workspace-specific window bounds remain.
+- Workspace import/export and workspace-specific window bounds remain.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
 - Leak stress covers four about:blank panes and four switch cycles; it does not include long-duration memory profiling or loaded-page churn.
 
 ### Next smallest slice
 
-Implement workspace import/export with validation and fresh-profile defaults, then add close-and-delete profile flows and remaining accessibility/polish.
+Implement workspace import/export with validation and fresh-profile defaults, then finish accessibility and minimum-window polish.

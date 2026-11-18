@@ -134,6 +134,19 @@ export class BrowserManager {
     return { ok: true }
   }
 
+  closePanesForProfile(profileId: string): string[] {
+    const targets = [...this.panes.values()].filter(
+      (record) => record.profile.id === profileId && this.liveWebContents(record)
+    )
+    for (const record of targets) {
+      this.destroyPane(record, false)
+    }
+    if (targets.length > 0) {
+      this.emitState()
+    }
+    return targets.map((record) => record.id)
+  }
+
   navigate(paneId: string, address: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {

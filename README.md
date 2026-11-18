@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, and repeated-switch leak stress. Remaining Phase 4 work covers import/export, close-and-delete flows, polish, and signed/notarized distribution.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, repeated-switch leak stress, and close-and-delete profile lifecycle. Remaining Phase 4 work covers import/export, polish, and signed/notarized distribution.
 
 ## Current capabilities
 
@@ -28,7 +28,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Safe normal window-bounds restoration: saved bounds are validated and applied only when visible on a connected display.
 - Persisted System/Light/Dark theme from the native View menu, with matching window chrome and shell tokens.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
-- Profile manager dialog with creation dates, live pane usage, rename, confirmed clear, and safe delete. Clear/delete are blocked while a profile is in use.
+- Profile manager dialog with creation dates, live pane usage, rename, and confirmed clear/delete. In-use profiles can be closed and deleted through a single explicit confirmation.
 - Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
 - Workspace manager for create, rename, duplicate, switch, and delete, with active-state persistence and fresh profiles for duplicated panes.
 - Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline.
@@ -173,7 +173,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - A fully covered freeform pane may be unreachable until the covering pane moves.
 - Raw keyboard accelerators are configured in the native menu; menu command routing is tested, raw key chords are not yet automated.
 - Freeform geometry, selected columns, grid order, layout mode, viewport settings, pane order, and URLs now restore after restart. Unused profiles remain available in the profile manager for rename/clear/delete.
-- Profile clear/delete require all panes using the profile to be closed first; there is no close-and-delete flow.
+- Clearing/deleting an in-use profile closes all panes that use it after explicit confirmation.
 - Overlapping freeform panes can cover each other's headers and far resize handles; move the covering pane or use a reachable control.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
 - Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.

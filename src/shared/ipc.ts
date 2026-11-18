@@ -118,8 +118,8 @@ export interface PaneFlowApi {
   saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
   listProfiles(): Promise<ProfileListResult>
   renameProfile(profileId: string, label: string): Promise<ScriptResult>
-  clearProfile(profileId: string): Promise<ScriptResult>
-  deleteProfile(profileId: string): Promise<ScriptResult>
+  clearProfile(profileId: string, closePanes?: boolean): Promise<ScriptResult>
+  deleteProfile(profileId: string, closePanes?: boolean): Promise<ScriptResult>
   listWorkspaces(): Promise<WorkspaceListResult>
   createWorkspace(name: string): Promise<ScriptResult>
   renameWorkspace(workspaceId: string, name: string): Promise<ScriptResult>
