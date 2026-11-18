@@ -623,6 +623,44 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(Math.abs(restoredFreeformAlice.width - shrunkAliceRect.width)).toBeLessThanOrEqual(2)
     await gridButton.click()
     await waitForAlignedBounds(app)
+
+    // Maximize temporarily fills the workspace; unrelated native views hide,
+    // and restore returns to the prior grid geometry.
+    const preMaximizeRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!preMaximizeRect) {
+      throw new Error('Pre-maximize pane bounds are unavailable')
+    }
+    await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .getByRole('button', { name: 'Maximize pane' })
+      .click()
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
+      .toBe(1)
+    await waitForVisibleAlignedBounds(app)
+    const maximizedRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!maximizedRect) {
+      throw new Error('Maximized pane bounds are unavailable')
+    }
+    expect(maximizedRect.width).toBeGreaterThan(preMaximizeRect.width + 20)
+    expect(maximizedRect.height).toBeGreaterThanOrEqual(preMaximizeRect.height - 1)
+
+    await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .getByRole('button', { name: 'Restore pane' })
+      .click()
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
+      .toBe(2)
+    await waitForAlignedBounds(app)
+    const restoredMaximizeRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!restoredMaximizeRect) {
+      throw new Error('Restored maximize pane bounds are unavailable')
+    }
+    expect(Math.abs(restoredMaximizeRect.x - preMaximizeRect.x)).toBeLessThanOrEqual(2)
+    expect(Math.abs(restoredMaximizeRect.width - preMaximizeRect.width)).toBeLessThanOrEqual(2)
     await shellPage.emulateMedia({ colorScheme: 'light' })
     expect(
       await shellPage.evaluate(() =>

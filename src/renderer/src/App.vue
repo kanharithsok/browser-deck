@@ -34,6 +34,7 @@ const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
 const gridColumns = ref(DEFAULT_GRID_COLUMNS)
 const suspendedPaneIds = ref<ReadonlySet<string>>(new Set())
+const maximizedPaneId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
@@ -129,11 +130,15 @@ const slotRects = computed(() =>
 )
 
 const paneGridHeight = computed(() =>
-  layoutMode.value === 'grid' ? gridContentHeight.value : workspaceSize.value.height
+  maximizedPaneId.value
+    ? workspaceSize.value.height
+    : layoutMode.value === 'grid'
+      ? gridContentHeight.value
+      : workspaceSize.value.height
 )
 
 const gridNotice = computed(() => {
-  if (layoutMode.value !== 'grid') {
+  if (layoutMode.value !== 'grid' || maximizedPaneId.value) {
     return null
   }
   const layout = gridLayout.value
@@ -178,6 +183,26 @@ function paneSlotStyle(paneId: string): Record<string, string> {
   const rect = slotRects.value.get(paneId)
   if (!rect) {
     return { visibility: 'hidden' }
+  }
+
+  if (maximizedPaneId.value) {
+    if (paneId !== maximizedPaneId.value) {
+      return {
+        left: `${rect.x}px`,
+        top: `${rect.y}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        visibility: 'hidden'
+      }
+    }
+
+    return {
+      left: '10px',
+      top: '10px',
+      width: `${Math.max(0, workspaceSize.value.width - 20)}px`,
+      height: `${Math.max(0, workspaceSize.value.height - 20)}px`,
+      zIndex: '100'
+    }
   }
 
   const style: Record<string, string> = {
@@ -407,6 +432,10 @@ function applyState(state: ShellState): void {
     .filter((paneId) => !retainedZIds.has(paneId))
   freeformOrder.value = [...retainedZ, ...appendedZ]
 
+  if (maximizedPaneId.value && !nextIds.has(maximizedPaneId.value)) {
+    maximizedPaneId.value = null
+  }
+
   panes.value = state.panes
 
   void nextTick(() => {
@@ -478,6 +507,20 @@ async function openPaneMenu(paneId: string, position: { x: number; y: number }):
 function dismissErrors(): void {
   actionError.value = null
   layoutError.value = null
+}
+
+function toggleMaximize(paneId: string): void {
+  maximizedPaneId.value = maximizedPaneId.value === paneId ? null : paneId
+  if (maximizedPaneId.value) {
+    if (workspaceEl.value) {
+      workspaceEl.value.scrollTop = 0
+    }
+    if (layoutMode.value === 'freeform') {
+      raisePane(paneId)
+    }
+  }
+  guides.value = { vertical: [], horizontal: [] }
+  void nextTick(scheduleMeasure)
 }
 
 function findDropTarget(x: number, y: number, draggedPaneId: string): string | null {
@@ -556,7 +599,7 @@ function onPointerMove(event: PointerEvent): void {
 }
 
 function onWorkspacePointerDown(event: PointerEvent): void {
-  if (event.button !== 0) {
+  if (event.button !== 0 || maximizedPaneId.value) {
     return
   }
 
@@ -663,7 +706,10 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
-    const visible = !isDragging.value && isRectFullyVisible(rect, workspaceRect)
+    const visible =
+      !isDragging.value &&
+      (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
+      isRectFullyVisible(rect, workspaceRect)
     if (!visible && !isDragging.value) {
       suspended.add(paneId)
     }
@@ -715,6 +761,7 @@ watch(layoutMode, (mode) => {
   dropTargetId.value = null
   isDragging.value = false
   dragState.value = null
+  maximizedPaneId.value = null
   document.body.classList.remove('paneflow-dragging')
   if (workspaceEl.value) {
     workspaceEl.value.scrollTop = 0
@@ -881,10 +928,12 @@ onBeforeUnmount(() => {
         >
           <PaneCard
             :pane="pane"
-            :freeform="layoutMode === 'freeform'"
+            :freeform="layoutMode === 'freeform' && !maximizedPaneId"
+            :maximized="maximizedPaneId === pane.id"
             :suspended="suspendedPaneIds.has(pane.id)"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
+            @toggle-maximize="toggleMaximize(pane.id)"
           />
         </div>
         <span
