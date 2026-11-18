@@ -54,6 +54,23 @@ describe('ProfileStore', () => {
     expect(store.list()).toHaveLength(3)
   })
 
+  it('restores a workspace-referenced profile ID without changing its partition identity', async () => {
+    const directory = await makeDirectory()
+    const store = new ProfileStore(directory)
+    await store.load()
+
+    const restoredId = '11111111-1111-4111-8111-111111111111'
+    const restored = await store.ensure(restoredId)
+    expect(restored.id).toBe(restoredId)
+    expect(restored.label).toBe('Profile 3')
+    expect(store.get(restoredId)?.id).toBe(restoredId)
+
+    const reloaded = new ProfileStore(directory)
+    await reloaded.load()
+    expect(reloaded.get(restoredId)?.label).toBe('Profile 3')
+    await expect(store.ensure('not-a-profile')).rejects.toThrow()
+  })
+
   it('preserves a corrupt file and recovers to safe defaults', async () => {
     const directory = await makeDirectory()
     await writeFile(join(directory, 'profiles.json'), '{ definitely not json', 'utf8')

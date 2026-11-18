@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { Menu, WebContentsView, type BaseWindow } from 'electron'
+import { Menu, WebContentsView, type BaseWindow, type WebContents } from 'electron'
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
-import type { PaneState, PaneViewRect, ScriptResult, ShellState } from '../shared/ipc'
+import type { PaneState, PaneViewRect, ScriptResult, ShellSnapshot } from '../shared/ipc'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
 import { isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
 import {
@@ -10,6 +10,10 @@ import {
   viewportDisplayScale,
   type PaneViewport
 } from '../shared/viewports'
+import {
+  isValidPaneId,
+  type WorkspacePaneDefinition
+} from '../shared/workspace'
 import type { ProfileStore } from './profile-store'
 import { getProfileSession } from './session-policy'
 
@@ -28,12 +32,20 @@ interface PaneRecord {
   lastEmulationSignature: string
   emulationEnabled: boolean
   appliedScale: number
+  pageReady: boolean
   destroyed: boolean
 }
 
 interface BrowserManagerOptions {
-  onStateChanged: (state: ShellState) => void
+  onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
+}
+
+export interface PaneInitialization {
+  id?: string
+  profile: BrowserProfile
+  url: string
+  viewport?: PaneViewport
 }
 
 function fallbackTitle(url: string): string {
@@ -66,13 +78,16 @@ export class BrowserManager {
     private readonly options: BrowserManagerOptions
   ) {}
 
-  async initialize(startUrls: string[]): Promise<void> {
-    const profiles = this.profileStore.list()
-    for (let index = 0; index < 2; index += 1) {
-      const profile = profiles[index] ?? (await this.profileStore.create())
-      const candidate = startUrls[index] ?? 'about:blank'
-      const normalized = normalizeAddress(candidate)
-      this.createPane(profile, normalized.ok ? normalized.url : 'about:blank')
+  async initialize(panes: PaneInitialization[]): Promise<void> {
+    for (const pane of panes) {
+      if (pane.id !== undefined && !isValidPaneId(pane.id)) {
+        throw new Error('Invalid pane ID in workspace.')
+      }
+      const normalized = normalizeAddress(pane.url)
+      this.createPane(pane.profile, normalized.ok ? normalized.url : 'about:blank', {
+        id: pane.id,
+        viewport: pane.viewport
+      })
     }
   }
 
@@ -341,20 +356,16 @@ export class BrowserManager {
     return { ok: true }
   }
 
-  snapshot(): ShellState {
+  snapshot(): ShellSnapshot {
     const panes: PaneState[] = []
     for (const record of this.panes.values()) {
-      if (record.destroyed || record.view.webContents.isDestroyed()) {
+      const webContents = this.liveWebContents(record)
+      if (!webContents) {
         continue
       }
 
-      const webContents = record.view.webContents
-      let canGoBack = false
-      let canGoForward = false
-      if (!webContents.isDestroyed()) {
-        canGoBack = webContents.navigationHistory.canGoBack()
-        canGoForward = webContents.navigationHistory.canGoForward()
-      }
+      const canGoBack = webContents.navigationHistory.canGoBack()
+      const canGoForward = webContents.navigationHistory.canGoForward()
 
       panes.push({
         id: record.id,
@@ -373,10 +384,26 @@ export class BrowserManager {
     return { panes }
   }
 
+  workspacePanes(): WorkspacePaneDefinition[] {
+    const panes: WorkspacePaneDefinition[] = []
+    for (const record of this.panes.values()) {
+      if (!this.liveWebContents(record)) {
+        continue
+      }
+      panes.push({
+        id: record.id,
+        profileId: record.profile.id,
+        url: record.url,
+        viewport: { ...record.viewport }
+      })
+    }
+    return panes
+  }
+
   viewBounds(): Array<{ paneId: string; rect: PaneViewRect }> {
     const bounds: Array<{ paneId: string; rect: PaneViewRect }> = []
     for (const record of this.panes.values()) {
-      if (!record.destroyed && !record.view.webContents.isDestroyed()) {
+      if (this.liveWebContents(record)) {
         bounds.push({ paneId: record.id, rect: record.view.getBounds() })
       }
     }
@@ -386,7 +413,7 @@ export class BrowserManager {
   viewStates(): Array<{ paneId: string; rect: PaneViewRect; visible: boolean }> {
     const states: Array<{ paneId: string; rect: PaneViewRect; visible: boolean }> = []
     for (const record of this.panes.values()) {
-      if (!record.destroyed && !record.view.webContents.isDestroyed()) {
+      if (this.liveWebContents(record)) {
         states.push({
           paneId: record.id,
           rect: record.view.getBounds(),
@@ -403,7 +430,7 @@ export class BrowserManager {
     viewport: PaneViewport
   } | null {
     const record = this.panes.get(paneId)
-    if (!record || record.destroyed) {
+    if (!record || !this.liveWebContents(record)) {
       return null
     }
     return {
@@ -415,20 +442,19 @@ export class BrowserManager {
 
   async readCookie(paneId: string): Promise<string | null> {
     const record = this.panes.get(paneId)
-    if (!record || record.destroyed || record.view.webContents.isDestroyed()) {
+    const webContents = record ? this.liveWebContents(record) : null
+    if (!webContents) {
       return null
     }
 
-    const value: unknown = await record.view.webContents.executeJavaScript('document.cookie')
+    const value: unknown = await webContents.executeJavaScript('document.cookie')
     return typeof value === 'string' ? value : null
   }
 
   getWebContentsId(paneId: string): number | null {
     const record = this.panes.get(paneId)
-    if (!record || record.destroyed || record.view.webContents.isDestroyed()) {
-      return null
-    }
-    return record.view.webContents.id
+    const webContents = record ? this.liveWebContents(record) : null
+    return webContents ? webContents.id : null
   }
 
   destroyAll(): void {
@@ -442,9 +468,26 @@ export class BrowserManager {
     }
   }
 
-  private createPane(profile: BrowserProfile, initialUrl: string): PaneRecord {
+  private createPane(
+    profile: BrowserProfile,
+    initialUrl: string,
+    options: { id?: string; viewport?: PaneViewport } = {}
+  ): PaneRecord {
     if (this.destroyed || this.window.isDestroyed()) {
       throw new Error('PaneFlow window is not available.')
+    }
+
+    const paneId = options.id ?? randomUUID()
+    if (!isValidPaneId(paneId) || this.panes.has(paneId)) {
+      throw new Error('Pane ID is invalid or duplicated.')
+    }
+
+    const parsedViewport =
+      options.viewport === undefined
+        ? { ok: true as const, viewport: { ...RESPONSIVE_VIEWPORT } }
+        : parsePaneViewport(options.viewport)
+    if (!parsedViewport.ok) {
+      throw new Error(parsedViewport.error)
     }
 
     const view = new WebContentsView({
@@ -460,7 +503,7 @@ export class BrowserManager {
     })
 
     const record: PaneRecord = {
-      id: randomUUID(),
+      id: paneId,
       profile,
       view,
       title: fallbackTitle(initialUrl),
@@ -470,10 +513,11 @@ export class BrowserManager {
       error: null,
       hasBounds: false,
       shellVisible: true,
-      viewport: { ...RESPONSIVE_VIEWPORT },
+      viewport: parsedViewport.viewport,
       lastEmulationSignature: '',
       emulationEnabled: false,
       appliedScale: 0,
+      pageReady: false,
       destroyed: false
     }
 
@@ -506,11 +550,13 @@ export class BrowserManager {
     webContents.on('did-start-loading', () => {
       record.isLoading = true
       record.error = null
+      record.pageReady = false
       this.emitState()
     })
 
     webContents.on('did-stop-loading', () => {
       record.isLoading = false
+      record.pageReady = true
       this.applyEmulation(record)
       this.emitState()
     })
@@ -610,8 +656,11 @@ export class BrowserManager {
   }
 
   private applyEmulation(record: PaneRecord): void {
-    const webContents = record.view.webContents
-    if (record.destroyed || webContents.isDestroyed()) {
+    const webContents = this.liveWebContents(record)
+    if (!webContents || !record.pageReady) {
+      // Enabling device emulation before a WebContentsView has loaded can crash
+      // the renderer process on macOS. The load-stop handler applies the latest
+      // viewport state once the page has a live surface.
       return
     }
 
@@ -673,6 +722,7 @@ export class BrowserManager {
     record.title = fallbackTitle(url)
     record.error = null
     record.isLoading = true
+    record.pageReady = false
 
     if (!record.hasBounds) {
       // Loading a WebContentsView before it has real bounds gives the page a
@@ -702,10 +752,23 @@ export class BrowserManager {
     return record
   }
 
+  private liveWebContents(record: PaneRecord): WebContents | null {
+    if (record.destroyed) {
+      return null
+    }
+    try {
+      const webContents: WebContents | undefined = record.view?.webContents
+      return webContents && !webContents.isDestroyed() ? webContents : null
+    } catch {
+      return null
+    }
+  }
+
   private destroyPane(record: PaneRecord, emitState = true): void {
     if (record.destroyed) {
       return
     }
+    const webContents = this.liveWebContents(record)
     record.destroyed = true
     this.panes.delete(record.id)
 
@@ -713,8 +776,7 @@ export class BrowserManager {
       this.window.contentView.removeChildView(record.view)
     }
 
-    const webContents = record.view.webContents
-    if (!webContents.isDestroyed()) {
+    if (webContents && !webContents.isDestroyed()) {
       webContents.removeAllListeners()
       webContents.closeDevTools()
       webContents.close()

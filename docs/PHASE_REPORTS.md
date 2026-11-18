@@ -221,7 +221,7 @@ Met in the automated macOS run: eight panes were arranged in grid and freeform, 
 ### Known issues / risks
 
 - Partially visible grid panes hide their native view while scrolling; the page is only interactive when fully in view.
-- Freeform geometry, grid order, column count, layout mode, and maximize state are not persisted across restarts (Phase 3; maximize is intentionally temporary).
+- At Phase 2 completion, freeform geometry, grid order, column count, and layout mode were not persisted; Phase 3 now restores them. Maximize remains intentionally temporary.
 - Freeform drag/resize and mode switching are pointer-only; menu accelerators are configured but raw keystrokes are not e2e-tested.
 - A fully covered pane can be unreachable until the covering pane moves.
 - The engine's default minimum pane card is 160 × 140 CSS px, while main enforces a minimum native view of 80 × 60. Tested sizes produce valid bounds; the two contracts should still be unified and checked at the minimum window size.
@@ -235,7 +235,7 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
 
 ## Phase 3 — Viewport emulation and persistence
 
-- **Status:** In progress. Per-pane viewport emulation is implemented and verified; workspace/profile persistence and the profile manager remain.
+- **Status:** In progress. Per-pane viewport emulation and workspace persistence are implemented and verified; the profile manager remains.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered so far
@@ -256,35 +256,58 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
 - Pane headers wrap their address and viewport controls at narrow grid widths; five-column panes keep a usable address field with no horizontal overflow.
 - 8 new unit tests cover preset lookup, custom parsing/rejection, and fit-scale calculation.
 - E2e verifies mobile/tablet/custom metrics (`window.innerWidth`, `window.innerHeight`, `devicePixelRatio`) from inside the fixture pages, concurrent per-pane presets, invalid custom recovery, fit/actual emulation scale, return to responsive sizing, and five-column header wrapping.
+- Added versioned workspace persistence:
+  - `app-state.json` stores the active workspace ID;
+  - `workspaces/default.json` stores stable pane IDs, profile references, URLs, viewport settings, layout mode, columns, grid order, freeform geometry, and freeform z-order;
+  - all reads/writes are validated; writes use temporary files, fsync, and rename;
+  - invalid files are preserved with `.corrupt-<timestamp>` and the app starts safely.
+- Restore behavior:
+  - pane definitions are created before the shell reads state, so the renderer sees the restored workspace on its first read;
+  - existing profile IDs and partitions are reused; missing profile metadata is reconstructed against the same partition ID;
+  - grid/freeform arrangements and selected columns restore independently;
+  - maximized/focused state is intentionally not persisted.
+- Renderer layout persistence:
+  - the shell sends normalized layout state through a typed `save-workspace-layout` IPC after committed changes, but not during active drags;
+  - freeform rectangles are copied into plain objects before IPC (Vue reactive proxies cannot be structured-cloned);
+  - the main process normalizes unknown/missing pane references before writing.
+- Fixed a restore-only Electron crash:
+  - device emulation is deferred until a page has loaded; enabling it on an empty `WebContentsView` before its first navigation segfaulted Electron;
+  - shutdown flushes queued workspace writes through `will-quit`.
+- Added 13 tests: workspace schema validation/normalization (7), workspace store persistence/corruption/validation (5), and profile ID restoration (1).
+- Extended the restart e2e to verify restored pane ID, profile, authenticated URL, mobile viewport, grid columns, freeform geometry, layout mode, native alignment, retained closed-profile cookies, and continued operation after restore.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npx vitest run tests/unit/viewports.test.ts` | Passed: 8 viewport tests. |
-| `npm run test:unit` | Passed: 6 files, 80 tests. |
+| `npx vitest run tests/unit/viewports.test.ts tests/unit/workspace.test.ts tests/unit/workspace-store.test.ts` | Passed: 8 viewport, 7 workspace schema, and 5 workspace-store tests. |
+| `npm run test:unit` | Passed: 8 files, 93 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 6.9 s. Existing Phase 2 coverage plus viewport emulation, concurrent pane presets, validation, fit/actual state, and five-column header wrapping. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (46.27 kB), preload (2.99 kB), and the renderer bundle. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 7.3 s. Existing Phase 2 coverage plus viewport emulation, concurrent pane presets, validation, fit/actual state, five-column header wrapping, and workspace restore after restart. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (63.48 kB), preload (3.15 kB), and the renderer bundle. |
 | Manual viewport check | Passed. The fixture reported 390 × 844 at DPR 3 in fit and actual modes. Fit rendered the page scaled down inside the pane; actual rendered at 1:1 and clipped the 844 px viewport at the pane's 696 px content height while the reported CSS viewport stayed 390 × 844. |
+| Restore smoke check | Passed with a hand-authored workspace: one pane, mobile viewport, freeform geometry, and a fixture URL restored; the app stayed running. The failure path that enabled emulation before load was isolated to an Electron SIGSEGV and fixed by deferring emulation until `did-stop-loading`. |
 
 ### Exit criteria
 
-Not yet met. Viewport emulation is verified, but the Phase 3 exit condition still requires workspace/profile state (pane URLs, order, grid/freeform arrangement, viewport settings, and active workspace) to restore reliably after restart, plus the profile manager.
+Not yet met. Workspace and profile state now restore reliably after restart, including pane IDs, profile references, URLs, viewports, grid/freeform layout, and selected columns. The Phase 3 exit condition still requires the profile manager with clear/delete lifecycle.
 
 ### Known issues / risks
 
 - Actual mode clips an emulated viewport that is taller or wider than the pane; there is no pane-level pan/scroll for the oversized emulated surface yet.
 - Fit mode scales the emulated page inside the native view but does not center it; the unused area is page background.
 - Optional user-agent overrides from `SPEC.md` §10.2 are not implemented; no UA spoofing is performed.
-- Viewport settings are not persisted across restarts until workspace persistence lands.
+- Only the default workspace exists; there is no create/rename/duplicate/switch/delete workspace UI yet. `app-state.json` carries an active workspace ID for future switching.
+- Window bounds, theme preference, and multiple workspace files are not part of restored state yet.
+- Maximized/focused state is intentionally not persisted.
 - The display scale selector is hidden only by wrapping, not collapsed into the pane menu; very narrow freeform panes produce a taller three-row chrome block.
+- Overlapping freeform panes can cover each other's headers and far resize handles; the 8-pane stress test dispatches z-order/maximize actions directly when another pane's header would intercept pointer events.
 - The fixture verifies layout/dpr values, not touch, GPS, or device-specific APIs.
 
 ### Next smallest slice
 
-Add a versioned workspace store in the main process and persist/restore pane order, URLs, per-pane viewport settings, selected grid columns, grid/freeform arrangement, and layout mode. Keep profile identity and session data separate from workspace JSON, validate every restored value, and extend the restart e2e to prove the restored workspace.
+Implement the profile manager: list profiles with labels and creation dates, show pane usage, rename profiles, clear profile data with confirmation, and delete unused profiles while blocking deletion of profiles referenced by live panes. Add typed IPC plus a compact manager UI, and verify persistence/corruption behavior after rename/delete.
 
 ## Phase 4 — Polish and macOS packaging
 

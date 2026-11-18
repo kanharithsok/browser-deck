@@ -111,7 +111,7 @@ Record material technical decisions here. Keep entries short but include context
   2. A compact toolbar selector exposes columns 1–5; add/remove and window resize reflow through the engine.
   3. The engine reports vertical overflow and narrow columns. Until native-aware scrolling lands, the shell shows a notice and keeps the workspace non-scrollable rather than allowing native views to escape or misalign.
   4. Native bounds remain measured from DOM content rectangles and validated by main. The grid engine does not write native bounds directly.
-  5. Freeform panes, drag reorder, and column persistence remain deferred.
+  5. Freeform panes and drag reorder were deferred to later Phase 2 slices; column selection now persists through the Phase 3 workspace store.
 
 - **Alternatives considered:**
   - **Keep CSS auto-fit.** Rejected because it hides layout math in CSS, cannot expose a real column count, and cannot be reused for freeform layout.
@@ -121,7 +121,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - A window too short for all rows now scrolls; the native-aware visibility behavior is defined in ADR-005.
   - Narrow columns produce a warning but remain usable in tested sizes; the engine and native minimums still need unification.
-  - Columns reset to the default on restart until workspace persistence arrives in Phase 3.
+  - Columns are persisted with the workspace.
   - Absolute pane placement makes later freeform and z-order integration possible without changing the native bounds path.
 
 - **Evidence / verification:**
@@ -183,7 +183,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - Websites are temporarily hidden during a drag; this is intentional and ends on drop/cancel.
   - Drag reorder is pointer-only for now; keyboard reordering is still needed for accessibility.
-  - Grid order is not persisted across restarts until workspace persistence lands.
+  - Grid order is persisted with the workspace; drag reordering remains pointer-only.
   - Drop-target outlines are shell DOM and visible because native views are hidden for the drag duration.
 
 - **Evidence / verification:**
@@ -216,7 +216,7 @@ Record material technical decisions here. Keep entries short but include context
   - Websites are temporarily hidden during freeform manipulation.
   - Freeform mode is pointer-only for now; keyboard manipulation and maximize/restore remain.
   - Normalized minimum-size clamping can make panes overlap on very small windows.
-  - Freeform state is not persisted yet.
+  - Freeform normalized geometry and z-order are persisted with the workspace.
   - A fully covered pane may be unreachable until the covering pane is moved or another z-order control is added.
 
 - **Evidence / verification:**
@@ -308,7 +308,7 @@ Record material technical decisions here. Keep entries short but include context
   - Preset and custom dimensions are exact inside the page, and two panes can hold different viewports simultaneously.
   - Fit mode can leave unused space because the emulated view is scaled and left-aligned inside the pane.
   - Actual mode renders at 1:1 and clips a viewport that is larger than the pane; pane-level panning/scroll for the emulated surface is not implemented.
-  - Viewport settings are not persisted yet; they reset on restart until the workspace store lands.
+  - Viewport settings are persisted with the workspace (see ADR-011).
   - Narrow pane headers wrap their controls rather than hiding them.
 
 - **Evidence / verification:**
@@ -317,6 +317,41 @@ Record material technical decisions here. Keep entries short but include context
   - E2e submits a 100 px custom width and confirms the visible alert plus unchanged mobile preset.
   - Manual macOS capture shows mobile fit scaled inside the pane and actual at 1:1 with the lower content clipped at the pane edge while the page still reports 390 × 844.
   - Five-column layout e2e asserts no header overflow and a usable address width.
+
+## ADR-011 — Workspace state is persisted by main from validated renderer layout
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Phase 3 must restore pane URLs, per-pane viewports, order, profile references, and grid/freeform layout after restart. Pane ownership is split: `BrowserManager` owns native views, URLs, viewports, and profile IDs; the renderer owns grid order, columns, freeform geometry, z-order, and mode. `SPEC.md` §11 requires validated, versioned, atomically written JSON and warns against storing browser contents or secrets.
+
+- **Decision:**
+  1. `WorkspaceStore` in the main process owns `app-state.json` and `workspaces/<id>.json`. `app-state.json` stores the schema version and active workspace ID; the workspace file stores pane definitions and layout state.
+  2. Pane definitions contain stable pane IDs, profile IDs, absolute `http:`/`https:`/`about:blank` URLs, and validated viewport settings. They never contain cookies, storage, page content, or credentials.
+  3. The renderer sends normalized layout state through typed `save-workspace-layout` IPC. The main process validates/normalizes it against current pane IDs, appends missing references, drops unknown panes, and writes atomically. Renderer saves are skipped during active drags and committed after the interaction.
+  4. On startup, main loads the workspace and creates panes before loading the shell, so the renderer's first `getState` sees restored panes and layout. Missing profile records are reconstructed with the same profile ID so existing partitions retain their sessions.
+  5. Invalid workspace/app-state files are preserved with `.corrupt-<timestamp>` and the app starts from safe defaults. Invalid pane URLs/viewports are rejected before writing.
+  6. Maximized/focused state is intentionally not persisted. Only the default workspace and active workspace pointer exist in this slice; workspace creation/switching UI is deferred.
+  7. Device emulation is deferred until `did-stop-loading`; enabling emulation on an empty view before first navigation caused an Electron SIGSEGV.
+
+- **Alternatives considered:**
+  - **Renderer-owned localStorage/IndexedDB.** Rejected because main must validate persisted URLs/layout, writes must be atomic/versioned, and future main-side workspace switching needs the data.
+  - **Store complete ShellState including profile/session data.** Rejected; profile partitions remain Electron-managed and workspace JSON contains only references.
+  - **Persist only URLs and recreate panes with new IDs/profiles.** Rejected; it would lose stable pane identity and authenticated sessions.
+  - **Load the shell before creating restored panes.** Rejected because the renderer could read an empty transient state and overwrite the saved layout.
+  - **Persist maximize/focus.** Rejected by specification; these are temporary interaction state.
+  - **Apply viewport emulation before load.** Rejected after an isolated macOS SIGSEGV.
+
+- **Consequences:**
+  - Restarts restore pane identity, profile sessions, URLs, viewports, columns, mode, grid order, and freeform geometry.
+  - Workspace JSON grows with pane/layout data but contains no secrets.
+  - The renderer must serialize layout changes and copy reactive proxies into plain objects before IPC.
+  - Window bounds, theme, multiple workspaces, and profile management UI remain future work.
+  - Overlapping freeform panes can still cover shell chrome; persistence does not change native/dwm composition.
+
+- **Evidence / verification:**
+  - Unit tests cover workspace schema validation, unknown/missing pane normalization, corrupt-file recovery, atomic store reloads, invalid pane rejection, and profile-ID restoration.
+  - E2e closes and relaunches with the same user data and verifies the restored pane ID, Alice profile ID, authenticated `/account` URL, mobile viewport (390 × 844, DPR 3), one-column grid setting, freeform mode/geometry, native alignment, and retained Bob profile cookies.
+  - A standalone restore smoke test exposed an Electron SIGSEGV when emulation was applied before load; deferring emulation until `did-stop-loading` removed the crash and the same restore then succeeded.
 
 ## ADR template
 

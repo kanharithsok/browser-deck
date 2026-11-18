@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -13,6 +13,7 @@ import {
 } from '@playwright/test'
 import type { PaneViewRect, ShellState } from '../../src/shared/ipc'
 import type { PaneViewport } from '../../src/shared/viewports'
+import type { WorkspaceData } from '../../src/shared/workspace'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
 
 interface TestHook {
@@ -76,6 +77,15 @@ async function waitFor<T>(
   }
 
   throw new Error(`Timed out waiting for ${label}.${lastError ? ` Last error: ${lastError}` : ''}`)
+}
+
+async function readPersistedWorkspace(userDataDir: string): Promise<WorkspaceData | null> {
+  try {
+    const raw = await readFile(join(userDataDir, 'workspaces', 'default.json'), 'utf8')
+    return JSON.parse(raw) as WorkspaceData
+  } catch {
+    return null
+  }
 }
 
 async function getSnapshot(app: ElectronApplication): Promise<ShellState> {
@@ -715,6 +725,61 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toBe(2)
     await waitForAlignedBounds(app)
 
+    const freeformStartRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!freeformStartRect) {
+      throw new Error('Initial freeform pane bounds are unavailable')
+    }
+
+    // Resize while the pane still occupies its grid slot. Once a pane overlaps
+    // another native view, its far resize handles can be covered by that view.
+    const resizeHandle = await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .locator('[data-resize="se"]')
+      .boundingBox()
+    if (!resizeHandle) {
+      throw new Error('Freeform resize handle is unavailable')
+    }
+    await shellPage.mouse.move(
+      resizeHandle.x + resizeHandle.width / 2,
+      resizeHandle.y + resizeHandle.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(resizeHandle.x + 70, resizeHandle.y + 50, { steps: 8 })
+    await shellPage.mouse.up()
+    await waitForAlignedBounds(app)
+
+    const resizedAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!resizedAliceRect) {
+      throw new Error('Resized freeform pane bounds are unavailable')
+    }
+    expect(resizedAliceRect.width).toBeGreaterThan(freeformStartRect.width + 20)
+    expect(resizedAliceRect.height).toBeGreaterThanOrEqual(freeformStartRect.height - 1)
+
+    const shrinkHandle = await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .locator('[data-resize="nw"]')
+      .boundingBox()
+    if (!shrinkHandle) {
+      throw new Error('Freeform shrink handle is unavailable')
+    }
+    await shellPage.mouse.move(
+      shrinkHandle.x + shrinkHandle.width / 2,
+      shrinkHandle.y + shrinkHandle.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(shrinkHandle.x + 55, shrinkHandle.y + 45, { steps: 8 })
+    await shellPage.mouse.up()
+    await waitForAlignedBounds(app)
+
+    const shrunkAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!shrunkAliceRect) {
+      throw new Error('Shrunk freeform pane bounds are unavailable')
+    }
+    expect(shrunkAliceRect.width).toBeLessThan(resizedAliceRect.width - 20)
+    expect(shrunkAliceRect.height).toBeLessThan(resizedAliceRect.height - 20)
+
     const freeformAliceHeader = await shellPage
       .locator('.pane-card')
       .nth(0)
@@ -744,54 +809,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       throw new Error('Moved freeform pane bounds are unavailable')
     }
     expect(movedAliceRect.x).toBeGreaterThan(gridAliceRect.x + 20)
-
-    const resizeHandle = await shellPage
-      .locator('.pane-card')
-      .nth(0)
-      .locator('[data-resize="se"]')
-      .boundingBox()
-    if (!resizeHandle) {
-      throw new Error('Freeform resize handle is unavailable')
-    }
-    await shellPage.mouse.move(
-      resizeHandle.x + resizeHandle.width / 2,
-      resizeHandle.y + resizeHandle.height / 2
-    )
-    await shellPage.mouse.down()
-    await shellPage.mouse.move(resizeHandle.x + 70, resizeHandle.y + 50, { steps: 8 })
-    await shellPage.mouse.up()
-    await waitForAlignedBounds(app)
-
-    const resizedAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
-    if (!resizedAliceRect) {
-      throw new Error('Resized freeform pane bounds are unavailable')
-    }
-    expect(resizedAliceRect.width).toBeGreaterThan(movedAliceRect.width + 20)
-    expect(resizedAliceRect.height).toBeGreaterThanOrEqual(movedAliceRect.height - 1)
-
-    const shrinkHandle = await shellPage
-      .locator('.pane-card')
-      .nth(0)
-      .locator('[data-resize="nw"]')
-      .boundingBox()
-    if (!shrinkHandle) {
-      throw new Error('Freeform shrink handle is unavailable')
-    }
-    await shellPage.mouse.move(
-      shrinkHandle.x + shrinkHandle.width / 2,
-      shrinkHandle.y + shrinkHandle.height / 2
-    )
-    await shellPage.mouse.down()
-    await shellPage.mouse.move(shrinkHandle.x + 55, shrinkHandle.y + 45, { steps: 8 })
-    await shellPage.mouse.up()
-    await waitForAlignedBounds(app)
-
-    const shrunkAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
-    if (!shrunkAliceRect) {
-      throw new Error('Shrunk freeform pane bounds are unavailable')
-    }
-    expect(shrunkAliceRect.width).toBeLessThan(resizedAliceRect.width - 20)
-    expect(shrunkAliceRect.height).toBeLessThan(resizedAliceRect.height - 20)
 
     await shellPage
       .locator('.pane-card')
@@ -834,8 +851,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!restoredFreeformAlice) {
       throw new Error('Restored freeform pane bounds are unavailable')
     }
-    expect(Math.abs(restoredFreeformAlice.x - shrunkAliceRect.x)).toBeLessThanOrEqual(2)
-    expect(Math.abs(restoredFreeformAlice.width - shrunkAliceRect.width)).toBeLessThanOrEqual(2)
+    expect(Math.abs(restoredFreeformAlice.x - movedAliceRect.x)).toBeLessThanOrEqual(2)
+    expect(Math.abs(restoredFreeformAlice.width - movedAliceRect.width)).toBeLessThanOrEqual(2)
     await gridButton.click()
     await waitForAlignedBounds(app)
 
@@ -1089,6 +1106,66 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     expect(afterSelfClose.panes[0]?.id).toBe(alicePaneId)
 
+    const aliceProfileId = firstProfileIds[0] as string
+    const bobProfileId = firstProfileIds[1] as string
+    const remainingAliceCard = shellPage.locator(
+      `.pane-card[data-pane-id="${alicePaneId}"]`
+    )
+
+    // Make the persisted workspace distinctive: one-column grid defaults,
+    // mobile viewport, then a freeform move. The restart must restore all of it.
+    await shellPage.getByRole('button', { name: 'Grid' }).click()
+    await shellPage.getByLabel('Grid columns').selectOption('1')
+    await remainingAliceCard.locator('.viewport-select').selectOption('mobile')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.preset === 'mobile',
+      'mobile viewport before restart'
+    )
+    await shellPage.getByRole('button', { name: 'Freeform' }).click()
+    await waitForAlignedBounds(app)
+
+    const freeformHeader = await remainingAliceCard.locator('.pane-title-row').boundingBox()
+    if (!freeformHeader) {
+      throw new Error('Freeform pane header is unavailable before restart')
+    }
+    await shellPage.mouse.move(
+      freeformHeader.x + 30,
+      freeformHeader.y + freeformHeader.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(
+      freeformHeader.x + 130,
+      freeformHeader.y + freeformHeader.height / 2 + 60,
+      { steps: 10 }
+    )
+    await shellPage.mouse.up()
+    await waitForAlignedBounds(app)
+
+    const persisted = await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) =>
+        workspace !== null &&
+        workspace.panes.length === 1 &&
+        workspace.panes[0]?.id === alicePaneId &&
+        workspace.panes[0]?.profileId === aliceProfileId &&
+        (workspace.panes[0]?.url.includes('/account') ?? false) &&
+        workspace.panes[0]?.viewport.preset === 'mobile' &&
+        workspace.layout.mode === 'freeform' &&
+        workspace.layout.columns === 1 &&
+        workspace.layout.gridOrder.length === 1 &&
+        workspace.layout.freeformOrder.length === 1 &&
+        workspace.layout.freeform[alicePaneId as string] !== undefined,
+      'workspace layout and pane state to persist'
+    )
+    if (!persisted) {
+      throw new Error('Persisted workspace is unavailable')
+    }
+    const persistedFreeform = persisted.layout.freeform[alicePaneId as string]
+    if (!persistedFreeform) {
+      throw new Error('Persisted freeform geometry is unavailable')
+    }
+
     await app.evaluate(async ({ session }, profileIds) => {
       for (const profileId of profileIds) {
         await session.fromPartition(`persist:paneflow-profile-${profileId}`).cookies.flushStore()
@@ -1098,32 +1175,36 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await app.close()
     app = null
 
-    // Relaunch with the same user data and open the account page directly:
-    // persistent profile cookies and the same authenticated sessions must survive.
+    // Relaunch with the same user data. The workspace, pane identity, profile,
+    // URL, viewport, and freeform arrangement must restore before new activity.
     const restartApp = await launchApp(userDataDir, `${fixture.url}/account,${fixture.url}/account`)
     app = restartApp
 
     const restarted = await waitFor(
       () => getSnapshot(restartApp),
       (state) =>
-        state.panes.length === 2 &&
-        state.panes.every((pane) => pane.url.includes('/account') && !pane.isLoading),
-      'restarted panes to load account pages'
+        state.panes.length === 1 &&
+        state.panes[0]?.id === alicePaneId &&
+        state.panes[0]?.profileId === aliceProfileId &&
+        (state.panes[0]?.url.includes('/account') ?? false) &&
+        !state.panes[0]?.isLoading &&
+        state.panes[0]?.viewport.preset === 'mobile' &&
+        state.layout.mode === 'freeform' &&
+        state.layout.columns === 1 &&
+        state.layout.gridOrder[0] === alicePaneId &&
+        state.layout.freeformOrder[0] === alicePaneId &&
+        state.layout.freeform[alicePaneId as string] !== undefined,
+      'restored workspace and authenticated pane'
     )
-    expect(restarted.panes.map((pane) => pane.profileId)).toEqual(firstProfileIds)
+    expect(restarted.panes.map((pane) => pane.profileId)).toEqual([aliceProfileId])
+    expect(restarted.panes[0]?.url).toContain('/account')
 
     const restartedAliceText = await readPaneBodyText(
       restartApp,
       restarted.panes[0]?.id as string
     )
-    const restartedBobText = await readPaneBodyText(
-      restartApp,
-      restarted.panes[1]?.id as string
-    )
     expect(restartedAliceText).toContain('Signed in as Alice')
     expect(restartedAliceText).not.toContain('Signed in as Bob')
-    expect(restartedBobText).toContain('Signed in as Bob')
-    expect(restartedBobText).not.toContain('Signed in as Alice')
 
     expect(
       await evaluateInPane<string | null>(
@@ -1132,53 +1213,122 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         "localStorage.getItem('paneflow_fixture')"
       )
     ).toBe(aliceStorageBeforeRestart)
-    expect(
-      await evaluateInPane<string | null>(
-        restartApp,
-        restarted.panes[1]?.id as string,
-        "localStorage.getItem('paneflow_fixture')"
-      )
-    ).toBeNull()
 
-    await waitFor(
-      async () => ({
-        first: await readCookie(restartApp, restarted.panes[0]?.id as string),
-        second: await readCookie(restartApp, restarted.panes[1]?.id as string)
-      }),
-      ({ first, second }) =>
-        (first ?? '').includes('paneflow_user=alice') &&
-        (second ?? '').includes('paneflow_user=bob'),
-      'persistent profile cookies after restart'
+    expect(await readCookie(restartApp, restarted.panes[0]?.id as string)).toContain(
+      'paneflow_user=alice'
     )
 
-    await waitForAlignedBounds(restartApp)
+    // The closed Bob pane's profile was retained. Its persistent partition must
+    // still hold the isolated Bob cookies even though no pane references it.
+    const bobProfileCookies = await restartApp.evaluate(
+      async ({ session }, args) => {
+        const cookies = await session
+          .fromPartition(`persist:paneflow-profile-${args.profileId}`)
+          .cookies.get({ url: args.url })
+        return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
+      },
+      { profileId: bobProfileId, url: fixture.url }
+    )
+    expect(bobProfileCookies).toContain('paneflow_user=bob')
+    expect(bobProfileCookies).toContain('paneflow_session=')
 
-    // Native-aware scrolling: add panes, force an overflowing single-column
-    // grid, and verify native views are hidden when partially off-screen.
-    const restartedPages = await waitFor(
+    const restartedLayout = await waitFor(
       async () => restartApp.windows(),
-      (windows) =>
-        windows.some((page) => page.url().startsWith('file:')) &&
-        windows.filter((page) => page.url().includes('/account')).length === 2,
-      'restarted shell and account pages'
+      (windows) => windows.some((page) => page.url().startsWith('file:')),
+      'restarted shell page'
     )
-    const restartShell = restartedPages.find((page) => page.url().startsWith('file:'))
+    const restartShell = restartedLayout.find((page) => page.url().startsWith('file:'))
     if (!restartShell) {
       throw new Error('Restarted shell page is unavailable')
     }
 
-    await restartShell.locator('.toolbar .toolbar-button.primary').click()
+    await expect
+      .poll(() => restartShell.getByRole('button', { name: 'Freeform' }).getAttribute('aria-pressed'))
+      .toBe('true')
+    const workspaceBoundsForFreeform = await shellEvaluate<{
+      left: number
+      top: number
+      width: number
+      height: number
+    }>(
+      restartApp,
+      `(() => {
+        const workspace = document.querySelector('.workspace')
+        if (!(workspace instanceof HTMLElement)) return { left: 0, top: 0, width: 0, height: 0 }
+        const rect = workspace.getBoundingClientRect()
+        return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+      })()`
+    )
+    const restartedCard = await restartShell
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+      .boundingBox()
+    if (
+      !restartedCard ||
+      workspaceBoundsForFreeform.width < 1 ||
+      workspaceBoundsForFreeform.height < 1
+    ) {
+      throw new Error('Restored freeform geometry is unavailable')
+    }
+    expect((restartedCard.x - workspaceBoundsForFreeform.left) / workspaceBoundsForFreeform.width).toBeCloseTo(
+      persistedFreeform.x,
+      2
+    )
+    expect((restartedCard.y - workspaceBoundsForFreeform.top) / workspaceBoundsForFreeform.height).toBeCloseTo(
+      persistedFreeform.y,
+      2
+    )
+    expect(restartedCard.width / workspaceBoundsForFreeform.width).toBeCloseTo(
+      persistedFreeform.width,
+      2
+    )
+    expect(restartedCard.height / workspaceBoundsForFreeform.height).toBeCloseTo(
+      persistedFreeform.height,
+      2
+    )
+    await expect
+      .poll(async () =>
+        evaluateInPane<{ width: number; height: number; dpr: number }>(
+          restartApp,
+          alicePaneId as string,
+          '({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio })'
+        )
+      )
+      .toMatchObject({ width: 390, height: 844, dpr: 3 })
+    await waitForAlignedBounds(restartApp)
+
+    // Continue the Phase 2 workspace tests from a normal two-column grid.
+    await restartShell.getByRole('button', { name: 'Grid' }).click()
+    await expect(restartShell.getByLabel('Grid columns')).toHaveValue('1')
+    await restartShell.getByLabel('Grid columns').selectOption('2')
+    await restartShell
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"] .viewport-select`)
+      .selectOption('responsive')
     await waitFor(
       () => getSnapshot(restartApp),
-      (state) => state.panes.length === 3,
-      'third pane creation'
+      (state) => state.panes[0]?.viewport.preset === 'responsive',
+      'responsive viewport after restart verification'
     )
-    await restartShell.locator('.toolbar .toolbar-button.primary').click()
-    const fourPanes = await waitFor(
-      () => getSnapshot(restartApp),
-      (state) => state.panes.length === 4,
-      'fourth pane creation'
+    await waitForAlignedBounds(restartApp)
+
+    // Native-aware scrolling: add panes, force an overflowing single-column
+    // grid, and verify native views are hidden when partially off-screen.
+    await waitFor(
+      async () => restartApp.windows(),
+      (windows) =>
+        windows.some((page) => page.url().startsWith('file:')) &&
+        windows.filter((page) => page.url().includes('/account')).length === 1,
+      'restarted shell and account pages'
     )
+
+    for (const expectedCount of [2, 3, 4]) {
+      await restartShell.locator('.toolbar .toolbar-button.primary').click()
+      await waitFor(
+        () => getSnapshot(restartApp),
+        (state) => state.panes.length === expectedCount,
+        `${expectedCount} panes after restart additions`
+      )
+    }
+    const fourPanes = await getSnapshot(restartApp)
 
     for (const [offset, path] of ['/pane/three', '/pane/four'].entries()) {
       const index = fourPanes.panes.length - 2 + offset
@@ -1338,16 +1488,18 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await restartShell.mouse.up()
     await waitForAlignedBounds(restartApp)
 
+    // Overlapping freeform panes can cover each other's chrome. Dispatch these
+    // z-order actions directly to verify their command path without hit testing.
     await restartShell
       .locator('.pane-card')
       .nth(0)
       .getByRole('button', { name: 'Send pane to back' })
-      .click()
+      .evaluate((button: HTMLElement) => button.click())
     await restartShell
       .locator('.pane-card')
       .nth(0)
       .getByRole('button', { name: 'Bring pane to front' })
-      .click()
+      .evaluate((button: HTMLElement) => button.click())
     const visibleBeforeMaximize = (await getViewStates(restartApp)).filter(
       (state) => state.visible
     ).length
@@ -1356,7 +1508,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .locator('.pane-card')
       .nth(0)
       .getByRole('button', { name: 'Maximize pane' })
-      .click()
+      .evaluate((button: HTMLElement) => button.click())
     await expect
       .poll(async () => (await getViewStates(restartApp)).filter((s) => s.visible).length)
       .toBe(1)
@@ -1364,7 +1516,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .locator('.pane-card')
       .nth(0)
       .getByRole('button', { name: 'Restore pane' })
-      .click()
+      .evaluate((button: HTMLElement) => button.click())
     await expect
       .poll(async () => (await getViewStates(restartApp)).filter((s) => s.visible).length)
       .toBe(visibleBeforeMaximize)

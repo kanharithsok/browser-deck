@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0–2 complete; Phase 3 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, and per-pane viewport emulation are implemented and verified. Workspace/profile persistence and the profile manager remain.
+> Status: Phases 0–2 complete; Phase 3 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, and workspace persistence are implemented and verified. The profile manager remains.
 
 ## Technology baseline
 
@@ -78,7 +78,7 @@ Grid mode positions absolutely placed `.pane-slot` elements from `layoutGrid` re
 
 Native views cannot be clipped by DOM overflow. Pane content is shown only when its content rectangle is fully inside the visible workspace viewport. Partially visible or off-screen panes are hidden in the native layer, show a shell message, and have no bounds applied while hidden. On scroll, visible panes get updated native bounds, and the main process re-validates the visibility flag before showing any view.
 
-Grid order is renderer state, independent of the main-process pane snapshot order; add/close operations reconcile it. Dragging a pane title hides all native views for the duration of the drag so pointer events stay in the shell, highlights the drop target, then reorders the ID list and restores views using fresh bounds. Grid order and column selection are not persisted yet.
+Grid order is renderer state, independent of the main-process pane snapshot order; add/close operations reconcile it. Dragging a pane title hides all native views for the duration of the drag so pointer events stay in the shell, highlights the drop target, then reorders the ID list and restores views using fresh bounds. Grid order and column selection are persisted with the workspace.
 
 Freeform mode stores per-pane normalized geometry and a separate z-order list. Switching modes preserves the grid order/columns and the freeform geometry independently. Freeform panes have a 6px shell inset around the native content so eight resize handles remain clickable; move/resize updates normalized geometry, hides native views for the interaction, snaps to canvas and neighboring edges, and renders alignment guides in the shell. Panes also expose explicit front/back actions that update both renderer z-order and native child view order through typed IPC.
 
@@ -100,6 +100,8 @@ Menu command routing is tested by invoking menu items from the Electron main pro
 - `viewSize` equal to the requested width and height, and the requested `deviceScaleFactor`.
 - `scale` equal to `min(availableWidth / width, availableHeight / height)` in fit mode, clamped to a safe range, or `1` in actual mode.
 - `disableDeviceEmulation()` for responsive panes.
+
+Emulation is applied only after a page has reached `did-stop-loading`. Enabling device emulation on an empty `WebContentsView` before its first navigation segfaulted Electron 45 on macOS. Viewport changes made while a navigation is in flight are retained in the pane record and applied when loading stops.
 
 The emulated surface remains inside the native pane bounds; only its CSS layout and rendering scale are emulated. Fit scales a fixed viewport down (or up) to fit, and actual renders at 1:1. In actual mode, a viewport larger than the pane is clipped at the pane edge; a pane-level pan/scroll mechanism is not implemented yet. Optional user-agent overrides are intentionally not added in this slice, and no UA spoofing is performed.
 
@@ -172,6 +174,7 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:reload` / `reload-all` | Reload one or all panes |
 | `paneflow:set-pane-bounds` | Validated native view rectangles and visible/hidden state |
 | `paneflow:set-pane-viewport` | Validated per-pane viewport preset, custom size, DPR, and display scale |
+| `paneflow:save-workspace-layout` | Validated renderer-owned grid/freeform layout state |
 | `paneflow:bring-pane-to-front` | Reorder a native pane view to the top of the stack |
 | `paneflow:send-pane-to-back` | Reorder a native pane view to the bottom above the shell |
 | `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
@@ -210,13 +213,23 @@ Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: fa
 
 ## Persistence
 
-Only profile metadata and Electron-managed partition data exist so far. Workspace files, active workspace, pane URLs, layout, and viewport settings are not yet persisted; the next Phase 3 slice adds those with a versioned schema and migrations. No cookies, tokens, page contents, or credentials are written to PaneFlow JSON.
+`ProfileStore` owns `profiles.json`. `WorkspaceStore` owns `app-state.json` and `workspaces/<id>.json`:
+
+- `app-state.json` contains the schema version and active workspace ID.
+- `workspaces/default.json` contains stable pane IDs, profile references, URLs, viewport settings, layout mode, selected grid columns, grid order, normalized freeform geometry, and freeform z-order.
+- Writes serialize through a queue and use a temporary file, `fsync`, and rename. Invalid files are renamed to `.corrupt-<timestamp>` and the app recovers with safe defaults.
+- Pane records are created from the stored workspace before the shell loads, so the renderer's first state read sees the restored panes and layout.
+- Profile IDs are reused, preserving persistent sessions. If profile metadata is missing but the workspace references a valid ID, `ProfileStore.ensure` reconstructs the record for the same partition.
+- The renderer owns layout state and sends normalized updates through `save-workspace-layout`; the main process validates and normalizes pane references. Saves are skipped during active drags and committed after the interaction.
+- Maximized/focused state is intentionally not persisted. No cookies, tokens, page contents, or credentials are written to workspace JSON.
+
+Shutdown flushes queued writes through `will-quit`. Only the default workspace and active-workspace pointer exist today; workspace creation/switching UI and window bounds are future Phase 3/4 work.
 
 ## Testing
 
-- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
-- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, and alignment on macOS.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding and restoration, corruption recovery, and atomic persistence.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns), retained closed-profile cookies, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace restore smoke check, and alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
 
@@ -225,21 +238,20 @@ The Playwright test inspects the main process through a test hook that is only i
 - DOM content cannot be drawn over native browser views. Future contextual UI must use native menus, hide/shift the view, or introduce a separately proven overlay view.
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
-- Viewport settings, pane URLs, and layout state are not persisted yet.
+- Only the default workspace exists; there is no workspace creation/switching/rename UI yet.
+- Window bounds, theme preference, and maximized state are not persisted.
+- Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
+- The profile manager (list/rename/clear/delete) is not implemented yet.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
-- Grid drag reordering is pointer-only and not persisted; keyboard reordering and Phase 3 persistence remain.
+- Grid drag reordering is pointer-only; keyboard reordering remains.
 - Freeform mode is pointer-only; menu accelerators are configured but raw keystrokes are not automated.
 - Maximize is temporary and intentionally not persisted.
 - A fully covered pane can be unreachable until the covering pane moves.
 - Keyboard menu commands act on the active pane inferred from shell/native focus; there is no explicit focused-pane outline yet.
-- Freeform geometry, grid order, column count, layout mode, and maximize state are not persisted across restarts (Phase 3).
 - Freeform snapping guides are wired but not asserted by e2e.
-- The selected 1–5 column count, grid order, freeform geometry, and layout mode are not persisted across restarts (Phase 3).
-- Freeform move/resize/snap/z-order/maximize are engine-only; UI wiring is pending.
 - The layout engine's default 160 × 140 card minimum and main's 80 × 60 native view minimum still need to be unified and verified at the minimum window size.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
-- Startup always creates two panes and uses the first two profile records. Workspace restoration replaces this in Phase 3.
-- Profile rename, clear, delete, explicit sharing, and an in-use profile manager are Phase 3 work.
+- Profile rename, clear, delete, explicit sharing, and an in-use profile manager remain.
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
 - Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.

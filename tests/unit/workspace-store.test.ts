@@ -1,0 +1,146 @@
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { WorkspaceStore } from '../../src/main/workspace-store'
+import { viewportFromPreset } from '../../src/shared/viewports'
+import type { WorkspacePaneDefinition } from '../../src/shared/workspace'
+
+const tempDirectories: string[] = []
+
+const PANE_A = '11111111-1111-4111-8111-111111111111'
+const PANE_B = '22222222-2222-4222-8222-222222222222'
+const PROFILE_A = '33333333-3333-4333-8333-333333333333'
+const PROFILE_B = '44444444-4444-4444-8444-444444444444'
+
+async function makeDirectory(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'paneflow-workspace-'))
+  tempDirectories.push(directory)
+  return directory
+}
+
+function pane(
+  id: string,
+  profileId: string,
+  url = 'https://example.com/',
+  preset: 'responsive' | 'mobile' = 'responsive'
+): WorkspacePaneDefinition {
+  return {
+    id,
+    profileId,
+    url,
+    viewport: viewportFromPreset(preset, 'fit')
+  }
+}
+
+afterEach(async () => {
+  for (const directory of tempDirectories.splice(0)) {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+describe('WorkspaceStore', () => {
+  it('persists pane definitions and restores them after reload', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    expect(store.hasStoredWorkspace()).toBe(false)
+
+    const panes = [pane(PANE_A, PROFILE_A, 'https://example.com/one', 'mobile')]
+    await store.initialize(panes)
+    expect(store.hasStoredWorkspace()).toBe(true)
+
+    const appState = JSON.parse(await readFile(join(directory, 'app-state.json'), 'utf8')) as {
+      version: number
+      activeWorkspaceId: string
+    }
+    expect(appState).toEqual({ version: 1, activeWorkspaceId: 'default' })
+
+    const reloaded = new WorkspaceStore(directory)
+    await reloaded.load()
+    expect(reloaded.hasStoredWorkspace()).toBe(true)
+    expect(reloaded.paneDefinitions()).toEqual(panes)
+    expect(reloaded.layout()).toMatchObject({
+      mode: 'grid',
+      columns: 2,
+      gridOrder: [PANE_A],
+      freeformOrder: [PANE_A]
+    })
+  })
+
+  it('reconciles pane additions and persists freeform layout state', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    await store.initialize([pane(PANE_A, PROFILE_A)])
+
+    await store.setPanes([pane(PANE_A, PROFILE_A), pane(PANE_B, PROFILE_B, 'about:blank')])
+    expect(store.layout().gridOrder).toEqual([PANE_A, PANE_B])
+    expect(store.layout().freeformOrder).toEqual([PANE_A, PANE_B])
+
+    await store.setLayout({
+      mode: 'freeform',
+      columns: 5,
+      gridOrder: [PANE_B, PANE_A],
+      freeform: {
+        [PANE_A]: { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
+      },
+      freeformOrder: [PANE_B, PANE_A]
+    })
+    await store.flush()
+
+    const reloaded = new WorkspaceStore(directory)
+    await reloaded.load()
+    expect(reloaded.paneDefinitions()).toHaveLength(2)
+    expect(reloaded.layout()).toEqual({
+      mode: 'freeform',
+      columns: 5,
+      gridOrder: [PANE_B, PANE_A],
+      freeform: {
+        [PANE_A]: { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
+      },
+      freeformOrder: [PANE_B, PANE_A]
+    })
+  })
+
+  it('preserves a corrupt workspace and starts without stored panes', async () => {
+    const directory = await makeDirectory()
+    await mkdir(join(directory, 'workspaces'), { recursive: true })
+    await writeFile(join(directory, 'workspaces', 'default.json'), '{ nope', 'utf8')
+
+    const store = new WorkspaceStore(directory)
+    await store.load()
+
+    expect(store.hasStoredWorkspace()).toBe(false)
+    const entries = await readdir(join(directory, 'workspaces'))
+    expect(entries.some((entry) => entry.includes('.corrupt-'))).toBe(true)
+  })
+
+  it('preserves a corrupt app-state file and uses the default workspace', async () => {
+    const directory = await makeDirectory()
+    await writeFile(join(directory, 'app-state.json'), 'not json', 'utf8')
+
+    const store = new WorkspaceStore(directory)
+    await store.load()
+
+    expect(store.hasStoredWorkspace()).toBe(false)
+    const entries = await readdir(directory)
+    expect(entries.some((entry) => entry.includes('app-state.json.corrupt-'))).toBe(true)
+  })
+
+  it('rejects invalid pane references before writing', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    await store.initialize([pane(PANE_A, PROFILE_A)])
+
+    await expect(
+      store.setPanes([{ ...pane(PANE_B, PROFILE_B), url: 'javascript:alert(1)' }])
+    ).rejects.toThrow()
+    await expect(
+      store.setPanes([{ ...pane(PANE_B, PROFILE_B), profileId: 'not-a-profile' }])
+    ).rejects.toThrow()
+
+    expect(store.paneDefinitions()).toHaveLength(1)
+  })
+})

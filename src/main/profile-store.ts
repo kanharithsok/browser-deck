@@ -3,6 +3,7 @@ import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   PROFILE_STORE_VERSION,
+  isValidProfileId,
   normalizeProfileLabel,
   validateProfileStoreData,
   type BrowserProfile,
@@ -95,6 +96,30 @@ export class ProfileStore {
 
   get(profileId: string): BrowserProfile | undefined {
     return this.profiles.find((profile) => profile.id === profileId)
+  }
+
+  /**
+   * Restores a profile reference from a workspace. If the metadata file lost
+   * the record but the partition still exists, reusing the ID retains the
+   * profile's browser session instead of silently switching identity.
+   */
+  async ensure(profileId: string): Promise<BrowserProfile> {
+    const existing = this.get(profileId)
+    if (existing) {
+      return existing
+    }
+    if (!isValidProfileId(profileId)) {
+      throw new Error('Invalid profile ID')
+    }
+
+    const profile: BrowserProfile = {
+      id: profileId,
+      label: this.nextDefaultLabel(),
+      createdAt: new Date().toISOString()
+    }
+    this.profiles = [...this.profiles, profile]
+    await this.save()
+    return profile
   }
 
   async create(label?: string): Promise<BrowserProfile> {
