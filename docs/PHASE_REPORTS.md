@@ -362,7 +362,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - documented that arm64-only unsigned builds are for local verification, not notarized distribution.
 - Repeated-switch leak stress:
   - added a read-only `webContentsCount` test hook for non-destroyed webContents;
-  - creates a stress workspace, adds four panes, switches back to the authenticated original workspace, then performs three more round-trip workspace switches;
+  - creates a stress workspace, adds four panes, loads two of them with real fixture pages, switches back to the authenticated original workspace, then performs three more round-trip workspace switches;
   - after every return to the original workspace, asserts the non-destroyed webContents count equals the baseline and native view states equal the active pane count;
   - verifies four stress-workspace native views during each stress activation, then deletes the stress workspace;
   - this covers BrowserManager teardown/recreation, profile reuse, renderer reset, and workspace-file persistence under repeated switching.
@@ -398,7 +398,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 9 files, 104 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, repeated-switch leak stress, and active-pane accessibility. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.2 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, and active-pane accessibility. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle and CSS (21.72 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
@@ -418,7 +418,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Imported workspaces are created inactive and contain fresh profiles; authentication state is intentionally not imported.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
-- Leak stress covers four about:blank panes and four switch cycles; it does not include long-duration memory profiling or loaded-page churn.
+- Leak stress covers four panes with two loaded fixture pages and four switch cycles; it does not include long-duration memory/CPU profiling or heavy third-party pages.
 - Duplicate pane copies only URL/viewport; custom titles are not copied, sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 
 ### Next smallest slice
