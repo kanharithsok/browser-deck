@@ -14,6 +14,7 @@ export interface PaneflowTestHook {
   viewOrder: () => string[]
   readCookie: (paneId: string) => Promise<string | null>
   webContentsId: (paneId: string) => number | null
+  webContentsCount: () => number
   shellWebContentsId: () => number | null
   contentBounds: () => PaneViewRect | null
 }

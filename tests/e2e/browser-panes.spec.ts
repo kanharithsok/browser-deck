@@ -24,6 +24,7 @@ interface TestHook {
   viewOrder(): string[]
   readCookie(paneId: string): Promise<string | null>
   webContentsId(paneId: string): number | null
+  webContentsCount(): number
   shellWebContentsId(): number | null
   contentBounds(): PaneViewRect | null
 }
@@ -147,6 +148,16 @@ async function getEmulationState(
     }
     return hook.emulationState(id)
   }, paneId)
+}
+
+async function getWebContentsCount(app: ElectronApplication): Promise<number> {
+  return app.evaluate(() => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    if (!hook) {
+      throw new Error('Test hook is not installed')
+    }
+    return hook.webContentsCount()
+  })
 }
 
 async function getViewOrder(app: ElectronApplication): Promise<string[]> {
@@ -1670,6 +1681,89 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(workspacesDialog).toHaveCount(0)
     await waitForAlignedBounds(restartApp)
+
+    // Repeated workspace switching and pane churn must not leak webContents
+    // or native views.
+    const baselineWebContents = await getWebContentsCount(restartApp)
+    expect(
+      await shellEvaluate<{ ok: boolean; error?: string }>(
+        restartApp,
+        "window.paneflow.createWorkspace('Stress Workspace')"
+      )
+    ).toMatchObject({ ok: true })
+    const stressWorkspaceId = await waitFor(
+      () => workspaceIdByName('Stress Workspace').catch(() => ''),
+      (id) => id.length > 0,
+      'stress workspace creation'
+    )
+    await shellEvaluate(restartApp, `window.paneflow.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`)
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.id === stressWorkspaceId && state.panes.length === 0,
+      'stress workspace activation'
+    )
+    for (let count = 1; count <= 4; count += 1) {
+      await shellEvaluate(restartApp, 'window.paneflow.addPane()')
+      await waitFor(
+        () => getSnapshot(restartApp),
+        (state) => state.workspace.id === stressWorkspaceId && state.panes.length === count,
+        `${count} stress panes`
+      )
+    }
+    expect(await getViewStates(restartApp)).toHaveLength(4)
+
+    await shellEvaluate(
+      restartApp,
+      `window.paneflow.switchWorkspace(${JSON.stringify(originalWorkspaceId)})`
+    )
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.id === originalWorkspaceId && state.panes.length === 1,
+      'original workspace after stress pane creation'
+    )
+    await waitForAlignedBounds(restartApp)
+    await waitFor(
+      () => getWebContentsCount(restartApp),
+      (count) => count === baselineWebContents,
+      'webContents cleanup after stress pane teardown'
+    )
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      await shellEvaluate(
+        restartApp,
+        `window.paneflow.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`
+      )
+      await waitFor(
+        () => getSnapshot(restartApp),
+        (state) => state.workspace.id === stressWorkspaceId && state.panes.length === 4,
+        `stress workspace cycle ${cycle + 1}`
+      )
+      expect(await getViewStates(restartApp)).toHaveLength(4)
+
+      await shellEvaluate(
+        restartApp,
+        `window.paneflow.switchWorkspace(${JSON.stringify(originalWorkspaceId)})`
+      )
+      await waitFor(
+        () => getSnapshot(restartApp),
+        (state) => state.workspace.id === originalWorkspaceId && state.panes.length === 1,
+        `original workspace cycle ${cycle + 1}`
+      )
+      await waitForAlignedBounds(restartApp)
+      expect(await getViewStates(restartApp)).toHaveLength(1)
+      await waitFor(
+        () => getWebContentsCount(restartApp),
+        (count) => count === baselineWebContents,
+        `webContents cleanup after cycle ${cycle + 1}`
+      )
+    }
+
+    expect(
+      await shellEvaluate<{ ok: boolean; error?: string }>(
+        restartApp,
+        `window.paneflow.deleteWorkspace(${JSON.stringify(stressWorkspaceId)})`
+      )
+    ).toMatchObject({ ok: true })
 
     // Native-aware scrolling: add panes, force an overflowing single-column
     // grid, and verify native views are hidden when partially off-screen.

@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management, profile sharing, theme persistence, and unsigned arm64 packaging are implemented and verified; performance/import-export work and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management, profile sharing, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; import/export, close-and-delete flows, and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -360,6 +360,12 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - added an MIT license and matching package metadata;
   - added `npm run package:mac` and `npm run package:dir` scripts; `dist/` remains ignored;
   - documented that arm64-only unsigned builds are for local verification, not notarized distribution.
+- Repeated-switch leak stress:
+  - added a read-only `webContentsCount` test hook for non-destroyed webContents;
+  - creates a stress workspace, adds four panes, switches back to the authenticated original workspace, then performs three more round-trip workspace switches;
+  - after every return to the original workspace, asserts the non-destroyed webContents count equals the baseline and native view states equal the active pane count;
+  - verifies four stress-workspace native views during each stress activation, then deletes the stress workspace;
+  - this covers BrowserManager teardown/recreation, profile reuse, renderer reset, and workspace-file persistence under repeated switching.
 
 ### Verification commands and results
 
@@ -368,8 +374,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 8 files, 99 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 10.2 s, including window-bounds persistence, workspace lifecycle/switching, profile management, explicit profile sharing, and theme restore. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (88.34 kB), preload (4.79 kB), renderer bundle (263.46 kB), and CSS (21.41 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.0 s, including window-bounds persistence, workspace lifecycle/switching, profile management, explicit profile sharing, theme restore, and repeated-switch leak stress. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (88.46 kB), preload (4.79 kB), renderer bundle (263.46 kB), and CSS (21.41 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -386,7 +392,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Close-and-delete profile flows, workspace import/export, and workspace-specific window bounds remain.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
+- Leak stress covers four about:blank panes and four switch cycles; it does not include long-duration memory profiling or loaded-page churn.
 
 ### Next smallest slice
 
-Add performance/leak stress for repeated pane and workspace switching, then implement workspace import/export and signed/notarized release prerequisites.
+Implement workspace import/export with validation and fresh-profile defaults, then add close-and-delete profile flows and remaining accessibility/polish.

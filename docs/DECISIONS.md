@@ -543,6 +543,34 @@ Record material technical decisions here. Keep entries short but include context
   - `file` reports an arm64 binary; `Info.plist` reports the expected bundle ID, version, icon, and category; `codesign` shows unsigned/ad-hoc as configured.
   - The packaged app launched, rendered the shell and panes, and quit cleanly.
 
+## ADR-018 — Leak stress checks webContents and native-view counts across switches
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Workspace switching destroys and recreates native `WebContentsView` instances. A failure to close old views would leak renderer processes, file handles, and memory. Automated memory thresholds are noisy across machines, but exact ownership counts are deterministic.
+
+- **Decision:**
+  1. Expose a read-only test hook counting all non-destroyed Electron webContents.
+  2. Create a four-pane stress workspace once, then perform one initial and three round-trip switches to the authenticated original workspace.
+  3. After each return, assert the webContents count equals the baseline and native view states equal the active pane count.
+  4. Assert four stress-workspace native views are present during each activation.
+  5. Delete the stress workspace at the end; leave deeper memory/CPU profiling to a separate benchmark slice.
+
+- **Alternatives considered:**
+  - **Assert RSS/working-set thresholds.** Rejected as flaky across OS/Electron/GPU states.
+  - **Long-duration soak test in e2e.** Deferred; too slow for the integration suite.
+  - **Only count pane records.** Rejected; pane records can disappear while native webContents/views leak.
+  - **Skip stress after workspace tests.** Rejected; switching is the highest-risk teardown path.
+
+- **Consequences:**
+  - Regressions in view/webContents teardown fail deterministically.
+  - The test does not prove long-term memory stability or loaded-page performance.
+  - The stress workspace creates four additional profiles retained after workspace deletion (profile-manager cleanup remains explicit).
+
+- **Evidence / verification:**
+  - E2e passes the four-cycle stress and keeps webContents/native-view counts at baseline.
+  - Existing eight-pane alignment, profile, workspace, restart, and packaging checks remain green.
+
 ## ADR template
 
 ### ADR-NNN — Title
