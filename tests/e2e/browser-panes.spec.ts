@@ -1740,6 +1740,22 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         `${count} stress panes`
       )
     }
+    const stressPanes = (await getSnapshot(restartApp)).panes
+    const stressFixtureUrl = (fixture as FixtureServer).url
+    for (const [index, pane] of stressPanes.slice(0, 2).entries()) {
+      const input = restartShell.locator(`.pane-card[data-pane-id="${pane.id}"] .address-input`)
+      await input.fill(`${stressFixtureUrl}/pane/stress?slot=${index}`)
+      await input.press('Enter')
+    }
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        stressPanes.slice(0, 2).every((pane) => {
+          const current = state.panes.find((entry) => entry.id === pane.id)
+          return current?.url.includes('/pane/stress') && !current.isLoading
+        }),
+      'loaded stress panes'
+    )
     expect(await getViewStates(restartApp)).toHaveLength(4)
 
     await shellEvaluate(

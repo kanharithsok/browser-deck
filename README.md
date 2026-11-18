@@ -168,7 +168,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
 - Active-pane chrome is indicated by an accent border and `aria-current`; a full screen-reader/contrast audit remains.
 - Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
-- Leak coverage is count-based over four switch cycles; long-duration memory and loaded-page performance profiling are not yet run.
+- Leak coverage is count-based over four switch cycles with two loaded fixture pages; long-duration memory/CPU and heavy third-party page profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
 - Maximized/focused state is not restored across restarts. Window bounds restore only when visible on a current display.
