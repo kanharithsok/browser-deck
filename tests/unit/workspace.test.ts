@@ -4,6 +4,7 @@ import {
   APP_STATE_VERSION,
   DEFAULT_WORKSPACE_ID,
   WORKSPACE_STORE_VERSION,
+  adjacentWorkspaceId,
   createEmptyWorkspace,
   defaultWorkspaceLayout,
   normalizeWorkspaceLayout,
@@ -220,5 +221,32 @@ describe('app state validation', () => {
     expect(workspace.id).toBe(DEFAULT_WORKSPACE_ID)
     expect(workspace.panes).toEqual([])
     expect(workspace.layout).toEqual(defaultWorkspaceLayout([]))
+  })
+})
+
+describe('workspace cycling', () => {
+  const workspaces = [
+    { id: 'charlie', name: 'Charlie' },
+    { id: 'alpha', name: 'Alpha' },
+    { id: 'bravo', name: 'Bravo' }
+  ]
+
+  it('selects the next and previous workspace in stable name order', () => {
+    expect(adjacentWorkspaceId(workspaces, 'alpha', 'next')).toBe('bravo')
+    expect(adjacentWorkspaceId(workspaces, 'bravo', 'next')).toBe('charlie')
+    expect(adjacentWorkspaceId(workspaces, 'charlie', 'previous')).toBe('bravo')
+    expect(adjacentWorkspaceId(workspaces, 'bravo', 'previous')).toBe('alpha')
+  })
+
+  it('wraps at both ends without mutating the input order', () => {
+    expect(adjacentWorkspaceId(workspaces, 'charlie', 'next')).toBe('alpha')
+    expect(adjacentWorkspaceId(workspaces, 'alpha', 'previous')).toBe('charlie')
+    expect(workspaces.map((workspace) => workspace.id)).toEqual(['charlie', 'alpha', 'bravo'])
+  })
+
+  it('returns null when there is no other workspace to activate', () => {
+    expect(adjacentWorkspaceId([], 'alpha', 'next')).toBeNull()
+    expect(adjacentWorkspaceId([{ id: 'alpha', name: 'Alpha' }], 'alpha', 'previous')).toBeNull()
+    expect(adjacentWorkspaceId(workspaces, 'unknown', 'next')).toBeNull()
   })
 })

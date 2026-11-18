@@ -324,6 +324,18 @@ async function clickAppMenuCommand(app: ElectronApplication, id: string): Promis
   }, id)
 }
 
+async function readAppMenuItem(
+  app: ElectronApplication,
+  id: string
+): Promise<{ id: string; accelerator: string | null; enabled: boolean } | null> {
+  return app.evaluate(({ Menu }, menuItemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(menuItemId)
+    return item
+      ? { id: item.id, accelerator: item.accelerator, enabled: item.enabled }
+      : null
+  }, id)
+}
+
 async function shellEvaluate<T>(app: ElectronApplication, script: string): Promise<T> {
   return app.evaluate(async ({ webContents }, source) => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -1613,6 +1625,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Workspace management: create, switch, rename, duplicate, and delete.
     const originalWorkspaceId = (await getSnapshot(restartApp)).workspace.id
+    expect(await readAppMenuItem(restartApp, 'workspace-next')).toEqual({
+      id: 'workspace-next',
+      accelerator: 'CmdOrCtrl+Shift+]',
+      enabled: false
+    })
+    expect(await readAppMenuItem(restartApp, 'workspace-previous')).toEqual({
+      id: 'workspace-previous',
+      accelerator: 'CmdOrCtrl+Shift+[',
+      enabled: false
+    })
     await restartShell.locator('.workspace-switcher').click()
     const workspacesDialog = restartShell.getByRole('dialog', { name: 'Workspaces' })
     await expect(workspacesDialog).toBeVisible()
@@ -1649,6 +1671,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const secondWorkspaceRow = workspaceRowById(secondWorkspaceId)
     await expect(secondWorkspaceRow).toHaveCount(1)
     await expect(secondWorkspaceRow).toContainText('0 panes')
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
+      .toBe(true)
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
+      .toBe(true)
 
     await secondWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
     await expect(workspacesDialog).toHaveCount(0)
@@ -1661,11 +1689,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await restartShell.locator('.toolbar .toolbar-button.primary').click()
-    await waitFor(
+    const populatedSecond = await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
       'pane in the second workspace'
     )
+    const secondPane = populatedSecond.panes[0]
+    expect(secondPane).toBeTruthy()
 
     await restartShell.locator('.workspace-switcher').click()
     await expect(workspacesDialog).toBeVisible()
@@ -1689,7 +1719,105 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await expect(workspaceRowById(copyWorkspaceId)).toHaveCount(1)
     await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 pane')
+    await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
+    await expect(workspacesDialog).toHaveCount(0)
 
+    // Native Workspace menu shortcuts cycle in name order and restore the
+    // target workspace's panes. Both items re-enable after each switch.
+    const expectWorkspaceMenuEnabled = async (enabled: boolean): Promise<void> => {
+      await expect
+        .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
+        .toBe(enabled)
+      await expect
+        .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
+        .toBe(enabled)
+    }
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-next')
+    const copyActivated = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.id === copyWorkspaceId && state.panes.length === 1,
+      'copy workspace activation from the menu'
+    )
+    const copyPane = copyActivated.panes[0]
+    expect(copyPane).toBeTruthy()
+    expect(copyPane?.id).not.toBe(secondPane?.id)
+    expect(copyPane?.profileId).not.toBe(secondPane?.profileId)
+    expect(copyPane?.url).toBe(secondPane?.url)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-next')
+    const originalViaMenu = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === originalWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === alicePaneId &&
+        state.panes[0]?.profileId === aliceProfileId &&
+        (state.panes[0]?.url.includes('/account') ?? false),
+      'original workspace activation from the menu'
+    )
+    expect(originalViaMenu.panes[0]?.id).toBe(alicePaneId)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-previous')
+    const copyRestored = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === copyWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === copyPane?.id,
+      'copy workspace restore from the menu'
+    )
+    expect(copyRestored.panes[0]?.url).toBe(secondPane?.url)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-previous')
+    const secondRestored = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === secondWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === secondPane?.id,
+      'second workspace restore from the menu'
+    )
+    expect(secondRestored.panes[0]?.profileId).toBe(secondPane?.profileId)
+    expect(secondRestored.panes[0]?.url).toBe(secondPane?.url)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-previous')
+    const wrappedOriginal = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === originalWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === alicePaneId,
+      'workspace previous wraparound'
+    )
+    expect(wrappedOriginal.panes[0]?.profileId).toBe(aliceProfileId)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-next')
+    const wrappedSecond = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === secondWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === secondPane?.id,
+      'workspace next wraparound'
+    )
+    expect(wrappedSecond.panes[0]?.id).toBe(secondPane?.id)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await restartShell.locator('.workspace-switcher').click()
+    await expect(workspacesDialog).toBeVisible()
     await originalWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
     await expect(workspacesDialog).toHaveCount(0)
     await expect(restartShell.locator('.workspace-switcher')).toContainText('Workspace')
@@ -1720,6 +1848,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(workspacesDialog).toHaveCount(0)
     await waitForAlignedBounds(restartApp)
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
+      .toBe(false)
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
+      .toBe(false)
 
     // Repeated workspace switching and pane churn must not leak webContents
     // or native views.
