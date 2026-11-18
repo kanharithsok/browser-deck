@@ -795,7 +795,13 @@ async function createWindow(): Promise<void> {
     minHeight: MIN_APP_WINDOW_HEIGHT,
     show: false,
     title: 'PaneFlow',
-    backgroundColor: windowBackgroundColor()
+    backgroundColor: windowBackgroundColor(),
+    ...(process.platform === 'darwin'
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          trafficLightPosition: { x: 16, y: 16 }
+        }
+      : {})
   })
   mainWindow = window
 

@@ -15,6 +15,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Menus/dialogs/overlays render above browser content without breaking layout. (Native pane menu rendered above native content; manual check.)
 - [x] Closing a pane destroys its view and `webContents`. (E2e checks the closed `webContents` and remaining pane.)
 - [x] Retina coordinate behavior. (DPR 2; bounds remained aligned.)
+- [x] Hidden-inset macOS title bar. (E2e checks that content bounds fill the window, traffic lights use the custom 16,16 position, the toolbar reports a drag region, and the brand clears the traffic lights; window capture manually reviewed.)
 
 ## Browser isolation
 

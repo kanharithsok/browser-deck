@@ -772,6 +772,35 @@ Record material technical decisions here. Keep entries short but include context
   - `electron-fuses read` reports the expected fuse states.
   - A fresh packaged app launch with an isolated `HOME` and remote debugging reported the shell at `paneflow://shell/index.html`, proving the ASAR-backed custom protocol works with fuses enabled. See `SECURITY.md` and the Phase 4 report.
 
+## ADR-026 — macOS uses a hidden-inset title bar with the toolbar as the drag region
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** The default macOS title bar adds a separate 28 px chrome strip that duplicates the app identity above PaneFlow's compact toolbar. The product direction calls for quiet, minimal chrome while preserving standard macOS window controls.
+
+- **Decision:**
+  1. Set `titleBarStyle: 'hiddenInset'` on macOS and position the traffic lights at `(16, 16)` inside the 46 px toolbar.
+  2. Let the shell `WebContentsView` fill the full window content bounds; no separate title-bar view is added.
+  3. Make the toolbar the window drag region with `-webkit-app-region: drag`, and mark buttons, selects, and their wrappers `no-drag`.
+  4. Reserve 84 px at the toolbar's leading edge so content never sits under the traffic lights.
+  5. Keep the default native frame on non-macOS platforms until their own window-chrome design is implemented.
+
+- **Alternatives considered:**
+  - **`frame: false` with custom HTML window controls.** Rejected; reimplementing close/minimize/zoom would duplicate native behavior and reduce accessibility.
+  - **Keep the default title bar.** Rejected; it adds a redundant chrome row and conflicts with the compact toolbar.
+  - **`titleBarStyle: 'hidden'`.** Rejected in favor of `hiddenInset`, which gives the intended inset traffic-light placement.
+  - **Make the whole window draggable.** Rejected; native pane interactions and shell controls must keep their pointer behavior.
+
+- **Consequences:**
+  - The shell and toolbar extend to the top of the window; native pane bounds are unaffected because they are measured relative to shell content.
+  - Toolbar interactive controls must remain `no-drag`, or they will not receive clicks.
+  - Future Windows/Linux chrome needs a separate platform-specific decision.
+  - The native window title remains available to the OS and menus even though it is not painted in the content area.
+
+- **Evidence / verification:**
+  - E2e asserts content bounds equal window bounds, traffic lights report `{ x: 16, y: 16 }`, the toolbar computed `-webkit-app-region` is `drag`, the brand starts at least 76 px from the leading edge, and the toolbar does not overflow at 760 px.
+  - A macOS window capture confirmed the traffic lights sit inside the toolbar without overlapping the brand or workspace switcher.
+
 ## ADR template
 
 ### ADR-NNN — Title

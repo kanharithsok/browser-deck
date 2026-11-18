@@ -79,6 +79,8 @@ BaseWindow.contentView
 
 The shell is the first child of `contentView` and fills the window content area. Each pane view is added afterwards and occupies only the rectangle of its `.pane-content` placeholder. Pane chrome therefore remains ordinary DOM and is never covered by a native view. Native menus are the only intentional overlay above browser content in the current composition.
 
+On macOS the window uses `titleBarStyle: 'hiddenInset'` with the traffic lights at `(16, 16)`. The shell fills the full window bounds, the toolbar is the window drag region, and interactive toolbar controls opt out with `-webkit-app-region: no-drag`. The toolbar reserves 84 px at the leading edge for traffic lights. Other platforms keep the default native frame.
+
 Grid mode positions absolutely placed `.pane-slot` elements from `layoutGrid` results. `App.vue` measures the workspace content box, recomputes placements for the selected 1–5 columns, and re-measures native content rectangles after Vue commits the layout. The old CSS auto-fit grid is no longer used. The workspace scrolls to the engine's full content height.
 
 Native views cannot be clipped by DOM overflow. Pane content is shown only when its content rectangle is fully inside the visible workspace viewport. Partially visible or off-screen panes are hidden in the native layer, show a shell message, and have no bounds applied while hidden. On scroll, visible panes get updated native bounds, and the main process re-validates the visibility flag before showing any view.
