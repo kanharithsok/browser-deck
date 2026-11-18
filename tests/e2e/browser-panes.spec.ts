@@ -172,10 +172,18 @@ async function readPaneZOrder(page: Page): Promise<Record<string, string>> {
 
 async function readPersistedAppState(
   userDataDir: string
-): Promise<{ activeWorkspaceId?: string; windowBounds?: PaneViewRect } | null> {
+): Promise<{
+  activeWorkspaceId?: string
+  windowBounds?: PaneViewRect
+  theme?: string
+} | null> {
   try {
     const raw = await readFile(join(userDataDir, 'app-state.json'), 'utf8')
-    return JSON.parse(raw) as { activeWorkspaceId?: string; windowBounds?: PaneViewRect }
+    return JSON.parse(raw) as {
+      activeWorkspaceId?: string
+      windowBounds?: PaneViewRect
+      theme?: string
+    }
   } catch {
     return null
   }
@@ -1228,6 +1236,21 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'window bounds to persist'
     )
 
+    await clickAppMenuCommand(app as ElectronApplication, 'theme-dark')
+    await waitFor(
+      () => readPersistedAppState(userDataDir),
+      (state) => state?.theme === 'dark',
+      'dark theme preference to persist'
+    )
+    await expect
+      .poll(() =>
+        shellEvaluate<string>(
+          app as ElectronApplication,
+          "getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()"
+        )
+      )
+      .toBe('#171716')
+
     await app.evaluate(async ({ session }, profileIds) => {
       for (const profileId of profileIds) {
         await session.fromPartition(`persist:paneflow-profile-${profileId}`).cookies.flushStore()
@@ -1270,6 +1293,21 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     expect(restarted.panes.map((pane) => pane.profileId)).toEqual([aliceProfileId])
     expect(restarted.panes[0]?.url).toContain('/account')
+    expect(await restartApp.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('dark')
+    await expect
+      .poll(() =>
+        shellEvaluate<string>(
+          restartApp,
+          "getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()"
+        )
+      )
+      .toBe('#171716')
+    await clickAppMenuCommand(restartApp, 'theme-system')
+    await waitFor(
+      () => readPersistedAppState(userDataDir),
+      (state) => state?.theme === 'system',
+      'theme preference reset to system'
+    )
 
     const restartedAliceText = await readPaneBodyText(
       restartApp,

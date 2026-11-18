@@ -4,7 +4,11 @@ import PaneCard from './components/PaneCard.vue'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
 import type { PaneViewport } from '../../shared/viewports'
-import type { WorkspaceLayout, WorkspaceSummary } from '../../shared/workspace'
+import type {
+  ThemePreference,
+  WorkspaceLayout,
+  WorkspaceSummary
+} from '../../shared/workspace'
 import {
   DEFAULT_GRID_COLUMNS,
   DEFAULT_MIN_PANE_HEIGHT,
@@ -79,6 +83,7 @@ const workspacesDialogEl = ref<HTMLElement | null>(null)
 const workspacesButtonEl = ref<HTMLButtonElement | null>(null)
 const workspaceName = ref('Workspace')
 const currentWorkspaceId = ref<string | null>(null)
+const themePreference = ref<ThemePreference>('system')
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -538,7 +543,17 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
   maximizedPaneId.value = null
 }
 
+function applyThemeToDocument(): void {
+  if (themePreference.value === 'system') {
+    document.documentElement.removeAttribute('data-theme')
+  } else {
+    document.documentElement.dataset.theme = themePreference.value
+  }
+}
+
 function applyState(state: ShellState): void {
+  themePreference.value = state.theme
+  applyThemeToDocument()
   const workspaceChanged = currentWorkspaceId.value !== state.workspace.id
   if (workspaceChanged) {
     currentWorkspaceId.value = state.workspace.id

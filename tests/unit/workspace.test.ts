@@ -187,6 +187,33 @@ describe('app state validation', () => {
     })
   })
 
+  it('accepts valid theme preferences and ignores invalid values', () => {
+    expect(
+      parseAppStateData({
+        version: APP_STATE_VERSION,
+        activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+        theme: 'dark'
+      })
+    ).toEqual({
+      ok: true,
+      data: {
+        version: APP_STATE_VERSION,
+        activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+        theme: 'dark'
+      }
+    })
+    expect(
+      parseAppStateData({
+        version: APP_STATE_VERSION,
+        activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+        theme: 'sepia'
+      })
+    ).toEqual({
+      ok: true,
+      data: { version: APP_STATE_VERSION, activeWorkspaceId: DEFAULT_WORKSPACE_ID }
+    })
+  })
+
   it('creates empty workspaces with a valid default layout', () => {
     const workspace = createEmptyWorkspace()
     expect(workspace.version).toBe(WORKSPACE_STORE_VERSION)

@@ -8,7 +8,7 @@ import {
   type WorkspaceIdentity,
   type WorkspaceListResult
 } from '../shared/ipc'
-import type { WorkspaceLayout } from '../shared/workspace'
+import type { ThemePreference, WorkspaceLayout } from '../shared/workspace'
 import type { BrowserManager } from './browser-manager'
 
 interface IpcContext {
@@ -17,6 +17,7 @@ interface IpcContext {
   getCanvasSize: () => CanvasSize
   getWorkspaceLayout: () => WorkspaceLayout
   getWorkspaceIdentity: () => WorkspaceIdentity
+  getThemePreference: () => ThemePreference
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
@@ -56,11 +57,14 @@ export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.getState, (event): ShellState => {
     const layout = context.getWorkspaceLayout()
     const workspace = context.getWorkspaceIdentity()
+    const theme = context.getThemePreference()
     if (!isTrustedSender(event, context)) {
-      return { panes: [], layout, workspace }
+      return { panes: [], layout, workspace, theme }
     }
     const manager = context.getBrowserManager()
-    return manager ? { ...manager.snapshot(), layout, workspace } : { panes: [], layout, workspace }
+    return manager
+      ? { ...manager.snapshot(), layout, workspace, theme }
+      : { panes: [], layout, workspace, theme }
   })
 
   ipcMain.handle(IPC_CHANNELS.addPane, async (event, payload: unknown): Promise<ScriptResult> => {

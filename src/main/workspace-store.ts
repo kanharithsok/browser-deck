@@ -18,8 +18,10 @@ import {
   parseAppStateData,
   parseWorkspaceData,
   createEmptyWorkspace,
+  isThemePreference,
   normalizeWorkspaceName,
   type AppStateData,
+  type ThemePreference,
   type WindowBounds,
   type WorkspaceData,
   type WorkspaceLayout,
@@ -178,6 +180,22 @@ export class WorkspaceStore {
 
   windowBounds(): WindowBounds | null {
     return this.appState.windowBounds ? { ...this.appState.windowBounds } : null
+  }
+
+  theme(): ThemePreference {
+    return this.appState.theme ?? 'system'
+  }
+
+  async setTheme(input: unknown): Promise<void> {
+    this.ensureLoaded()
+    if (!isThemePreference(input)) {
+      return
+    }
+    if (this.theme() === input) {
+      return
+    }
+    this.appState = { ...this.appState, theme: input }
+    await this.save(false)
   }
 
   async setWindowBounds(input: unknown): Promise<void> {

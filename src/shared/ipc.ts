@@ -1,6 +1,10 @@
 import type { ProfileSummary } from './profiles'
 import type { PaneViewport } from './viewports'
-import type { WorkspaceLayout, WorkspaceSummary } from './workspace'
+import type {
+  ThemePreference,
+  WorkspaceLayout,
+  WorkspaceSummary
+} from './workspace'
 
 export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
@@ -90,6 +94,7 @@ export interface WorkspaceIdentity {
 export interface ShellState extends ShellSnapshot {
   layout: WorkspaceLayout
   workspace: WorkspaceIdentity
+  theme: ThemePreference
 }
 
 export interface PaneMenuRequest {

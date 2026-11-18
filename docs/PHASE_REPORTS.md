@@ -322,7 +322,7 @@ Phase 4: theme restoration, accessibility and visual polish, performance stress,
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Safe window-bounds persistence, workspace management, and explicit profile sharing are implemented and verified; theme restoration, performance work, and macOS packaging remain.
+- **Status:** In progress. Safe window-bounds persistence, workspace management, explicit profile sharing, and theme persistence are implemented and verified; performance work and macOS packaging remain.
 
 ### Delivered so far
 
@@ -348,29 +348,35 @@ Phase 4: theme restoration, accessibility and visual polish, performance stress,
   - shared-profile panes use the same persistent partition, so cookies and site storage are intentionally shared;
   - clear/delete remain blocked while any shared pane is open;
   - e2e opens two panes with one unused profile, verifies distinct pane IDs and shared localStorage, checks the shared count, verifies clear/delete protection, closes both panes, and confirms the remaining workspace is unchanged.
+- Theme preference:
+  - `app-state.json` stores `system`, `light`, or `dark`; invalid values are ignored.
+  - A native **View → Theme** radio menu applies the preference and persists it.
+  - The shell applies an explicit `data-theme` token override so light/dark selection is independent of the Playwright/Chromium `prefers-color-scheme` propagation limitation; `system` removes the override and follows system appearance.
+  - Native window/shell background colors update with the theme, and menu checkmarks stay synchronized.
+  - E2e selects Dark, verifies the persisted value and dark tokens before restart, confirms Dark restores after relaunch, then resets to System.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 8 files, 97 tests. |
+| `npm run test:unit` | Passed: 8 files, 99 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 9.9 s, including window-bounds persistence, workspace lifecycle/switching, profile management, and explicit profile sharing. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (85.89 kB), preload (4.79 kB), and the renderer bundle (263.12 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 9.8 s, including window-bounds persistence, workspace lifecycle/switching, profile management, explicit profile sharing, and theme restore. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (88.34 kB), preload (4.79 kB), renderer bundle (263.46 kB), and CSS (21.41 kB). |
 
 ### Known issues / risks
 
-- Theme preference and maximized/fullscreen state are not persisted.
+- Maximized/fullscreen state is not persisted.
 - Window restoration checks visibility against current displays but does not clamp oversized windows to the work area.
 - Workspace switching tears down and recreates native pane views; pages reload rather than staying warm in the background.
 - Duplicated workspaces immediately create fresh profiles even before the duplicate is opened; unused profiles remain in the profile manager.
 - Deleting a workspace does not delete profiles that were referenced only by that workspace.
 - Profile sharing is initiated from the profile manager; the toolbar Add pane action always creates a fresh profile.
 - Shared profiles are intentional but still share one Chromium partition; there is no clone-profile-with-session feature.
-- Close-and-delete profile flows, workspace import/export, theme restoration, and workspace-specific window bounds remain.
+- Close-and-delete profile flows, workspace import/export, and workspace-specific window bounds remain.
 - Packaging, signing, notarization, and release automation are not implemented.
 
 ### Next smallest slice
 
-Add theme preference persistence and performance/leak stress for repeated pane/workspace switching, then prepare macOS packaging.
+Add performance/leak stress for repeated pane and workspace switching, then prepare macOS packaging.

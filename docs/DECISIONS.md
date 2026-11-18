@@ -410,7 +410,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - Normal window size/position survives restart when still visible.
   - Off-screen or malformed bounds fall back to the default 1280 × 860 window.
-  - Theme preference and maximized/fullscreen state remain unpersisted.
+  - Theme preference is handled separately in ADR-016; maximized/fullscreen state remains unpersisted.
   - Tests use a distinctive window bound and verify the app-state file plus restored geometry.
 
 - **Evidence / verification:**
@@ -478,6 +478,36 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e opens two panes with the same unused profile, verifies distinct pane IDs and `2 panes` headers, navigates both to the fixture, writes localStorage in one, reads it from the other, verifies profile-manager usage and clear/delete protection, then closes both panes.
   - Fresh-pane, isolation, session-restart, workspace, and profile-manager tests still pass.
+
+## ADR-016 — Theme preference uses explicit shell tokens plus native chrome
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` requires system appearance plus light/dark themes and suggests a persisted theme preference. Electron `nativeTheme.themeSource` changes native window chrome, but in the tested Electron/Playwright environment it did not reliably propagate `prefers-color-scheme` to pre-created shell renderers.
+
+- **Decision:**
+  1. Persist `system`/`light`/`dark` as an optional app-state theme; invalid values fall back to system.
+  2. Expose a native **View → Theme** radio submenu. Selection updates `nativeTheme.themeSource`, native window/shell background colors, menu checkmarks, persistence, and shell state.
+  3. The shell applies `data-theme="light"` or `data-theme="dark"` with explicit CSS token overrides. `system` removes the attribute and uses the existing `prefers-color-scheme` block.
+  4. Theme preference is application-wide, not per workspace. It is applied at startup from app-state without persisting a redundant write.
+  5. The shell state carries `theme` so renderer restarts, workspace switches, and menu actions converge on the same preference.
+
+- **Alternatives considered:**
+  - **Rely only on `nativeTheme.themeSource` + media query.** Rejected after the tested renderer remained light when the main process reported Dark.
+  - **Renderer localStorage.** Rejected; app-state is the validated main-owned persistence layer.
+  - **Inject a preload theme class before render.** Deferred; the first state read applies the attribute before interaction.
+  - **Per-workspace themes.** Rejected for this slice; theme is application chrome, not workspace content.
+
+- **Consequences:**
+  - Light/dark selection is deterministic and testable even if Chromium media propagation fails.
+  - CSS token definitions are duplicated for explicit light/dark blocks; the system media block remains the default.
+  - Native titlebar/chrome and shell tokens stay synchronized through the same preference.
+  - Theme is not restored per workspace.
+
+- **Evidence / verification:**
+  - Unit tests validate theme parsing and workspace-store persistence.
+  - E2e selects Dark via the native menu, verifies `app-state.json` and dark shell tokens, restarts the app, confirms Dark restores, and resets to System.
+  - Existing light/dark token emulation checks still pass.
 
 ## ADR template
 
