@@ -650,6 +650,18 @@ async function addPane(): Promise<void> {
   }
 }
 
+async function duplicatePane(paneId: string): Promise<void> {
+  actionError.value = null
+  try {
+    const result = await window.paneflow.duplicatePane(paneId)
+    if (!result.ok) {
+      actionError.value = result.error
+    }
+  } catch {
+    actionError.value = 'Could not duplicate the pane.'
+  }
+}
+
 async function closePane(paneId: string): Promise<void> {
   actionError.value = null
   try {
@@ -1213,6 +1225,11 @@ function handlePaneCommand(command: PaneCommand): void {
   switch (command) {
     case 'add-pane':
       void addPane()
+      break
+    case 'duplicate-pane':
+      if (pane) {
+        void duplicatePane(pane.id)
+      }
       break
     case 'close-pane':
       if (pane) {

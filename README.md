@@ -9,7 +9,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 ## Current capabilities
 
 - Electron `BaseWindow` with a trusted Vue shell and native `WebContentsView` browser panes.
-- Two browser panes by default; add and close panes dynamically.
+- Two browser panes by default; add, duplicate, and close panes dynamically. Duplicates copy URL/viewport with a fresh profile.
 - One persistent, internally generated browser profile per new pane.
 - Independent navigation, back, forward, reload, loading, and load-error states.
 - Per-pane native menu for back/forward/reload/DevTools/close.
@@ -80,6 +80,7 @@ npm run dev
 | Shortcut | Action |
 | --- | --- |
 | `Cmd/Ctrl+T` | Add pane |
+| `Cmd/Ctrl+D` | Duplicate active pane |
 | `Cmd/Ctrl+Shift+W` | Close active pane |
 | `Cmd/Ctrl+Alt+R` | Reload active pane |
 | `Cmd/Ctrl+Alt+Shift+R` | Reload all panes |

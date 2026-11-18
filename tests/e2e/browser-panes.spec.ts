@@ -949,6 +949,36 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(Math.abs(restoredMaximizeRect.width - preMaximizeRect.width)).toBeLessThanOrEqual(2)
 
     // Application menu commands route through preload to the active pane.
+    const duplicateSource = (await getSnapshot(app as ElectronApplication)).panes.find(
+      (pane) => pane.id === alicePaneId
+    )
+    if (!duplicateSource) {
+      throw new Error('Duplicate source pane is unavailable')
+    }
+    const preDuplicateIds = new Set(
+      (await getSnapshot(app as ElectronApplication)).panes.map((pane) => pane.id)
+    )
+    await shellPage
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"] .address-input`)
+      .click()
+    await clickAppMenuCommand(app, 'pane-duplicate')
+    const duplicatedState = await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.length === 3,
+      'menu duplicate pane'
+    )
+    const duplicatedPane = duplicatedState.panes.find((pane) => !preDuplicateIds.has(pane.id))
+    expect(duplicatedPane?.profileId).toBeTruthy()
+    expect(firstProfileIds).not.toContain(duplicatedPane?.profileId)
+    expect(duplicatedPane?.url).toBe(duplicateSource.url)
+    expect(duplicatedPane?.viewport).toEqual(duplicateSource.viewport)
+    await clickAppMenuCommand(app, 'pane-close')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.length === 2,
+      'duplicate pane close'
+    )
+
     await clickAppMenuCommand(app, 'pane-add')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),

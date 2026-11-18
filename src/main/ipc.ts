@@ -113,6 +113,25 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
+  ipcMain.handle(IPC_CHANNELS.duplicatePane, async (event, payload: unknown): Promise<ScriptResult> => {
+    if (!isTrustedSender(event, context)) {
+      return unauthorized
+    }
+    const manager = context.getBrowserManager()
+    if (!manager) {
+      return unavailable
+    }
+    const paneId = readString(payload, 100)
+    if (!paneId) {
+      return { ok: false, error: 'Invalid pane ID.' }
+    }
+    try {
+      return await manager.duplicatePane(paneId)
+    } catch {
+      return { ok: false, error: 'Could not duplicate the pane.' }
+    }
+  })
+
   ipcMain.handle(IPC_CHANNELS.closePane, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {
       return unauthorized

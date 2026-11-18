@@ -601,6 +601,35 @@ Record material technical decisions here. Keep entries short but include context
   - E2e shares one profile between two panes, opens the manager, confirms Close panes & delete, verifies both panes disappear, the profile row is removed, Alice remains, and native alignment restores.
   - Existing unused-profile clear/delete and in-use rename/open-pane checks still pass.
 
+## ADR-020 — Duplicate pane uses a fresh profile
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` requires duplicating a pane to copy URL and viewport settings while creating a fresh profile by default. No duplication action existed.
+
+- **Decision:**
+  1. Add `duplicatePane(paneId)` to BrowserManager and typed IPC.
+  2. Create a fresh profile via ProfileStore, then create a new pane with the source URL and copied viewport settings.
+  3. Expose **Duplicate Pane** in the native Pane menu (`CmdOrCtrl+D`) and the pane context menu.
+  4. Route the app-menu command through the active pane; context-menu duplication acts on its source pane.
+  5. Do not copy cookies, storage, custom titles, or session data. Sharing remains explicit through the profile manager.
+
+- **Alternatives considered:**
+  - **Copy the source profile.** Rejected; duplication defaults to fresh isolation.
+  - **Duplicate only from the toolbar.** Rejected; active-pane menu and context action are more direct.
+  - **Copy page history/session state.** Rejected; only URL/viewport are required and safe.
+  - **Duplicate custom pane titles.** Deferred; titles remain page-derived.
+
+- **Consequences:**
+  - Duplication cannot accidentally share authentication.
+  - The duplicate loads the URL in a new profile, so signed-in state is not copied.
+  - Viewport and URL stay aligned with the source.
+  - A dedicated header button is not added; menu/context menu are the discoverable surfaces.
+
+- **Evidence / verification:**
+  - E2e selects Alice, invokes Pane → Duplicate Pane, verifies three panes, a fresh profile, matching URL/viewport, then closes the duplicate and returns to two panes.
+  - Existing menu, profile, workspace, and native alignment checks remain green.
+
 ## ADR template
 
 ### ADR-NNN — Title
