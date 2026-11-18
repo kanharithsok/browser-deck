@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0 and 1 complete. The native-view composition and per-profile browser session foundation are implemented and verified. Later phases build on them; see `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
+> Status: Phases 0 and 1 complete; Phase 2 in progress. The native-view composition and per-profile browser session foundation are implemented and verified. The pure layout engine exists and is unit-tested; renderer integration is not started. See `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
 
 ## Technology baseline
 
@@ -42,6 +42,7 @@ src/
   shared/
     ipc.ts              channel names and IPC payload types
     geometry.ts         bounds validation and clamping
+    layout.ts           pure grid/freeform layout engine
     profiles.ts         profile IDs, labels, partition names, validation
     url.ts              address normalization and scheme policy
 tests/
@@ -85,6 +86,21 @@ The main process re-validates every rectangle in `parsePaneBounds`:
 The canvas comes from the shell view's actual bounds, not from a renderer-supplied size. A view is made visible only after valid bounds exist and when it is not showing `about:blank` or an error panel. Load failures hide the native view so the shell can render a retry panel in place.
 
 Focus stays in the trusted shell: adding a pane moves focus to its address input, and closing a pane recovers focus to an adjacent address control (or the empty-state action). Native pane focus handoff is not implemented yet.
+
+## Layout engine
+
+`src/shared/layout.ts` is the pure layout subsystem. It has no Vue or Electron imports and is unit-tested independently of the running app.
+
+Contract:
+
+- All pixel geometry is expressed in CSS pixels/DIP at the renderer boundary. The main process continues to validate native view rectangles separately.
+- Grid layout is row-major with equal-width columns, validated 1–5 column counts, configurable padding/gap, and a minimum pane card size. Row height is at least the minimum, so excessive rows report `needsVerticalScroll` instead of silently shrinking or dropping panes. Narrow columns report `columnTooNarrow` for the caller to handle.
+- Grid order is the pane ID order. Reorder, add, and remove operations feed a new ordered ID list into `layoutGrid`.
+- Freeform geometry can be stored as normalized rectangles and converted to pixels for the current canvas. Conversion clamps to the canvas and enforces a minimum size; when the canvas is smaller than the minimum, the canvas wins.
+- Move and edge-resize helpers clamp to canvas bounds. Snapping produces candidate-aligned rectangles and guide coordinates for canvas edges/centers, neighboring pane edges/centers, and optional grid lines within a configurable threshold.
+- Ordering helpers treat the end of the list as the topmost/front pane. Maximize returns both the maximized rectangle and the previous rectangle for restore.
+
+The renderer still uses its CSS auto-fit grid; wiring the engine into DOM card placement and native bounds synchronization is the next Phase 2 slice. Scroll-aware clipping of native views is still unresolved and is intentionally not hidden behind the engine.
 
 ## Browser pane lifecycle
 
@@ -162,7 +178,7 @@ Only profile metadata and Electron-managed partition data exist so far. Workspac
 
 ## Testing
 
-- **Unit:** pure bounds validation, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
 - **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, DOM/native bounds alignment before and after resize, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, and visual alignment on macOS.
 
@@ -172,7 +188,8 @@ The Playwright test inspects the main process through a test hook that is only i
 
 - DOM content cannot be drawn over native browser views. Future contextual UI must use native menus, hide/shift the view, or introduce a separately proven overlay view.
 - Native views are not clipped by the shell's scroll containers. Scrolling many panes and partial off-screen clipping are Phase 2 work.
-- The current grid shrinks panes rather than scrolling. Below the 80 × 60 minimum the bounds update is rejected and the shell shows an error banner.
+- The current renderer grid still shrinks panes rather than using the new layout engine. Below the 80 × 60 native minimum the bounds update is rejected and the shell shows an error banner.
+- The layout engine's default 160 × 120 card minimum and main's 80 × 60 native view minimum must be reconciled when grid mode is wired.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
 - Startup always creates two panes and uses the first two profile records. Workspace restoration replaces this in Phase 3.
 - Profile rename, clear, delete, explicit sharing, and an in-use profile manager are Phase 3 work.

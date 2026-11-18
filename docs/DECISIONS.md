@@ -69,6 +69,37 @@ Record material technical decisions here. Keep entries short but include context
   - The same test verifies persistent profile cookies and localStorage survive restart, and IndexedDB/localStorage stay isolated within the run.
   - See the Phase 1 section of `docs/PHASE_REPORTS.md`.
 
+## ADR-003 — Pure layout engine and normalized freeform geometry
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** Phase 2 needs grid reflow, freeform movement/resizing, snapping, z-order, maximize/restore, and window-size adaptation. Layout math inside Vue components or IPC handlers would be hard to test and easy to desynchronize from native view bounds.
+
+- **Decision:**
+  1. `src/shared/layout.ts` owns layout calculations and imports neither Vue nor Electron.
+  2. Grid geometry is computed directly in CSS pixels/DIP for equal-width, row-major columns. Grid order is the pane-ID order. Minimum row height produces a `needsVerticalScroll` signal rather than dropping or arbitrarily shrinking panes; narrow columns produce a separate signal.
+  3. Freeform pane geometry is stored normalized (0..1) and converted to pixels for the current canvas. Conversion, movement, and resizing clamp to the canvas and enforce the minimum card size; when the canvas itself is smaller than the minimum, the canvas wins.
+  4. Snapping uses canvas edges/centers, neighbor edges/centers, and optional grid lines within a configurable threshold. It returns aligned guides for display during drag/resize only.
+  5. Array order represents pane ordering, and the last item is the front/topmost pane. Maximize returns both maximized and restore rectangles.
+  6. Native bounds remain the main process's responsibility. The renderer may use engine rectangles to position cards, but main still validates every reported native view rectangle.
+
+- **Alternatives considered:**
+  - **Rely on CSS grid/flex for layout math.** Rejected as the long-term engine: hard to unit-test, normalize, persist, or apply snapping.
+  - **Store freeform geometry in pixels.** Rejected because window resizing would require ad-hoc rescaling and could lose relative arrangement.
+  - **Clamp panel geometry inside Vue components.** Rejected because it duplicates logic and weakens testability.
+  - **Allow grids to shrink panes indefinitely.** Rejected; it makes pane controls unusable and silently changes the layout contract.
+
+- **Consequences:**
+  - Grid mode does not yet solve scrolling or native-view clipping; the engine exposes the overflow condition so the renderer can handle it explicitly.
+  - Normalized geometry can collide when the window becomes too small to honor minimum sizes; the conversion clamps, and the UI must surface/reorganize collisions later.
+  - The 160 × 120 CSS-pixel card minimum is a layout-engine default, distinct from the existing 80 × 60 native-view minimum. The wiring slice must reconcile them.
+  - Snap distances are CSS-pixel/DIP values; shell zoom remains disabled to avoid coordinate drift.
+
+- **Evidence / verification:**
+  - `tests/unit/layout.test.ts` covers 33 cases for grid placement/reflow, columns 1–5, overflow flags, add/remove/reorder, clamping, move/resize, normalized conversion, snapping, ordering, and maximize/restore.
+  - `npm run test:unit` passes with 67 tests across 5 files.
+  - The engine is not wired into the renderer yet; the existing CSS auto-fit grid and native bounds behavior are unchanged.
+
 ## ADR template
 
 ### ADR-NNN — Title
