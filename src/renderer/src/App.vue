@@ -1783,6 +1783,7 @@ onBeforeUnmount(() => {
             :freeform="layoutMode === 'freeform' && !maximizedPaneId"
             :maximized="maximizedPaneId === pane.id"
             :suspended="suspendedPaneIds.has(pane.id)"
+            :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"

@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management, workspace import/export, duplicate pane, profile sharing/close-and-delete, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; accessibility polish and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -385,6 +385,11 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - workspace dialog adds **Import…** and **Export active** actions with canceled/error/no-op handling;
   - 5 unit tests cover serialization, profile stripping, JSON round-trip, fresh-ID materialization, unsafe URLs/viewports, invalid pane order/freeform geometry, and mapping errors;
   - native file-dialog interaction itself is not automated in e2e; the pure transfer and materialization paths are unit-tested.
+- Active-pane accessibility:
+  - the active pane card receives a restrained accent border and `aria-current="true"`;
+  - shell focus/pointer and native pane focus continue to drive the active pane;
+  - e2e verifies exactly one active card, moves focus to another pane, and confirms the border/`aria-current` follow;
+  - the existing reduced-motion media rule disables animations/transitions/smooth scrolling when requested.
 
 ### Verification commands and results
 
@@ -393,8 +398,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 9 files, 104 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including duplicate pane, window-bounds persistence, workspace lifecycle toggling, profile management/sharing/close-and-delete, theme restore, and repeated-switch leak stress. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.11 kB), and CSS (21.65 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, repeated-switch leak stress, and active-pane accessibility. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle and CSS (21.72 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |

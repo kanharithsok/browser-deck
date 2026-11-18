@@ -16,12 +16,14 @@ const props = withDefaults(
     freeform?: boolean
     maximized?: boolean
     suspended?: boolean
+    active?: boolean
     profilePaneCount?: number
   }>(),
   {
     freeform: false,
     maximized: false,
     suspended: false,
+    active: false,
     profilePaneCount: 1
   }
 )
@@ -223,9 +225,10 @@ function requestClose(): void {
 <template>
   <article
     class="pane-card"
-    :class="{ 'pane-card-freeform': freeform }"
+    :class="{ 'pane-card-freeform': freeform, 'pane-card-active': active }"
     :data-pane-id="pane.id"
     :aria-label="`${pane.title} pane`"
+    :aria-current="active ? 'true' : undefined"
   >
     <header class="pane-header">
       <div class="pane-title-row">
@@ -502,6 +505,10 @@ function requestClose(): void {
 
 .pane-card-freeform .pane-body {
   padding: 6px;
+}
+
+.pane-card-active {
+  border-color: var(--accent);
 }
 
 .pane-header {
