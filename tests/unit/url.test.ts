@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_URL_LENGTH,
   isAllowedNavigationUrl,
   isLoopbackHostname,
   normalizeAddress
@@ -81,6 +82,17 @@ describe('normalizeAddress', () => {
     expect(normalizeAddress('http://')).toMatchObject({ ok: false })
     expect(normalizeAddress('https://?q=1')).toMatchObject({ ok: false })
   })
+
+  it('rejects embedded credentials and oversized addresses', () => {
+    expect(normalizeAddress('https://alice:secret@example.com/')).toMatchObject({
+      ok: false,
+      error: 'Addresses with embedded credentials are not allowed.'
+    })
+    expect(normalizeAddress(`https://example.com/${'a'.repeat(MAX_URL_LENGTH)}`)).toMatchObject({
+      ok: false,
+      error: 'Address is too long.'
+    })
+  })
 })
 
 describe('isAllowedNavigationUrl', () => {
@@ -92,9 +104,18 @@ describe('isAllowedNavigationUrl', () => {
 
   it('rejects unsupported or malformed URLs', () => {
     expect(isAllowedNavigationUrl('javascript:alert(1)')).toBe(false)
+    expect(isAllowedNavigationUrl('data:text/html,hello')).toBe(false)
     expect(isAllowedNavigationUrl('file:///tmp/page.html')).toBe(false)
     expect(isAllowedNavigationUrl('about:config')).toBe(false)
     expect(isAllowedNavigationUrl('not a url')).toBe(false)
+  })
+
+  it('rejects embedded credentials and oversized URLs', () => {
+    expect(isAllowedNavigationUrl('https://alice:secret@example.com/')).toBe(false)
+    expect(isAllowedNavigationUrl(`https://example.com/${'a'.repeat(MAX_URL_LENGTH)}`)).toBe(false)
+    expect(isAllowedNavigationUrl(`https://example.com/${'a'.repeat(MAX_URL_LENGTH - 20)}`)).toBe(
+      true
+    )
   })
 })
 

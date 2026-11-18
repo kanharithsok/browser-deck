@@ -113,10 +113,10 @@ async function getSnapshot(app: ElectronApplication): Promise<ShellState> {
 async function findShellPage(app: ElectronApplication): Promise<Page> {
   const pages = await waitFor(
     async () => app.windows(),
-    (windows) => windows.some((page) => page.url().startsWith('file:')),
+    (windows) => windows.some((page) => page.url().startsWith('paneflow://shell/index.html')),
     'shell page'
   )
-  const shellPage = pages.find((page) => page.url().startsWith('file:'))
+  const shellPage = pages.find((page) => page.url().startsWith('paneflow://shell/index.html'))
   if (!shellPage) {
     throw new Error('Shell page is unavailable')
   }

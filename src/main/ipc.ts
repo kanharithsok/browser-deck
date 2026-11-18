@@ -9,12 +9,20 @@ import {
   type WorkspaceListResult,
   type WorkspaceTransferResult
 } from '../shared/ipc'
-import type { ThemePreference, WorkspaceLayout } from '../shared/workspace'
+import { isTrustedShellDocumentUrl } from '../shared/shell'
+import {
+  DEFAULT_WORKSPACE_ID,
+  DEFAULT_WORKSPACE_NAME,
+  defaultWorkspaceLayout,
+  type ThemePreference,
+  type WorkspaceLayout
+} from '../shared/workspace'
 import type { BrowserManager } from './browser-manager'
 
 interface IpcContext {
   getBrowserManager: () => BrowserManager | null
   getShellWebContents: () => WebContents | null
+  getDevServerUrl: () => string | null
   getCanvasSize: () => CanvasSize
   getWorkspaceLayout: () => WorkspaceLayout
   getWorkspaceIdentity: () => WorkspaceIdentity
@@ -39,10 +47,23 @@ const unavailable: ScriptResult = { ok: false, error: 'Pane manager is not ready
 
 function isTrustedSender(event: IpcMainInvokeEvent, context: IpcContext): boolean {
   const shell = context.getShellWebContents()
-  if (!shell || shell.isDestroyed()) {
+  if (!shell || shell.isDestroyed() || event.sender !== shell) {
     return false
   }
-  return event.sender === shell && event.senderFrame === shell.mainFrame
+  const frame = event.senderFrame
+  if (!frame || frame !== shell.mainFrame) {
+    return false
+  }
+  return isTrustedShellDocumentUrl(frame.url, context.getDevServerUrl())
+}
+
+function emptyShellState(): ShellState {
+  return {
+    panes: [],
+    layout: defaultWorkspaceLayout([]),
+    workspace: { id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME },
+    theme: 'system'
+  }
 }
 
 function readString(value: unknown, maxLength = 2048): string | null {
@@ -58,12 +79,12 @@ function readFiniteNumber(value: unknown): number | null {
 
 export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.getState, (event): ShellState => {
+    if (!isTrustedSender(event, context)) {
+      return emptyShellState()
+    }
     const layout = context.getWorkspaceLayout()
     const workspace = context.getWorkspaceIdentity()
     const theme = context.getThemePreference()
-    if (!isTrustedSender(event, context)) {
-      return { panes: [], layout, workspace, theme }
-    }
     const manager = context.getBrowserManager()
     return manager
       ? { ...manager.snapshot(), layout, workspace, theme }

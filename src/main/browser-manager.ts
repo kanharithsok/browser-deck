@@ -3,7 +3,7 @@ import { Menu, WebContentsView, type BaseWindow, type WebContents } from 'electr
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
 import type { PaneState, PaneViewRect, ScriptResult, ShellSnapshot } from '../shared/ipc'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
-import { isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
+import { MAX_URL_LENGTH, isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
 import {
   RESPONSIVE_VIEWPORT,
   parsePaneViewport,
@@ -152,7 +152,7 @@ export class BrowserManager {
   private addPaneForProfile(profile: BrowserProfile, address?: string): ScriptResult {
     let url = 'about:blank'
     if (address !== undefined && address.trim() !== '') {
-      if (address.length > 2048) {
+      if (address.length > MAX_URL_LENGTH) {
         return { ok: false, error: 'Address is too long.' }
       }
       const normalized = normalizeAddress(address)
@@ -198,7 +198,7 @@ export class BrowserManager {
       return { ok: false, error: 'Pane not found.' }
     }
 
-    if (address.length > 2048) {
+    if (address.length > MAX_URL_LENGTH) {
       return { ok: false, error: 'Address is too long.' }
     }
 
@@ -606,8 +606,13 @@ export class BrowserManager {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        nodeIntegrationInSubFrames: false,
+        nodeIntegrationInWorker: false,
+        webviewTag: false,
         webSecurity: true,
         allowRunningInsecureContent: false,
+        experimentalFeatures: false,
+        navigateOnDragDrop: false,
         devTools: true
       }
     })

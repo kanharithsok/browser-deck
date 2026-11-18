@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, automated accessibility checks, and a 50-cycle loaded-page soak are implemented and verified; a VoiceOver/screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, automated accessibility checks, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified; a VoiceOver/screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -416,6 +416,20 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - darkened light-theme `--text-faint` from `#73726c` to `#6f6e68` so its weakest background ratio rises from 4.42 to 4.69;
   - all checked pairs now meet 4.5:1 for text or 3:1 for UI/focus;
   - `npm run check:contrast` runs in CI.
+- Security hardening:
+  - replaced the packaged `file://` shell load with a privileged, standard, secure `paneflow://shell/index.html` custom protocol; the handler serves only the built renderer root, rejects traversal/backslash/null/ambiguous paths and malformed encodings, sets explicit MIME types, `nosniff`, no-referrer, no-store, and CSP headers;
+  - moved CSP construction into pure `src/shared/shell.ts`; production is `connect-src 'self'` with no localhost/WebSocket allowance, while development adds only the exact loopback `ELECTRON_RENDERER_URL` origin and matching `ws:`/`wss:` source; inline script/eval stay blocked and inline styles remain for Vue geometry;
+  - removed the static CSP meta tag so headers are authoritative in both modes;
+  - IPC sender validation now checks the shell `WebContents`, shell main frame, and trusted document URL (`paneflow://shell/index.html` or the validated dev origin); unauthorized state reads return an empty default state instead of workspace metadata;
+  - remote and shell sessions deny permission requests/checks, display capture, HID/serial/USB device access, Bluetooth pairing, and downloads; shell navigation still denies redirects outside the dev origin;
+  - remote and shell views declare `webviewTag: false`, no subframe/worker Node integration, and no drag-drop navigation; a global `web-contents-created` handler denies popups and webview attachment;
+  - URLs with embedded credentials or more than 2,048 characters are rejected before they can enter workspace state or exports;
+  - partition directory removal uses the validated UUID-only `paneflow-profile-<uuid>` helper; profile clearing uses the hardened session accessor;
+  - workspace import verifies the selected path is a regular file and read failures return a safe error; transfer validation rejects credential-bearing and oversized URLs and prototype-pollution-style freeform keys;
+  - added Electron fuses to `electron-builder.yml`: RunAsNode and Node options/inspector arguments disabled, file-protocol extra privileges disabled, embedded ASAR integrity and only-load-from-ASAR enabled, ad-hoc Darwin signature reset;
+  - added 10 unit tests for CSP, trusted shell documents, shell asset path/MIME handling, partition directory validation, credential/length URL rejection, and import hardening;
+  - extended e2e to verify the `paneflow://shell/index.html` shell URL, inline-script and cross-origin-fetch CSP blocking, invalid-sender rejection from a separate node-enabled `BrowserWindow`, and blocked remote `file:`/`data:` navigation;
+  - added `SECURITY.md` covering threat boundaries, secret handling, unsigned/local distribution, and the packaging checklist, and updated README, architecture, decisions, and manual checks.
 - Accessibility automation and audit:
   - added `tests/e2e/accessibility.spec.ts`, a second Playwright Electron test that launches the built app independently and inspects the shell toolbar, pane cards, profile dialog, and workspace dialog;
   - role/accessible-name assertions cover the level-1 heading, banner, browser-workspace main landmark, layout group and pressed states, column selector, pane count status, dialog triggers, pane articles, address/viewport/scale controls, and icon-only actions;
@@ -429,25 +443,46 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - 50-cycle loaded-page soak:
   - `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` exercised 50 round trips between the authenticated original workspace and a four-pane stress workspace with two loaded fixture pages;
   - non-destroyed webContents returned to the baseline of 2 after every cycle, and the active native view count returned to 1 after every return;
-  - whole-app working set was 581 MB before and 677 MB after the 50 cycles on the merged branch; an earlier isolated run measured 577 MB → 577 MB. This is a before/after sample, not a peak or per-process measurement;
-  - the merged-branch run took ≈18.7 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
+  - whole-app working set was 588 MB before and 682 MB after the 50 cycles on the final merged branch; earlier runs measured 577 MB → 577 MB and 581 MB → 677 MB. This is a before/after sample, not a peak or per-process measurement;
+  - the final merged-branch run took ≈19.7 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 9 files, 111 tests, including workspace-cycling and custom-title validation. |
+| `npm run test:unit` | Passed: 11 files, 121 tests. Includes workspace cycling, custom-title validation, CSP/trusted-shell-url/asset-path tests, partition-directory validation, credential/oversized URL rejection, and import validation. |
+| `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
+| `npm run test:e2e` | Passed: 2 Playwright tests, 13.8 s. Integration coverage includes native/session/lifecycle/workspace/rename/shortcut behavior, `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection, and blocked remote `file:`/`data:` navigation; the accessibility test covers roles, names, focus, dialogs, the CDP tree, and axe audits. |
+| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
+| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
+| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 19.7 s on the final merged branch. Fifty cycles ended with 2 webContents and working set 588 MB → 682 MB. Earlier 50-cycle runs measured 577 MB → 577 MB and 581 MB → 677 MB. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (114.38 kB), preload (5.75 kB), renderer bundle (271.17 kB), and CSS (22.81 kB). |
+| `npm run package:dir` | Passed on the final merged branch. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
+| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; embedded ASAR integrity and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
+| `npm run package:mac` | Passed earlier in Phase 4: produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt after the security merge; `package:dir` exercised the merged fuse configuration. |
+| Packaged bundle inspection | Passed earlier: binary arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`; unsigned/ad-hoc. |
+| Packaged launch | Passed earlier. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
+| Packaged shell smoke (final merged branch) | Passed. Fresh `dist/mac-arm64/PaneFlow.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "PaneFlow"` and `url: "paneflow://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
+
+### Security hardening verification (security branch, pre-merge)
+
+The security slice was verified before merging the rename and accessibility branches; the final merged table above is authoritative.
+
+| Check | Result |
+| --- | --- |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 2 Playwright tests, 13.6 s. The integration test covers native/session/lifecycle/workspace/rename/shortcut behavior; the accessibility test covers roles, accessible names, focus/focus-visible behavior, dialog traps and focus return, the CDP accessibility tree, and axe audits. |
-| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
-| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 18.7 s on the merged branch. Fifty cycles ended with 2 webContents, 1 visible native view, and working set 581 MB → 677 MB; an earlier isolated 50-cycle run measured 577 MB → 577 MB. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (107.01 kB), preload (5.75 kB), renderer bundle (271.17 kB), and CSS (22.81 kB). |
-| `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
-| Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
-| Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
+| `npm run test:unit` | Passed: 11 files, 114 tests. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.4 s, with the new security assertions. |
+| `npm run build` | Passed: main 107.79 kB, preload 5.27 kB, renderer JS 266.69 kB, CSS 22.03 kB. |
+| `npm run package:dir` | Passed; fuses applied before signing was skipped (`identity: null`). |
+| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. `RunAsNode` disabled; `EnableNodeOptionsEnvironmentVariable` disabled; `EnableNodeCliArguments` disabled; `EnableEmbeddedAsarIntegrityValidation` enabled; `OnlyLoadAppFromAsar` enabled; `GrantFileProtocolExtraPrivileges` disabled. The bundled `@electron/fuses` 1.8.0 CLI labels Electron 45's unconfigured `WasmTrapHandlers` fuse as `undefined`; all configured security fuses read correctly. |
+| Packaged shell smoke | Passed. Fresh `dist/mac-arm64/PaneFlow.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "PaneFlow"`, `url: "paneflow://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
+| Packaged app log | No startup or protocol errors were emitted; only Chromium's DevTools listening line appeared. |
+| Development shell smoke | Passed. `npx electron-vite dev --remoteDebuggingPort 9335` served the shell at `http://localhost:5173/`; CDP evaluation reported `title: "PaneFlow"`, `.toolbar` present, one `#app` child, and no static CSP meta tag. The development process was terminated after inspection. |
+| `npm audit --omit=dev` | Passed: 0 runtime vulnerabilities. Full `npm audit` reports 6 moderate advisories in the development toolchain (`minimatch` via `electron-builder`); the offered fix requires a breaking downgrade and was not applied. |
 
 ### Known issues / risks
 
@@ -463,14 +498,20 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Imported workspaces are created inactive and contain fresh profiles; authentication state is intentionally not imported.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
+- Electron cookie encryption at rest is not enabled for the unsigned build; local profile data relies on OS account permissions. This needs verification before enabling in a signed release.
+- The shell CSP deliberately keeps `style-src 'unsafe-inline'` for Vue's inline pane geometry, while inline script and eval are blocked.
+- Development CSP adds the exact loopback Vite origin and WebSocket; production has no such allowance. The automated e2e suite runs the production shell path. A dev shell smoke check rendered Vue under the development CSP, but HMR live-reload behavior is not automated.
+- Workspace exports include pane URLs verbatim, including query strings. Credential-bearing URL userinfo is rejected, but users must still avoid secret query parameters.
+- Fuses and ASAR integrity were verified through `npm run package:dir` and a packaged launch; the DMG/ZIP were not rebuilt in the security slice.
+- The packaged launch smoke check fetched the shell URL over Chromium remote debugging, then terminated the process rather than exercising a full interactive packaged session.
 - Automated accessibility checks cover roles, names, focus order/traps, landmarks, and axe rules; VoiceOver spoken order, live-region timing, and the practical usability of focus rings still require a manual screen-reader pass.
 - axe-core audits the trusted shell only; remote fixture/website content inside native panes is untrusted and not included in the shell accessibility audit.
-- Leak stress covers four panes with two loaded fixture pages; the longest soak is now 50 cycles (≈19 s on the merged branch), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
-- Working-set sampling is informational, not a pass/fail memory threshold; the merged-branch 50-cycle run grew from 581 MB to 677 MB, so it does not establish long-term memory stability.
+- Leak stress covers four panes with two loaded fixture pages; the longest soak is 50 cycles (≈19 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
+- Working-set sampling is informational, not a pass/fail memory threshold; the final merged-branch 50-cycle run grew from 588 MB to 682 MB, so it does not establish long-term memory stability.
 - Duplicate pane copies URL/viewport/custom title; sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 - Shortcut e2e coverage invokes the real native menu items and verifies accelerator metadata; it does not synthesize OS-level key chords.
 - Workspace cycling order is alphabetical by name; there is no user-defined workspace order.
 
 ### Next smallest slice
 
-Run a manual VoiceOver pass across the toolbar, pane chrome, status announcements, and both dialogs; then add longer CPU/memory profiling with loaded third-party pages and finish signed/notarized distribution.
+Run a manual VoiceOver pass across the toolbar, pane chrome, status announcements, and both dialogs; then add longer CPU/memory profiling with loaded third-party pages. Security hardening is complete for the unsigned/local build; Developer ID signing and notarization remain credential-gated.

@@ -4,6 +4,7 @@ import {
   isValidProfileId,
   normalizeProfileLabel,
   partitionForProfile,
+  profilePartitionDirectoryName,
   validateProfileStoreData
 } from '../../src/shared/profiles'
 
@@ -19,7 +20,9 @@ describe('profile IDs and partitions', () => {
 
   it('derives a persistent partition only from the validated ID', () => {
     expect(partitionForProfile(ID_A)).toBe(`persist:paneflow-profile-${ID_A}`)
+    expect(profilePartitionDirectoryName(ID_A)).toBe(`paneflow-profile-${ID_A}`)
     expect(() => partitionForProfile('Alice')).toThrow()
+    expect(() => profilePartitionDirectoryName('../../outside')).toThrow()
   })
 
   it('does not leak labels into partition names', () => {

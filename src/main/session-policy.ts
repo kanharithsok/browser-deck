@@ -3,7 +3,12 @@ import { partitionForProfile } from '../shared/profiles'
 
 const hardenedSessions = new WeakSet<Session>()
 
-function hardenSession(targetSession: Session): void {
+/**
+ * Applies the deny-by-default policy to a session. This covers remote pane
+ * profiles and the trusted shell session; the shell never needs web
+ * permissions, device access, screen capture, or downloads.
+ */
+export function hardenSession(targetSession: Session): void {
   if (hardenedSessions.has(targetSession)) {
     return
   }
@@ -12,9 +17,16 @@ function hardenSession(targetSession: Session): void {
     callback(false)
   })
   targetSession.setPermissionCheckHandler(() => false)
+  targetSession.setDisplayMediaRequestHandler((_request, callback) => {
+    callback(null)
+  })
+  targetSession.setDevicePermissionHandler(() => false)
+  targetSession.setBluetoothPairingHandler((_details, callback) => {
+    callback({ confirmed: false })
+  })
   targetSession.on('will-download', (event) => {
-    // Downloads are outside the Phase 0 spike. Deny rather than hand remote
-    // content an unmanaged filesystem path.
+    // Downloads are outside the MVP. Deny rather than hand remote content an
+    // unmanaged filesystem path.
     event.preventDefault()
   })
 

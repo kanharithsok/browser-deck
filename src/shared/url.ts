@@ -2,6 +2,8 @@ export type NormalizedUrl =
   | { ok: true; url: string; insecureRemote: boolean }
   | { ok: false; error: string }
 
+export const MAX_URL_LENGTH = 2048
+
 const BARE_HOST_PORT = /^(?:[a-zA-Z0-9._-]+|\[[0-9a-fA-F:.]+\]):\d{1,5}(?:[/?#].*)?$/
 const SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
 
@@ -47,10 +49,18 @@ export function isAllowedNavigationUrl(url: string): boolean {
   if (url === 'about:blank') {
     return true
   }
+  if (url.length > MAX_URL_LENGTH) {
+    return false
+  }
 
   try {
     const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false
+    }
+    // Embedded credentials would otherwise be persisted in workspace files
+    // and exported workspace transfers.
+    return parsed.username === '' && parsed.password === ''
   } catch {
     return false
   }
@@ -65,6 +75,9 @@ export function normalizeAddress(rawInput: string): NormalizedUrl {
   const input = rawInput.trim()
   if (!input) {
     return { ok: false, error: 'Enter an address.' }
+  }
+  if (input.length > MAX_URL_LENGTH) {
+    return { ok: false, error: 'Address is too long.' }
   }
 
   if (input === 'about:blank') {
@@ -103,6 +116,10 @@ export function normalizeAddress(rawInput: string): NormalizedUrl {
 
   if (!parsed.hostname) {
     return { ok: false, error: 'Enter a valid URL with a hostname.' }
+  }
+
+  if (parsed.username !== '' || parsed.password !== '') {
+    return { ok: false, error: 'Addresses with embedded credentials are not allowed.' }
   }
 
   const isLocal = isLoopbackOrLocalHostname(parsed.hostname)

@@ -23,10 +23,15 @@ import { isLoopbackHostname, normalizeAddress } from '../shared/url'
 import type { CanvasSize } from '../shared/geometry'
 import { RESPONSIVE_VIEWPORT } from '../shared/viewports'
 import {
-  partitionForProfile,
+  profilePartitionDirectoryName,
   type BrowserProfile,
   type ProfileSummary
 } from '../shared/profiles'
+import {
+  buildShellCsp,
+  isTrustedShellDocumentUrl,
+  SHELL_ENTRY_URL
+} from '../shared/shell'
 import {
   DEFAULT_WORKSPACE_ID,
   DEFAULT_WORKSPACE_NAME,
@@ -49,22 +54,10 @@ import { BrowserManager, type PaneInitialization } from './browser-manager'
 import { registerIpcHandlers } from './ipc'
 import { writeJsonAtomically } from './json-file'
 import { ProfileStore } from './profile-store'
+import { getProfileSession, hardenSession } from './session-policy'
+import { installShellProtocol, registerShellScheme } from './shell-protocol'
 import { installTestHook } from './test-hook'
 import { WorkspaceStore } from './workspace-store'
-
-const SHELL_CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self' ws://localhost:* http://localhost:* ws://127.0.0.1:* http://127.0.0.1:*",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-  "frame-src 'none'",
-  "frame-ancestors 'none'"
-].join('; ')
 
 let mainWindow: BaseWindow | null = null
 let shellView: WebContentsView | null = null
@@ -75,9 +68,11 @@ let panePersistenceEnabled = false
 let lastPersistedPaneKey = ''
 let quitFlushed = false
 let workspaceSwitching = false
+let devServerUrl: URL | null = null
 let workspaceMenuRefreshToken = 0
 
 app.setName('PaneFlow')
+registerShellScheme()
 
 const userDataOverride = process.env.PANEFLOW_USER_DATA_DIR
 if (userDataOverride) {
@@ -337,10 +332,20 @@ async function importWorkspaceTransfer(): Promise<WorkspaceTransferResult> {
   if (result.canceled || !filePath) {
     return { ok: true, canceled: true }
   }
-  const fileStat = await stat(filePath)
+
+  let fileStat
+  try {
+    fileStat = await stat(filePath)
+  } catch {
+    return { ok: false, error: 'Could not read the workspace file.' }
+  }
+  if (!fileStat.isFile()) {
+    return { ok: false, error: 'Workspace import must be a JSON file.' }
+  }
   if (fileStat.size > MAX_WORKSPACE_TRANSFER_BYTES) {
     return { ok: false, error: 'Workspace file is too large.' }
   }
+
   let parsedJson: unknown
   try {
     parsedJson = JSON.parse(await readFile(filePath, 'utf8'))
@@ -464,7 +469,7 @@ function profileInUse(profileId: string): boolean {
 }
 
 async function clearProfileSession(profileId: string): Promise<void> {
-  const profileSession = session.fromPartition(partitionForProfile(profileId))
+  const profileSession = getProfileSession(profileId)
   await profileSession.clearStorageData()
   await profileSession.clearCache()
   await profileSession.clearAuthCache()
@@ -474,7 +479,7 @@ async function removeProfilePartition(profileId: string): Promise<void> {
   const partitionDirectory = join(
     app.getPath('userData'),
     'Partitions',
-    `paneflow-profile-${profileId}`
+    profilePartitionDirectoryName(profileId)
   )
   await rm(partitionDirectory, { recursive: true, force: true })
 }
@@ -695,18 +700,17 @@ function buildApplicationMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
-function installShellContentPolicy(): void {
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+function installShellContentPolicy(csp: string): void {
+  const shellSession = session.defaultSession
+  shellSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [SHELL_CSP]
+        'Content-Security-Policy': [csp]
       }
     })
   })
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false)
-  })
+  hardenSession(shellSession)
 }
 
 function canvasSize(): CanvasSize {
@@ -757,7 +761,10 @@ async function loadShell(shell: WebContentsView, devServer: URL | null): Promise
     return
   }
 
-  await shell.webContents.loadFile(join(__dirname, '../renderer/index.html'))
+  await shell.webContents.loadURL(SHELL_ENTRY_URL)
+  if (!isTrustedShellDocumentUrl(shell.webContents.getURL(), null)) {
+    throw new Error('The built shell loaded an unexpected origin.')
+  }
 }
 
 async function createWindow(): Promise<void> {
@@ -766,7 +773,7 @@ async function createWindow(): Promise<void> {
     return
   }
 
-  const devServer = getDevServerUrl()
+  const devServer = devServerUrl
 
   const profiles = new ProfileStore(app.getPath('userData'))
   await profiles.load()
@@ -798,7 +805,13 @@ async function createWindow(): Promise<void> {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      webviewTag: false,
       webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      navigateOnDragDrop: false,
       spellcheck: false
     }
   })
@@ -943,17 +956,31 @@ async function createWindow(): Promise<void> {
   }
 }
 
+app.on('web-contents-created', (_event, contents) => {
+  // Defense in depth for any future webContents: popups and webview attachment
+  // stay denied unless a reviewed feature adds an explicit exception.
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  contents.on('will-attach-webview', (event) => {
+    event.preventDefault()
+  })
+})
+
 app.whenReady().then(async () => {
+  devServerUrl = getDevServerUrl()
+  const shellCsp = buildShellCsp(devServerUrl?.toString() ?? null)
+
   buildApplicationMenu()
   nativeTheme.on('updated', () => {
     updateWindowBackground()
     refreshThemeMenu()
   })
-  installShellContentPolicy()
+  installShellContentPolicy(shellCsp)
+  installShellProtocol(join(__dirname, '../renderer'), shellCsp)
 
   registerIpcHandlers({
     getBrowserManager: () => browserManager,
     getShellWebContents: () => shellView?.webContents ?? null,
+    getDevServerUrl: () => devServerUrl?.origin ?? null,
     getCanvasSize: canvasSize,
     getWorkspaceLayout: () => workspaceStore?.layout() ?? defaultWorkspaceLayout([]),
     getWorkspaceIdentity: () => ({

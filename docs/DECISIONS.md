@@ -692,6 +692,86 @@ Record material technical decisions here. Keep entries short but include context
   - Three unit tests cover next/previous selection, wraparound, input-order stability, and unavailable targets.
   - E2e reads both menu items (IDs, accelerators, disabled initially), creates workspaces, invokes the real menu items in both directions across three workspaces, verifies each target's pane IDs/profiles/URLs and native alignment, then confirms both items disable after returning to one workspace.
 
+## ADR-023 — The shell loads from a secure custom protocol with an environment-specific CSP
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` §13.2 prefers a secure custom application protocol over broad `file://` access, and Phase 4 packaging made that decision actionable. The shell CSP also allowed localhost HTTP/WebSocket sources in every build because development HMR and production shared one static policy.
+
+- **Decision:**
+  1. Register `paneflow` as a standard, secure, non-CORS scheme before app readiness. Register it as privileged only for normal fetch/stream behavior; no service workers, extensions, CSP bypass, or CORS.
+  2. Serve built renderer files through `protocol.handle('paneflow', …)` from `paneflow://shell/index.html`. Resolve only paths inside the built renderer root, reject traversal/backslash/null/ambiguous segments, set explicit MIME types, and add `nosniff`, no-referrer, no-store, and CSP headers.
+  3. Build CSP in the pure `src/shared/shell.ts` module. Production uses `connect-src 'self'` with no development sources. Development adds only the exact loopback `ELECTRON_RENDERER_URL` origin and its matching `ws:`/`wss:` URL.
+  4. Keep inline styles allowed because Vue binds pane geometry through inline style attributes. Never allow inline script, eval, objects, frames, forms, or base changes.
+  5. Remove the static CSP meta tag so there is one authoritative, mode-correct policy.
+
+- **Alternatives considered:**
+  - **Keep `file://` and tighten the meta tag.** Rejected: production and development need different policies, file origins are broad, and header enforcement is more reliable.
+  - **Keep the development CSP in production.** Rejected: a compromised shell could exfiltrate to localhost services.
+  - **Allow inline script to simplify development.** Rejected: it weakens the primary XSS boundary.
+
+- **Consequences:**
+  - The shell is served from a narrow, same-origin custom scheme and cannot read outside its renderer bundle.
+  - Production has no network destination beyond itself; development has one exact loopback exception.
+  - The e2e test can prove inline script and cross-origin fetch are blocked.
+  - `style-src 'unsafe-inline'` remains a documented, deliberate exception.
+
+- **Evidence / verification:**
+  - Unit tests cover production/development CSP construction, malformed development URLs, trusted shell document matching, and asset path traversal/MIME handling.
+  - E2e observes `paneflow://shell/index.html`, blocks an inline script, blocks a fixture fetch from the shell, and completes the full existing browser/workspace suite.
+
+## ADR-024 — IPC sender checks include the trusted document URL
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** IPC handlers already compared the event sender `WebContents` and main frame with the shell. Shell navigation is denied, but a future regression that navigates the shell to remote content would still share the same `WebContents` and main frame. The manual checklist also had no direct cross-sender test.
+
+- **Decision:**
+  1. Validate sender `WebContents`, main frame, and document URL. Production accepts only `paneflow://shell/index.html`; development accepts only the validated loopback dev-server origin.
+  2. Return an empty default `ShellState` for unauthorized state reads rather than leaking workspace metadata.
+  3. Keep payload validation in every handler; sender validation is not a substitute.
+  4. Add a test-only e2e path that creates a separate node-enabled `BrowserWindow` in the same Electron process and invokes IPC directly. It must receive an empty state and `Unauthorized sender.` for a pane command.
+
+- **Alternatives considered:**
+  - **Rely on `WebContents` identity alone.** Rejected as fragile against future navigation changes.
+  - **Throw on unauthorized `get-state`.** Rejected because returning a harmless empty state is simpler and avoids exposing data.
+  - **Inject a preload into a real remote pane for testing.** Rejected; it would weaken the tested production boundary.
+
+- **Consequences:**
+  - A same-process webContents with direct `ipcRenderer` access cannot invoke shell operations.
+  - The sender URL check is part of the durable boundary and can be unit-tested independently.
+
+- **Evidence / verification:**
+  - Unit tests cover production and development trusted-document matching.
+  - E2e creates the separate sender, confirms empty state, and confirms the unauthorized pane command error.
+
+## ADR-025 — Unsigned local packages apply Electron fuses but remain unsigned
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` §13.6 requires reviewing Electron fuses for packaging. The MVP still has no Developer ID certificate or notarization credentials, and the build must remain locally packageable without paid-account work.
+
+- **Decision:**
+  1. Configure `electronFuses` in `electron-builder.yml`: disable `RunAsNode`, Node options, inspector arguments, and `file://` extra privileges; enable embedded ASAR integrity validation and only-load-from-ASAR; reset the ad-hoc Darwin signature after flipping fuses.
+  2. Keep `identity: null`, `hardenedRuntime: false`, and `gatekeeperAssess: false` for unsigned local builds.
+  3. Read the packaged fuses back with `npx electron-fuses read --app …` and record the result.
+  4. Do not enable cookie encryption at rest until a signed-distribution build can be verified with Keychain behavior. Document this gap.
+
+- **Alternatives considered:**
+  - **Wait for signing before applying fuses.** Rejected; the fuses harden local builds immediately and are not paid-account work.
+  - **Enable every fuse including cookie encryption.** Deferred; unsigned ad-hoc builds have unverified Keychain behavior.
+  - **Leave defaults.** Rejected; it would permit Node CLI modes and non-ASAR code loading.
+
+- **Consequences:**
+  - The packaged app must load from `app.asar`; the shell protocol reads its assets through the asar-aware filesystem.
+  - Node debugging/environment override paths are unavailable in packaged builds.
+  - Local artifacts still trigger Gatekeeper warnings on other machines and are not notarized.
+
+- **Evidence / verification:**
+  - `npm run package:dir` succeeds with fuse application.
+  - `electron-fuses read` reports the expected fuse states.
+  - A fresh packaged app launch with an isolated `HOME` and remote debugging reported the shell at `paneflow://shell/index.html`, proving the ASAR-backed custom protocol works with fuses enabled. See `SECURITY.md` and the Phase 4 report.
+
 ## ADR template
 
 ### ADR-NNN — Title
