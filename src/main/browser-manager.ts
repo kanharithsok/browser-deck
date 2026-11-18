@@ -17,6 +17,7 @@ interface PaneRecord {
   isLoading: boolean
   error: string | null
   hasBounds: boolean
+  shellVisible: boolean
   destroyed: boolean
 }
 
@@ -187,9 +188,12 @@ export class BrowserManager {
       if (!record || record.destroyed || record.view.webContents.isDestroyed()) {
         continue
       }
-      record.view.setBounds(update.rect)
-      const firstBounds = !record.hasBounds
-      record.hasBounds = true
+      record.shellVisible = update.visible
+      if (update.visible) {
+        record.view.setBounds(update.rect)
+      }
+      const firstBounds = !record.hasBounds && update.visible
+      record.hasBounds = record.hasBounds || update.visible
       this.syncVisibility(record)
 
       if (firstBounds && record.pendingUrl) {
@@ -303,6 +307,20 @@ export class BrowserManager {
     return bounds
   }
 
+  viewStates(): Array<{ paneId: string; rect: PaneViewRect; visible: boolean }> {
+    const states: Array<{ paneId: string; rect: PaneViewRect; visible: boolean }> = []
+    for (const record of this.panes.values()) {
+      if (!record.destroyed && !record.view.webContents.isDestroyed()) {
+        states.push({
+          paneId: record.id,
+          rect: record.view.getBounds(),
+          visible: record.view.getVisible()
+        })
+      }
+    }
+    return states
+  }
+
   async readCookie(paneId: string): Promise<string | null> {
     const record = this.panes.get(paneId)
     if (!record || record.destroyed || record.view.webContents.isDestroyed()) {
@@ -359,6 +377,7 @@ export class BrowserManager {
       isLoading: true,
       error: null,
       hasBounds: false,
+      shellVisible: true,
       destroyed: false
     }
 
@@ -479,7 +498,11 @@ export class BrowserManager {
   }
 
   private syncVisibility(record: PaneRecord): void {
-    const visible = record.hasBounds && record.error === null && record.url !== 'about:blank'
+    const visible =
+      record.hasBounds &&
+      record.shellVisible &&
+      record.error === null &&
+      record.url !== 'about:blank'
     record.view.setVisible(visible)
   }
 

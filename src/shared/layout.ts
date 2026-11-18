@@ -24,7 +24,7 @@ export const DEFAULT_GRID_COLUMNS = 2
 export const DEFAULT_GRID_PADDING = 10
 export const DEFAULT_GRID_GAP = 10
 export const DEFAULT_MIN_PANE_WIDTH = 160
-export const DEFAULT_MIN_PANE_HEIGHT = 120
+export const DEFAULT_MIN_PANE_HEIGHT = 140
 export const DEFAULT_SNAP_THRESHOLD = 8
 
 export type LayoutErrorCode =
@@ -514,6 +514,28 @@ export function snapRect(rect: Rect, options: SnapOptions): SnapResult | null {
     snappedX: xSnap !== null && Math.abs(xSnap.delta) > 0.0001,
     snappedY: ySnap !== null && Math.abs(ySnap.delta) > 0.0001
   }
+}
+
+export function isRectFullyVisible(
+  rect: Rect,
+  viewport: Rect,
+  tolerance = 0.5
+): boolean {
+  if (
+    !isValidRect(rect) ||
+    !isValidRect(viewport) ||
+    !isFiniteNumber(tolerance) ||
+    tolerance < 0
+  ) {
+    return false
+  }
+
+  return (
+    rect.x >= viewport.x - tolerance &&
+    rect.y >= viewport.y - tolerance &&
+    rect.x + rect.width <= viewport.x + viewport.width + tolerance &&
+    rect.y + rect.height <= viewport.y + viewport.height + tolerance
+  )
 }
 
 export function maximizeRect(

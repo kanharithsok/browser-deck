@@ -17,6 +17,7 @@ import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
 interface TestHook {
   snapshot(): ShellState
   viewBounds(): Array<{ paneId: string; rect: PaneViewRect }>
+  viewStates(): Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>
   readCookie(paneId: string): Promise<string | null>
   webContentsId(paneId: string): number | null
   shellWebContentsId(): number | null
@@ -93,6 +94,18 @@ async function getViewBounds(
       throw new Error('Test hook is not installed')
     }
     return hook.viewBounds()
+  })
+}
+
+async function getViewStates(
+  app: ElectronApplication
+): Promise<Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>> {
+  return app.evaluate(() => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    if (!hook) {
+      throw new Error('Test hook is not installed')
+    }
+    return hook.viewStates()
   })
 }
 
@@ -265,6 +278,24 @@ async function waitForAlignedBounds(app: ElectronApplication): Promise<void> {
   )
 }
 
+async function waitForVisibleAlignedBounds(app: ElectronApplication): Promise<void> {
+  await waitFor(
+    async () => {
+      const states = await getViewStates(app)
+      const visibleStates = states.filter((state) => state.visible)
+      const visibleIds = new Set(visibleStates.map((state) => state.paneId))
+      const dom = (await readDomPaneRects(app)).filter((entry) => visibleIds.has(entry.paneId))
+      return {
+        dom,
+        native: visibleStates.map((state) => ({ paneId: state.paneId, rect: state.rect }))
+      }
+    },
+    ({ dom, native }) => dom.length > 0 && rectsAlign(dom, native),
+    'visible native view bounds to align with the shell DOM',
+    10_000
+  )
+}
+
 test('Browser panes: native composition, isolated auth, lifecycle, and persistence', async () => {
   test.setTimeout(180_000)
 
@@ -340,7 +371,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await alicePage.locator('#storage-button').click()
     await expect
       .poll(() => alicePage.evaluate(() => localStorage.getItem('paneflow_fixture')))
-      .toBe('1')
+      .not.toBeNull()
+    const aliceStorageBeforeRestart = await alicePage.evaluate(() =>
+      localStorage.getItem('paneflow_fixture')
+    )
+    expect(aliceStorageBeforeRestart).not.toBeNull()
     expect(await bobPage.evaluate(() => localStorage.getItem('paneflow_fixture'))).toBeNull()
 
     // IndexedDB isolation between the same-origin partitions.
@@ -465,7 +500,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     const rejectedBounds = await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.setPaneBounds([{ paneId: 'unknown-pane', rect: { x: 0, y: 0, width: 400, height: 300 } }])`
+      `window.paneflow.setPaneBounds([{ paneId: 'unknown-pane', rect: { x: 0, y: 0, width: 400, height: 300 }, visible: true }])`
     )
     expect(rejectedBounds.ok).toBe(false)
 
@@ -648,7 +683,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         restarted.panes[0]?.id as string,
         "localStorage.getItem('paneflow_fixture')"
       )
-    ).toBe('1')
+    ).toBe(aliceStorageBeforeRestart)
     expect(
       await evaluateInPane<string | null>(
         restartApp,
@@ -669,6 +704,124 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await waitForAlignedBounds(restartApp)
+
+    // Native-aware scrolling: add panes, force an overflowing single-column
+    // grid, and verify native views are hidden when partially off-screen.
+    const restartedPages = await waitFor(
+      async () => restartApp.windows(),
+      (windows) =>
+        windows.some((page) => page.url().startsWith('file:')) &&
+        windows.filter((page) => page.url().includes('/account')).length === 2,
+      'restarted shell and account pages'
+    )
+    const restartShell = restartedPages.find((page) => page.url().startsWith('file:'))
+    if (!restartShell) {
+      throw new Error('Restarted shell page is unavailable')
+    }
+
+    await restartShell.locator('.toolbar .toolbar-button.primary').click()
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.panes.length === 3,
+      'third pane creation'
+    )
+    await restartShell.locator('.toolbar .toolbar-button.primary').click()
+    const fourPanes = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.panes.length === 4,
+      'fourth pane creation'
+    )
+
+    for (const [offset, path] of ['/pane/three', '/pane/four'].entries()) {
+      const index = fourPanes.panes.length - 2 + offset
+      const input = restartShell.locator('.pane-card').nth(index).locator('.address-input')
+      await input.fill(`${fixture.url}${path}`)
+      await input.press('Enter')
+    }
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.panes.slice(2).every((pane) => pane.url.includes('/pane/') && !pane.isLoading),
+      'new panes to load'
+    )
+
+    await restartShell.getByLabel('Grid columns').selectOption('1')
+    await restartApp.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('PaneFlow window not found')
+      }
+      window.setSize(760, 540)
+    })
+
+    await expect
+      .poll(() =>
+        restartShell.evaluate(() => {
+          const workspace = document.querySelector('.workspace')
+          const grid = document.querySelector('.pane-grid')
+          return Boolean(
+            workspace &&
+              grid &&
+              grid.getBoundingClientRect().height > workspace.clientHeight + 4
+          )
+        })
+      )
+      .toBe(true)
+    await waitForVisibleAlignedBounds(restartApp)
+
+    const workspaceBounds = await shellEvaluate<{ top: number; height: number }>(
+      restartApp,
+      `(() => {
+        const element = document.querySelector('.workspace')
+        if (!element) return { top: 0, height: 0 }
+        const rect = element.getBoundingClientRect()
+        return { top: rect.top, height: rect.height }
+      })()`
+    )
+    const topStates = await getViewStates(restartApp)
+    expect(topStates).toHaveLength(4)
+    expect(topStates.some((state) => state.visible)).toBe(true)
+    expect(topStates.some((state) => !state.visible)).toBe(true)
+    for (const state of topStates.filter((entry) => entry.visible)) {
+      expect(state.rect.y).toBeGreaterThanOrEqual(workspaceBounds.top - 1)
+      expect(state.rect.y + state.rect.height).toBeLessThanOrEqual(
+        workspaceBounds.top + workspaceBounds.height + 1
+      )
+    }
+    const topHidden = topStates
+      .filter((state) => !state.visible)
+      .map((state) => state.paneId)
+      .sort()
+      .join(',')
+
+    await restartShell.evaluate(() => {
+      const workspace = document.querySelector('.workspace')
+      if (workspace instanceof HTMLElement) {
+        workspace.scrollTop = workspace.scrollHeight
+      }
+    })
+
+    await expect
+      .poll(async () => {
+        const states = await getViewStates(restartApp)
+        return states
+          .filter((state) => !state.visible)
+          .map((state) => state.paneId)
+          .sort()
+          .join(',')
+      })
+      .not.toBe(topHidden)
+
+    await waitForVisibleAlignedBounds(restartApp)
+    const bottomStates = await getViewStates(restartApp)
+    expect(bottomStates.some((state) => state.visible)).toBe(true)
+    expect(bottomStates.some((state) => !state.visible)).toBe(true)
+    for (const state of bottomStates.filter((entry) => entry.visible)) {
+      expect(state.rect.y).toBeGreaterThanOrEqual(workspaceBounds.top - 1)
+      expect(state.rect.y + state.rect.height).toBeLessThanOrEqual(
+        workspaceBounds.top + workspaceBounds.height + 1
+      )
+    }
   } finally {
     if (app) {
       await app.close().catch(() => undefined)

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bringToFront,
   clampRect,
+  isRectFullyVisible,
   layoutGrid,
   maximizeRect,
   moveItem,
@@ -477,8 +478,43 @@ describe('snapRect', () => {
   })
 })
 
-describe('maximizeRect', () => {
-  it('returns maximized and restore geometry with padding', () => {
+describe('isRectFullyVisible', () => {
+  const viewport = { x: 10, y: 60, width: 800, height: 400 }
+
+  it('accepts rectangles fully inside the viewport', () => {
+    expect(
+      isRectFullyVisible({ x: 10, y: 60, width: 300, height: 200 }, viewport)
+    ).toBe(true)
+    expect(
+      isRectFullyVisible({ x: 500, y: 250, width: 310, height: 210 }, viewport)
+    ).toBe(true)
+  })
+
+  it('rejects partially visible and off-screen rectangles', () => {
+    expect(
+      isRectFullyVisible({ x: 10, y: 50, width: 300, height: 200 }, viewport)
+    ).toBe(false)
+    expect(
+      isRectFullyVisible({ x: 10, y: 300, width: 300, height: 200 }, viewport)
+    ).toBe(false)
+    expect(
+      isRectFullyVisible({ x: 5, y: 60, width: 300, height: 200 }, viewport)
+    ).toBe(false)
+  })
+
+  it('applies tolerance and rejects invalid inputs', () => {
+    expect(
+      isRectFullyVisible({ x: 9.6, y: 59.6, width: 300, height: 200 }, viewport, 0.5)
+    ).toBe(true)
+    expect(
+      isRectFullyVisible({ x: 9.6, y: 59.6, width: 300, height: 200 }, viewport, 0)
+    ).toBe(false)
+    expect(isRectFullyVisible({ x: 0, y: 0, width: 0, height: 10 }, viewport)).toBe(false)
+    expect(isRectFullyVisible({ x: 0, y: 0, width: 10, height: 10 }, viewport, -1)).toBe(false)
+  })
+})
+
+describe('maximizeRect', () => {  it('returns maximized and restore geometry with padding', () => {
     const result = maximizeRect({ x: 100, y: 100, width: 300, height: 200 }, canvas, 10)
     expect(result).toEqual({
       maximized: { x: 10, y: 10, width: 980, height: 780 },

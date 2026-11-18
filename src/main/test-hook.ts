@@ -4,6 +4,7 @@ import type { PaneViewRect, ShellState } from '../shared/ipc'
 export interface PaneflowTestHook {
   snapshot: () => ShellState
   viewBounds: () => Array<{ paneId: string; rect: PaneViewRect }>
+  viewStates: () => Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>
   readCookie: (paneId: string) => Promise<string | null>
   webContentsId: (paneId: string) => number | null
   shellWebContentsId: () => number | null
