@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, and persisted system/light/dark themes. Remaining Phase 4 work covers performance, polish, import/export, and macOS packaging.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging. Remaining Phase 4 work covers performance, polish, import/export, and signed/notarized distribution.
 
 ## Current capabilities
 
@@ -67,8 +67,12 @@ npm run dev
 | `npm run test:unit` | Vitest unit tests |
 | `npm run test` | Alias for the unit suite |
 | `npm run test:e2e` | Build, then run the Playwright Electron integration test |
+| `npm run package:mac` | Build an unsigned arm64 DMG + ZIP under `dist/` |
+| `npm run package:dir` | Build the unpacked arm64 `.app` under `dist/` |
 
-`package:mac` is not implemented yet; it is Phase 4 work. Do not treat a build as a distributable macOS app.
+## Packaging
+
+`npm run package:mac` produces `dist/PaneFlow-0.1.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/PaneFlow.app`. The bundle uses `com.kanharithsok.paneflow`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
 
 ## Shortcuts
 
@@ -174,11 +178,11 @@ opencode.jsonc        Project-level OpenCode configuration
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
 - Some identity providers and sites may block Electron user agents or behave differently from Chrome/Safari.
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.
-- Automatic updates, code signing, notarization, extensions, DRM, and cloud sync remain outside the MVP.
+- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, automatic updates, extensions, DRM, and cloud sync remain outside the MVP.
 - `npm audit` currently reports high-severity advisories in the development toolchain (`picomatch` via Vite/Vitest/ESLint). No fixed release was available at the time of the Phase 0 report.
 
 See section 21 of [`SPEC.md`](./SPEC.md) and [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md) for details.
 
 ## License
 
-No license has been selected. Do not assume the repository is open-source licensed merely because it is public. Add a license only after the repository owner chooses one.
+MIT. See [`LICENSE`](./LICENSE).

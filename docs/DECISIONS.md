@@ -509,6 +509,40 @@ Record material technical decisions here. Keep entries short but include context
   - E2e selects Dark via the native menu, verifies `app-state.json` and dark shell tokens, restarts the app, confirms Dark restores, and resets to System.
   - Existing light/dark token emulation checks still pass.
 
+## ADR-017 — Unsigned arm64 packaging precedes Developer ID notarization
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Phase 4 needs a runnable macOS artifact. The local machine has only an Apple Development certificate, no Developer ID Application certificate or notarization credentials. The owner selected PaneFlow 0.1.0, bundle ID `com.kanharithsok.paneflow`, arm64-only, MIT, and a generated icon. Signing/notarization must not block local verification.
+
+- **Decision:**
+  1. Use `electron-builder` 26.18.0 with a checked-in `electron-builder.yml`.
+  2. Package PaneFlow 0.1.0 for arm64 with `com.kanharithsok.paneflow`, developer-tools category, asar, and `build/icon.icns`.
+  3. Build DMG + ZIP plus an unpacked app under ignored `dist/`.
+  4. Disable signing with `identity: null` for this slice; do not claim the artifacts are signed, notarized, or safe for frictionless distribution.
+  5. Keep the icon SVG source under `build/` and generate the `.icns` locally with macOS tooling.
+  6. Add an MIT license and matching package metadata.
+  7. Document Developer ID certificate, notarytool credentials, hardened runtime, stapling, and release-channel decisions as prerequisites for distribution.
+
+- **Alternatives considered:**
+  - **Wait for Developer ID credentials.** Rejected; local packaging and launch checks are independently useful.
+  - **Ad-hoc sign only.** Electron already produces an ad-hoc/linker-signed bundle; explicit identity remains null.
+  - **Universal build.** Deferred by owner choice; arm64 keeps artifacts smaller.
+  - **Electron Forge instead of builder.** Rejected for this slice; builder already handles DMG/ZIP and arm64 targets with concise config.
+  - **Commit generated DMG/ZIP.** Rejected; artifacts and local profile data must stay out of Git.
+
+- **Consequences:**
+  - Local artifacts launch, but Gatekeeper may block them on other machines.
+  - Signing/notarization remains a credential-gated release task.
+  - The package is arm64-only.
+  - Version/name/bundle ID/license are now fixed for 0.1.0 packaging.
+  - `dist/` stays ignored and no release publishing/auto-update exists.
+
+- **Evidence / verification:**
+  - `npm run package:mac` produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), ZIP (115 MB), and a 273 MB `.app`.
+  - `file` reports an arm64 binary; `Info.plist` reports the expected bundle ID, version, icon, and category; `codesign` shows unsigned/ad-hoc as configured.
+  - The packaged app launched, rendered the shell and panes, and quit cleanly.
+
 ## ADR template
 
 ### ADR-NNN — Title

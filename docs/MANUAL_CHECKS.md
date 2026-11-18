@@ -93,6 +93,15 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Narrow-window and minimum-pane-width control usability. (Container query exists; dedicated check pending.)
 - [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
 
+## Packaging
+
+- [x] `npm run package:mac` builds an arm64 DMG, ZIP, and `.app`. (Artifacts produced under `dist/`.)
+- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.paneflow`, `0.1.0`, `icon.icns`, developer tools.)
+- [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
+- [ ] Developer ID signing and notarization. (Blocked on Apple Developer credentials; current build is unsigned/ad-hoc.)
+- [ ] Intel/universal packaging. (Current build is arm64-only by owner decision.)
+- [ ] Auto-update and release publishing. (Not implemented.)
+
 ## Security and failure handling
 
 - [x] Dangerous URL schemes are rejected. (Main-process navigation test rejects `javascript:`; unit tests cover `data:`, `file:`, `chrome:`.)
