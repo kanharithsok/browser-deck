@@ -38,6 +38,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Add, remove, rename, duplicate, and reorder panes. (Add/remove and drag reorder work; rename/duplicate pending.)
 - [x] Drag a pane to change grid order. (E2e drags both directions; native views hide during drag and restore aligned.)
 - [x] Keyboard/menu pane and layout actions. (Native Pane menu commands for add, close, reload, maximize, and layout are exercised by e2e; raw key chords remain a follow-up.)
+- [x] Next/previous workspace menu shortcuts. (E2e invokes `workspace-next` and `workspace-previous`, verifies accelerator metadata, restored pane/profile identity, wrapping, and disabled state when only one workspace exists.)
 - [ ] Keyboard pane reordering. (Pending.)
 - [x] Eight-pane grid/freeform alignment stress. (E2e adds to eight panes, drags/resizes, z-orders, maximizes, and checks native alignment.)
 - [x] Grid column changes and reflow. (Selector exposes 1–5; e2e verifies 2 → 5 → 1 → 2 and native alignment.)

@@ -87,8 +87,10 @@ npm run dev
 | `Cmd/Ctrl+Alt+Shift+R` | Reload all panes |
 | `Cmd/Ctrl+Shift+M` | Toggle maximize for active pane |
 | `Cmd/Ctrl+Shift+L` | Toggle grid/freeform |
+| `Cmd/Ctrl+Shift+]` | Next workspace |
+| `Cmd/Ctrl+Shift+[` | Previous workspace |
 
-The active pane follows shell chrome focus and native pane focus. Shortcuts are registered through the native Pane menu.
+Workspace cycling follows workspace name order, wraps at either end, and restores the target workspace's saved panes and layout. Both items are disabled when only one workspace exists. The active pane follows shell chrome focus and native pane focus. Shortcuts are registered through the native Pane and Workspace menus.
 
 ## Testing
 
@@ -112,6 +114,7 @@ The e2e test launches the built app against local fixtures and verifies:
 - temporary maximize/restore with unrelated native views hidden;
 - explicit freeform z-order changes reflected in native child order;
 - menu command routing for add/close/maximize/layout actions;
+- next/previous workspace menu shortcuts with stable IDs, accelerator discovery, enabled-state updates, and restored pane identity;
 - an eight-pane grid/freeform alignment stress pass;
 - overflowing grid scrolling with native views hidden when partially off-screen;
 - real address-bar navigation and history controls;

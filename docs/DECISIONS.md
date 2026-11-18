@@ -661,6 +661,37 @@ Record material technical decisions here. Keep entries short but include context
   - Five unit tests cover serialization, profile stripping, JSON round-trip, fresh-ID materialization, unsafe URLs/viewports, invalid order/freeform geometry, and mapping errors.
   - Build/typecheck/lint/e2e remain green; no native dialog automation is claimed.
 
+## ADR-022 — Workspace shortcuts call the existing main-process switch path
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Phase 4 added the remaining useful keyboard shortcuts. Workspace switching is not a pane command: it persists the current workspace, tears down every native pane, loads another workspace, recreates views, and persists the active ID. Keyboard access must work when focus is inside a remote native page, and overlapping switches could corrupt active-workspace state.
+
+- **Decision:**
+  1. A native **Workspace** menu owns **Next Workspace** (`CmdOrCtrl+Shift+]`) and **Previous Workspace** (`CmdOrCtrl+Shift+[`), with stable IDs `workspace-next` and `workspace-previous`.
+  2. Menu clicks resolve the neighboring workspace from a pure shared helper in deterministic name order with wraparound, then call the existing trusted `switchWorkspaceTo` path. No new IPC channel or renderer key handler is added.
+  3. `switchWorkspaceTo` rejects overlapping switches while allowing one in-flight operation to finish; menu actions are disabled during a switch and while no window/store is available.
+  4. Menu enablement is refreshed after startup, create/import/duplicate/delete/switch, and is enabled only when at least one other workspace exists. Async refreshes use a token so a stale read cannot re-enable a menu during a switch.
+  5. New workspace state is sent to the shell only after the switch lock and menu state settle, so the UI and menu agree.
+  6. Raw accelerator chords and the native menus stay available regardless of whether focus is in the shell or a remote pane.
+
+- **Alternatives considered:**
+  - **Renderer `keydown` handlers.** Rejected; native pane focus bypasses the shell.
+  - **Reuse `PaneCommand`.** Rejected; it targets the active pane and cannot carry workspace-switch lifecycle safely.
+  - **`globalShortcut`.** Rejected; it steals keys system-wide.
+  - **One menu item per workspace.** Deferred; next/previous covers the request without unbounded menu growth.
+  - **Recent-use ordering.** Rejected; only update timestamps exist, and name order is stable and predictable.
+
+- **Consequences:**
+  - Workspace cycling order is alphabetical by name, not user-defined.
+  - Switching still reloads target workspace pages because native views are recreated.
+  - Native menu state must be refreshed after workspace lifecycle mutations.
+  - The menu shortcuts are discoverable and usable from native pane focus.
+
+- **Evidence / verification:**
+  - Three unit tests cover next/previous selection, wraparound, input-order stability, and unavailable targets.
+  - E2e reads both menu items (IDs, accelerators, disabled initially), creates workspaces, invokes the real menu items in both directions across three workspaces, verifies each target's pane IDs/profiles/URLs and native alignment, then confirms both items disable after returning to one workspace.
+
 ## ADR template
 
 ### ADR-NNN — Title

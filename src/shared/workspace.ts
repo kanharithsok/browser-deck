@@ -128,6 +128,35 @@ export function parsePaneTitle(
   return { ok: true, title: trimmed }
 }
 
+export type WorkspaceCycleDirection = 'next' | 'previous'
+
+/**
+ * Returns the neighboring workspace in stable name order, wrapping at either
+ * end. The caller must still route the result through the normal workspace
+ * switch path; null means there is no other workspace to activate.
+ */
+export function adjacentWorkspaceId(
+  workspaces: readonly Pick<WorkspaceSummary, 'id' | 'name'>[],
+  activeWorkspaceId: string,
+  direction: WorkspaceCycleDirection
+): string | null {
+  if (workspaces.length < 2) {
+    return null
+  }
+  const ordered = [...workspaces].sort((left, right) => {
+    const byName = left.name.localeCompare(right.name, 'en', { sensitivity: 'base' })
+    return byName !== 0 ? byName : left.id.localeCompare(right.id)
+  })
+  const activeIndex = ordered.findIndex((workspace) => workspace.id === activeWorkspaceId)
+  if (activeIndex === -1) {
+    return null
+  }
+  const offset = direction === 'next' ? 1 : -1
+  const targetIndex = (activeIndex + offset + ordered.length) % ordered.length
+  const target = ordered[targetIndex]
+  return target && target.id !== activeWorkspaceId ? target.id : null
+}
+
 export function normalizeWindowBounds(input: unknown): WindowBounds | null {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     return null

@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -332,6 +332,13 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Normal bounds are persisted after debounced move/resize/maximize/fullscreen changes and flushed on close. Maximized/fullscreen state itself is not persisted.
 - App-state writes capture the workspace path at enqueue time, preventing a queued save from writing into a different active workspace.
 - 2 new unit tests cover window-bounds validation and store persistence; the restart e2e sets a distinctive 1120 × 760 window, verifies the bounds in `app-state.json`, and checks restoration after relaunch.
+- Workspace shortcuts:
+  - added a native **Workspace** menu with stable IDs `workspace-next` and `workspace-previous` and accelerators `Cmd/Ctrl+Shift+]` and `Cmd/Ctrl+Shift+[`;
+  - both items call the existing trusted `switchWorkspaceTo` main-process path directly; no new IPC surface or renderer keyboard handler was added;
+  - workspace cycling uses deterministic name order with wraparound from a pure shared helper;
+  - switches are serialized so a second menu action cannot overlap an in-flight switch; menu items disable during switching and while the window is unavailable;
+  - menu enabled state refreshes after startup, workspace create/import/duplicate/delete/switch, and becomes disabled when only one workspace remains;
+  - e2e invokes both real menu items, verifies `Cmd/Ctrl+Shift+]`/`[` metadata, cycles through three workspaces in both directions including wraparound, confirms each target's pane IDs, profiles, URLs, and native view alignment, and checks enabled state before creation and after deletion.
 - Workspace management:
   - `WorkspaceStore` now lists, creates, renames, duplicates, switches, and deletes validated workspace files with unique case-insensitive names.
   - The active workspace ID is persisted in `app-state.json`; deleting the active or last workspace is blocked.
@@ -414,14 +421,14 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 9 files, 108 tests. |
+| `npm run test:unit` | Passed: 9 files, 111 tests, including workspace-cycling and custom-title validation. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including custom pane rename/persistence/reset, duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 12.2 s, including workspace cycling via both real menu items, custom pane rename/persistence/reset, duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
 | `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
 | `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (103.95 kB), preload (5.75 kB), renderer bundle (270.52 kB), and CSS (22.69 kB). |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (107.01 kB), preload (5.75 kB), renderer bundle (270.52 kB), and CSS (22.69 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -443,7 +450,9 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Leak stress covers four panes with two loaded fixture pages; the longest soak is 25 cycles (≈14.5 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
 - Working-set sampling is informational, not a pass/fail memory threshold; the 25-cycle run grew by ~70 MB.
 - Duplicate pane copies URL/viewport/custom title; sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
+- Shortcut e2e coverage invokes the real native menu items and verifies accelerator metadata; it does not synthesize OS-level key chords.
+- Workspace cycling order is alphabetical by name; there is no user-defined workspace order.
 
 ### Next smallest slice
 
-Finish accessibility, keyboard, minimum-window, and visual polish; then add long-duration memory/CPU profiling with loaded pages.
+Finish remaining accessibility and visual polish; then add long-duration memory/CPU profiling with loaded pages.
