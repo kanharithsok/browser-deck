@@ -177,6 +177,20 @@ export class BrowserManager {
     return { ok: true }
   }
 
+  bringPaneToFront(paneId: string): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Pane not found.' }
+    }
+    if (this.window.isDestroyed()) {
+      return { ok: false, error: 'Window is not available.' }
+    }
+
+    // Re-adding an existing child moves it to the top of the native stack.
+    this.window.contentView.addChildView(record.view)
+    return { ok: true }
+  }
+
   setBounds(input: unknown, canvas: CanvasSize): ScriptResult {
     const parsed = parsePaneBounds(input, new Set(this.panes.keys()), canvas)
     if (!parsed.ok) {

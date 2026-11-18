@@ -510,7 +510,119 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect.poll(() => readPaneCardOrder(shellPage)).toEqual([alicePaneId, bobPaneId])
     await waitForAlignedBounds(app)
 
-    // System light/dark appearance uses the shared design tokens.
+    // Freeform mode: move and resize a pane, preserve geometry across mode
+    // switches, and keep native views hidden during active manipulation.
+    const freeformButton = shellPage.getByRole('button', { name: 'Freeform' })
+    const gridButton = shellPage.getByRole('button', { name: 'Grid' })
+    const gridAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    const gridBobRect = await shellPage.locator('.pane-card').nth(1).boundingBox()
+    if (!gridAliceRect || !gridBobRect) {
+      throw new Error('Grid pane bounds are unavailable')
+    }
+
+    await freeformButton.click()
+    await expect
+      .poll(async () => (await readPaneCardOrder(shellPage)).length)
+      .toBe(2)
+    await waitForAlignedBounds(app)
+
+    const freeformAliceHeader = await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .locator('.pane-title-row')
+      .boundingBox()
+    if (!freeformAliceHeader) {
+      throw new Error('Freeform pane header is unavailable')
+    }
+    await shellPage.mouse.move(
+      freeformAliceHeader.x + 30,
+      freeformAliceHeader.y + freeformAliceHeader.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(
+      freeformAliceHeader.x + 110,
+      freeformAliceHeader.y + 75,
+      { steps: 10 }
+    )
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
+      .toBe(0)
+    await shellPage.mouse.up()
+    await waitForAlignedBounds(app)
+
+    const movedAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!movedAliceRect) {
+      throw new Error('Moved freeform pane bounds are unavailable')
+    }
+    expect(movedAliceRect.x).toBeGreaterThan(gridAliceRect.x + 20)
+
+    const resizeHandle = await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .locator('[data-resize="se"]')
+      .boundingBox()
+    if (!resizeHandle) {
+      throw new Error('Freeform resize handle is unavailable')
+    }
+    await shellPage.mouse.move(
+      resizeHandle.x + resizeHandle.width / 2,
+      resizeHandle.y + resizeHandle.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(resizeHandle.x + 70, resizeHandle.y + 50, { steps: 8 })
+    await shellPage.mouse.up()
+    await waitForAlignedBounds(app)
+
+    const resizedAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!resizedAliceRect) {
+      throw new Error('Resized freeform pane bounds are unavailable')
+    }
+    expect(resizedAliceRect.width).toBeGreaterThan(movedAliceRect.width + 20)
+    expect(resizedAliceRect.height).toBeGreaterThanOrEqual(movedAliceRect.height - 1)
+
+    const shrinkHandle = await shellPage
+      .locator('.pane-card')
+      .nth(0)
+      .locator('[data-resize="nw"]')
+      .boundingBox()
+    if (!shrinkHandle) {
+      throw new Error('Freeform shrink handle is unavailable')
+    }
+    await shellPage.mouse.move(
+      shrinkHandle.x + shrinkHandle.width / 2,
+      shrinkHandle.y + shrinkHandle.height / 2
+    )
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(shrinkHandle.x + 55, shrinkHandle.y + 45, { steps: 8 })
+    await shellPage.mouse.up()
+    await waitForAlignedBounds(app)
+
+    const shrunkAliceRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!shrunkAliceRect) {
+      throw new Error('Shrunk freeform pane bounds are unavailable')
+    }
+    expect(shrunkAliceRect.width).toBeLessThan(resizedAliceRect.width - 20)
+    expect(shrunkAliceRect.height).toBeLessThan(resizedAliceRect.height - 20)
+
+    await gridButton.click()
+    await waitForAlignedBounds(app)
+    const restoredGridAlice = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!restoredGridAlice) {
+      throw new Error('Restored grid pane bounds are unavailable')
+    }
+    expect(Math.abs(restoredGridAlice.x - gridAliceRect.x)).toBeLessThanOrEqual(2)
+    expect(Math.abs(restoredGridAlice.width - gridAliceRect.width)).toBeLessThanOrEqual(2)
+
+    await freeformButton.click()
+    await waitForAlignedBounds(app)
+    const restoredFreeformAlice = await shellPage.locator('.pane-card').nth(0).boundingBox()
+    if (!restoredFreeformAlice) {
+      throw new Error('Restored freeform pane bounds are unavailable')
+    }
+    expect(Math.abs(restoredFreeformAlice.x - shrunkAliceRect.x)).toBeLessThanOrEqual(2)
+    expect(Math.abs(restoredFreeformAlice.width - shrunkAliceRect.width)).toBeLessThanOrEqual(2)
+    await gridButton.click()
+    await waitForAlignedBounds(app)
     await shellPage.emulateMedia({ colorScheme: 'light' })
     expect(
       await shellPage.evaluate(() =>

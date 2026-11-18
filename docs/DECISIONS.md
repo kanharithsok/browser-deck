@@ -191,6 +191,39 @@ Record material technical decisions here. Keep entries short but include context
   - It drags back to the original order and re-verifies alignment.
   - Existing column, scrolling, auth, lifecycle, and persistence checks still pass.
 
+## ADR-007 — Freeform geometry stays normalized and manipulates the shell while native views hide
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** Freeform panes need arbitrary positions, overlap, resizing, snapping, and z-order while their websites remain native `WebContentsView`s. Native views obscure the shell, so DOM resize handles drawn over browser content would be unreachable, and pointer movement across panes would leave the shell.
+
+- **Decision:**
+  1. Freeform geometry is stored per pane as normalized rectangles and converted to the current workspace canvas. Grid order/columns and freeform geometry are independent state preserved across mode switches.
+  2. On first entry, existing panes are seeded from their current grid placements; new panes use a cascading default. Window resizes adapt normalized geometry with minimum/canvas clamping.
+  3. Freeform panes reserve a 6px shell inset around native content. Eight edge/corner handles live in that shell area and remain clickable while the website is visible.
+  4. Moving uses the title row; resizing uses shell handles. Both hide native views for the active interaction so the shell receives pointer events and can show alignment guides.
+  5. Move/resize uses the pure engine’s clamping and snapping helpers. Candidate guides are rendered as shell overlays while native views are hidden.
+  6. Freeform z-order is renderer state. Raising a pane reorders the native child view through a typed IPC operation; grid mode retains its own order.
+  7. Tidy converts a grid arrangement into normalized freeform geometry.
+
+- **Alternatives considered:**
+  - **Resize handles overlapping native content.** Rejected; native views would intercept pointer events.
+  - **Keep native views visible during manipulation.** Rejected because pointer capture does not cross native view hit testing and guides would be obscured.
+  - **Store freeform pixels.** Rejected because window resizing would not preserve relative arrangement.
+  - **Use a separate overlay window for drag/guides.** Deferred; hiding views is simpler and already uses the validated visibility path.
+
+- **Consequences:**
+  - Websites are temporarily hidden during freeform manipulation.
+  - Freeform mode is pointer-only for now; keyboard manipulation and maximize/restore remain.
+  - Normalized minimum-size clamping can make panes overlap on very small windows.
+  - Freeform state is not persisted yet.
+  - A fully covered pane may be unreachable until the covering pane is moved or another z-order control is added.
+
+- **Evidence / verification:**
+  - E2e switches grid → freeform, drags a pane, verifies all native views hide during manipulation and native bounds align after the drop.
+  - It resizes from SE and NW handles, verifies both dimensions change, switches back to grid, and then back to freeform to confirm both arrangements are preserved.
+  - Existing grid reflow, scrolling, drag reorder, auth, lifecycle, and restart checks still pass.
+
 ## ADR template
 
 ### ADR-NNN — Title

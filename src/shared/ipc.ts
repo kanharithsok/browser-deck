@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   reload: 'paneflow:reload',
   reloadAll: 'paneflow:reload-all',
   setPaneBounds: 'paneflow:set-pane-bounds',
+  bringPaneToFront: 'paneflow:bring-pane-to-front',
   showPaneMenu: 'paneflow:show-pane-menu',
   stateChanged: 'paneflow:state-changed',
   requestMeasurement: 'paneflow:request-measurement'
@@ -60,6 +61,7 @@ export interface PaneFlowApi {
   reload(paneId: string): Promise<ScriptResult>
   reloadAll(): Promise<ScriptResult>
   setPaneBounds(updates: PaneBoundsUpdate[]): Promise<ScriptResult>
+  bringPaneToFront(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void

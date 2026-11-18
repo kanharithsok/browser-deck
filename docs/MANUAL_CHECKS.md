@@ -39,9 +39,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Add/remove reflows the grid without losing panes. (E2e checks native alignment after add and close.)
 - [x] Grid scrolling when rows exceed the available height. (Workspace scrolls to engine content height.)
 - [x] Off-screen/partial native views are hidden and cannot cover chrome. (E2e scrolls an overflowing grid and checks visible bounds stay inside the workspace.)
-- [ ] Freeform drag, resize, overlap, z-order, and snap behavior. (Engine helpers unit-tested; UI pending.)
-- [ ] Switching modes preserves both arrangements. (Pending.)
-- [ ] Maximize/restore returns to the prior geometry. (Engine helper exists; UI pending.)
+- [ ] Freeform drag, resize, overlap, z-order, and snap behavior. (Drag/resize, z-order raising, and snapping are wired; explicit send-to-back and guide checks remain.)
+- [x] Freeform pane drag and resize with native alignment. (E2e moves and resizes with native views hidden during manipulation.)
+- [x] Switching grid/freeform preserves both arrangements. (E2e cycles modes and checks geometry.)
+- [ ] Maximize/restore. (Engine helper exists; UI pending.)
 - [ ] Layout restores after app restart. (Selected columns are not persisted yet.)
 
 ## Viewport emulation
