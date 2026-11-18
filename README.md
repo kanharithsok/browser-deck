@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, and a profile manager. Remaining Phase 4 work covers explicit profile assignment, performance, polish, and macOS packaging.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, and explicit shared-profile panes. Remaining Phase 4 work covers theme restoration, performance, polish, and macOS packaging.
 
 ## Current capabilities
 
@@ -28,10 +28,11 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Safe normal window-bounds restoration: saved bounds are validated and applied only when visible on a connected display.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
 - Profile manager dialog with creation dates, live pane usage, rename, confirmed clear, and safe delete. Clear/delete are blocked while a profile is in use.
+- Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
 - Workspace manager for create, rename, duplicate, switch, and delete, with active-state persistence and fresh profiles for duplicated panes.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass, viewport-emulation checks, a full workspace/session restart, profile-manager lifecycle checks, and workspace management.
 
-The current build does **not** include explicit profile assignment/sharing, optional user-agent overrides, theme restoration, background-warm workspace switching, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
+The current build does **not** include optional user-agent overrides, theme restoration, background-warm workspace switching, workspace import/export, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -117,7 +118,7 @@ The Playwright suite requires a local macOS GUI session. Unit tests include the 
 
 The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`, and viewport presets, validation, and fit-scale math live in `src/shared/viewports.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. A native Pane menu routes typed commands to the active pane. Pane headers expose viewport preset, fit/actual, and custom size controls; the main process applies them through Electron device emulation. `WorkspaceStore` persists validated pane references and renderer-owned layout state into versioned JSON with atomic writes. A trusted **Profiles** dialog lists profile usage and manages rename/clear/delete while native views are hidden. A **Workspaces** dialog creates, renames, duplicates, switches, and deletes saved workspaces with fresh profiles on duplication. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`, and viewport presets, validation, and fit-scale math live in `src/shared/viewports.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. A native Pane menu routes typed commands to the active pane. Pane headers expose viewport preset, fit/actual, and custom size controls; the main process applies them through Electron device emulation. `WorkspaceStore` persists validated pane references and renderer-owned layout state into versioned JSON with atomic writes. A trusted **Profiles** dialog lists profile usage, manages rename/clear/delete, and can explicitly open a pane with an existing profile while native views are hidden. A **Workspaces** dialog creates, renames, duplicates, switches, and deletes saved workspaces with fresh profiles on duplication. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -155,7 +156,8 @@ opencode.jsonc        Project-level OpenCode configuration
 
 ## Known limitations
 
-- New panes always receive fresh profiles; explicit profile assignment/sharing is not implemented yet.
+- New panes receive fresh profiles by default; sharing requires the profile manager's Open pane action.
+- Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.

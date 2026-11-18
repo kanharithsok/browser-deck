@@ -310,7 +310,7 @@ Met in the automated macOS run. Different panes used independent viewport config
 - Theme preference and multiple workspace files are not part of restored state yet; normal window bounds are now handled in Phase 4.
 - Maximized/focused state is intentionally not persisted.
 - Profile clear/delete require all panes using the profile to be closed first; there is no close-and-delete flow.
-- Profile assignment/sharing UI is not implemented; new panes always receive fresh profiles.
+- At Phase 3 completion, profile sharing UI was not implemented; Phase 4 added the profile-manager Open pane flow.
 - Partition-directory removal after delete is best-effort; session data is cleared first, and leftover Chromium cache files are inaccessible through the profile manager.
 - The display scale selector is hidden only by wrapping, not collapsed into the pane menu; very narrow freeform panes produce a taller three-row chrome block.
 - Overlapping freeform panes can cover each other's headers and far resize handles; the 8-pane stress test dispatches z-order/maximize actions directly when another pane's header would intercept pointer events.
@@ -318,11 +318,11 @@ Met in the automated macOS run. Different panes used independent viewport config
 
 ### Next smallest slice
 
-Phase 4: explicit profile assignment/sharing, theme restoration, accessibility and visual polish, performance stress, and macOS packaging. Workspace management and safe window bounds are complete. Do not treat the current build output as a distributable app.
+Phase 4: theme restoration, accessibility and visual polish, performance stress, import/export, and macOS packaging. Workspace management, safe window bounds, and explicit profile sharing are complete. Do not treat the current build output as a distributable app.
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Safe window-bounds persistence and workspace management are implemented and verified; explicit profile assignment, performance work, and macOS packaging remain.
+- **Status:** In progress. Safe window-bounds persistence, workspace management, and explicit profile sharing are implemented and verified; theme restoration, performance work, and macOS packaging remain.
 
 ### Delivered so far
 
@@ -341,6 +341,13 @@ Phase 4: explicit profile assignment/sharing, theme restoration, accessibility a
   - The renderer resets pane/order/layout state when the workspace ID changes and applies the target workspace's saved layout.
   - Main-process test hooks now read the current manager/store rather than a captured initial manager, so switching works under e2e inspection.
   - Unit coverage verifies workspace store lifecycle and name validation; e2e creates a second workspace, switches to it, adds a pane, renames it, duplicates it with fresh profiles, switches back to the authenticated original workspace, verifies app-state, and deletes the extra workspaces.
+- Explicit profile sharing:
+  - the profile manager exposes **Open pane** for any existing profile; new panes still receive fresh profiles by default;
+  - a validated `add-pane-with-profile` IPC creates a pane with the selected profile and default viewport;
+  - pane headers show `· N panes` when a profile is referenced by multiple panes, and the profile manager usage reads `N panes: titles`;
+  - shared-profile panes use the same persistent partition, so cookies and site storage are intentionally shared;
+  - clear/delete remain blocked while any shared pane is open;
+  - e2e opens two panes with one unused profile, verifies distinct pane IDs and shared localStorage, checks the shared count, verifies clear/delete protection, closes both panes, and confirms the remaining workspace is unchanged.
 
 ### Verification commands and results
 
@@ -349,8 +356,8 @@ Phase 4: explicit profile assignment/sharing, theme restoration, accessibility a
 | `npm run test:unit` | Passed: 8 files, 97 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 9.4 s, including window-bounds persistence, workspace lifecycle/switching, and profile management. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (84.85 kB), preload (4.61 kB), and the renderer bundle (261.53 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 9.9 s, including window-bounds persistence, workspace lifecycle/switching, profile management, and explicit profile sharing. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (85.89 kB), preload (4.79 kB), and the renderer bundle (263.12 kB). |
 
 ### Known issues / risks
 
@@ -359,9 +366,11 @@ Phase 4: explicit profile assignment/sharing, theme restoration, accessibility a
 - Workspace switching tears down and recreates native pane views; pages reload rather than staying warm in the background.
 - Duplicated workspaces immediately create fresh profiles even before the duplicate is opened; unused profiles remain in the profile manager.
 - Deleting a workspace does not delete profiles that were referenced only by that workspace.
-- Explicit profile assignment/sharing, close-and-delete flows, import/export, and workspace-specific window bounds remain.
+- Profile sharing is initiated from the profile manager; the toolbar Add pane action always creates a fresh profile.
+- Shared profiles are intentional but still share one Chromium partition; there is no clone-profile-with-session feature.
+- Close-and-delete profile flows, workspace import/export, theme restoration, and workspace-specific window bounds remain.
 - Packaging, signing, notarization, and release automation are not implemented.
 
 ### Next smallest slice
 
-Add explicit profile selection for new panes and visible shared-profile usage, then tackle performance/leak stress and macOS packaging.
+Add theme preference persistence and performance/leak stress for repeated pane/workspace switching, then prepare macOS packaging.

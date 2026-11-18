@@ -116,6 +116,14 @@ const orderedPanes = computed(() => {
     .filter((pane): pane is PaneState => pane !== undefined)
 })
 
+const profilePaneCounts = computed(() => {
+  const counts = new Map<string, number>()
+  for (const pane of panes.value) {
+    counts.set(pane.profileId, (counts.get(pane.profileId) ?? 0) + 1)
+  }
+  return counts
+})
+
 const paneLayoutKey = computed(() => orderedPanes.value.map((pane) => pane.id).join('|'))
 const errorMessage = computed(() => actionError.value ?? layoutError.value)
 
@@ -645,10 +653,11 @@ function formatProfileDate(value: string): string {
 }
 
 function profilePaneTitles(profile: ProfileSummary): string {
+  const count = `${profile.paneIds.length} ${profile.paneIds.length === 1 ? 'pane' : 'panes'}`
   const titles = profile.paneIds
     .map((paneId) => panes.value.find((pane) => pane.id === paneId)?.title)
     .filter((title): title is string => Boolean(title))
-  return titles.length > 0 ? titles.join(', ') : `${profile.paneIds.length} pane(s)`
+  return titles.length > 0 ? `${count}: ${titles.join(', ')}` : count
 }
 
 async function refreshProfiles(): Promise<void> {
@@ -697,6 +706,26 @@ function closeProfiles(): void {
     scheduleMeasure()
     profilesButtonEl.value?.focus()
   })
+}
+
+async function openPaneWithProfile(profile: ProfileSummary): Promise<void> {
+  if (profileBusy.value) {
+    return
+  }
+  profileBusy.value = true
+  profileError.value = null
+  try {
+    const result = await window.paneflow.addPaneWithProfile(profile.id)
+    if (!result.ok) {
+      profileError.value = result.error
+      return
+    }
+    closeProfiles()
+  } catch {
+    profileError.value = 'Could not create a pane with this profile.'
+  } finally {
+    profileBusy.value = false
+  }
 }
 
 function startProfileRename(profile: ProfileSummary): void {
@@ -1676,6 +1705,7 @@ onBeforeUnmount(() => {
             :freeform="layoutMode === 'freeform' && !maximizedPaneId"
             :maximized="maximizedPaneId === pane.id"
             :suspended="suspendedPaneIds.has(pane.id)"
+            :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
             @toggle-maximize="toggleMaximize(pane.id)"
@@ -1730,8 +1760,8 @@ onBeforeUnmount(() => {
           <div>
             <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
             <p id="profiles-description" class="profiles-description">
-              Each profile keeps its own cookies and site storage. Close its panes before clearing
-              or deleting it.
+              Each profile keeps its own cookies and site storage. Open pane explicitly shares this
+              profile; close its panes before clearing or deleting it.
             </p>
           </div>
           <button
@@ -1798,6 +1828,15 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-if="renamingProfileId !== profile.id" class="profile-controls">
+              <button
+                class="text-button"
+                type="button"
+                :disabled="profileBusy"
+                title="Open a new pane using this profile and share its cookies/storage."
+                @click="openPaneWithProfile(profile)"
+              >
+                Open pane
+              </button>
               <button
                 class="text-button"
                 type="button"

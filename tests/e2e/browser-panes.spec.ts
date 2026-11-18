@@ -1444,9 +1444,84 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await readPersistedProfiles(userDataDir)).some((p) => p.id === bobProfileId))
       .toBe(false)
 
-    await profilesDialog.getByRole('button', { name: 'Close' }).last().click()
+    // Explicitly share an existing profile across two new panes.
+    const sharedProfileId = newPane?.profileId
+    expect(sharedProfileId).toBeTruthy()
+    expect(sharedProfileId).not.toBe(aliceProfileId)
+
+    const sharedProfileRow = profilesDialog.locator(
+      `.profile-row[data-profile-id="${sharedProfileId}"]`
+    )
+    await sharedProfileRow.getByRole('button', { name: 'Open pane' }).click()
     await expect(profilesDialog).toHaveCount(0)
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.panes.filter((pane) => pane.profileId === sharedProfileId).length === 1,
+      'first shared-profile pane'
+    )
+
+    await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
+    await sharedProfileRow.getByRole('button', { name: 'Open pane' }).click()
+    await expect(profilesDialog).toHaveCount(0)
+    const sharedState = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.panes.filter((pane) => pane.profileId === sharedProfileId).length === 2,
+      'second shared-profile pane'
+    )
+    const sharedPanes = sharedState.panes.filter((pane) => pane.profileId === sharedProfileId)
+    expect(new Set(sharedPanes.map((pane) => pane.id)).size).toBe(2)
+    for (const pane of sharedPanes) {
+      await expect(
+        restartShell.locator(`.pane-card[data-pane-id="${pane.id}"] .pane-profile`)
+      ).toContainText('2 panes')
+    }
+
+    for (const [index, pane] of sharedPanes.entries()) {
+      const input = restartShell.locator(`.pane-card[data-pane-id="${pane.id}"] .address-input`)
+      await input.fill(`${fixture.url}/pane/shared?slot=${index}`)
+      await input.press('Enter')
+    }
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        sharedPanes.every((pane) => {
+          const current = state.panes.find((entry) => entry.id === pane.id)
+          return current?.url.includes('/pane/shared') && !current.isLoading
+        }),
+      'shared panes to navigate'
+    )
+    await evaluateInPane(
+      restartApp,
+      sharedPanes[0]?.id as string,
+      "localStorage.setItem('paneflow_shared_probe', 'shared')"
+    )
+    expect(
+      await evaluateInPane<string | null>(
+        restartApp,
+        sharedPanes[1]?.id as string,
+        "localStorage.getItem('paneflow_shared_probe')"
+      )
+    ).toBe('shared')
+
+    await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
+    await expect(sharedProfileRow).toContainText('2 panes:')
+    await expect(sharedProfileRow.getByRole('button', { name: 'Clear' })).toBeDisabled()
+    await expect(sharedProfileRow.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    await profilesDialog.getByRole('button', { name: 'Close' }).last().click()
+
+    for (const [index, pane] of sharedPanes.entries()) {
+      await restartShell
+        .locator(`.pane-card[data-pane-id="${pane.id}"]`)
+        .getByRole('button', { name: 'Close pane' })
+        .click()
+      await waitFor(
+        () => getSnapshot(restartApp),
+        (state) => state.panes.length === sharedPanes.length - index,
+        'shared pane close'
+      )
+    }
     await waitForAlignedBounds(restartApp)
+    await expect(profilesDialog).toHaveCount(0)
 
     // Workspace management: create, switch, rename, duplicate, and delete.
     const originalWorkspaceId = (await getSnapshot(restartApp)).workspace.id

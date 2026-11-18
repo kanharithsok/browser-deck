@@ -92,6 +92,19 @@ export class BrowserManager {
   }
 
   async addPane(address?: string): Promise<ScriptResult> {
+    const profile = await this.profileStore.create()
+    return this.addPaneForProfile(profile, address)
+  }
+
+  async addPaneWithProfile(profileId: string, address?: string): Promise<ScriptResult> {
+    const profile = this.profileStore.get(profileId)
+    if (!profile) {
+      return { ok: false, error: 'Profile not found.' }
+    }
+    return this.addPaneForProfile(profile, address)
+  }
+
+  private addPaneForProfile(profile: BrowserProfile, address?: string): ScriptResult {
     let url = 'about:blank'
     if (address !== undefined && address.trim() !== '') {
       if (address.length > 2048) {
@@ -104,7 +117,6 @@ export class BrowserManager {
       url = normalized.url
     }
 
-    const profile = await this.profileStore.create()
     if (this.destroyed || this.window.isDestroyed()) {
       return { ok: false, error: 'PaneFlow window is not available.' }
     }

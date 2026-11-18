@@ -84,6 +84,31 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   })
 
+  ipcMain.handle(
+    IPC_CHANNELS.addPaneWithProfile,
+    async (event, profileIdInput: unknown, urlInput: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const profileId = readString(profileIdInput, 100)
+      if (!profileId) {
+        return { ok: false, error: 'Invalid profile ID.' }
+      }
+      if (urlInput !== undefined && typeof urlInput !== 'string') {
+        return { ok: false, error: 'Invalid address.' }
+      }
+      try {
+        return await manager.addPaneWithProfile(profileId, urlInput)
+      } catch {
+        return { ok: false, error: 'Could not create the pane.' }
+      }
+    }
+  )
+
   ipcMain.handle(IPC_CHANNELS.closePane, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {
       return unauthorized

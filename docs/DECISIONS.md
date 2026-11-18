@@ -366,7 +366,7 @@ Record material technical decisions here. Keep entries short but include context
   4. Rename validates non-empty, bounded, duplicate-free labels, persists metadata, and emits a pane-state refresh so live headers update.
   5. Clear calls `clearStorageData`, `clearCache`, and `clearAuthCache` on the profile partition after inline confirmation. Delete performs the same clear, removes `profiles.json` metadata, and best-effort removes the partition directory.
   6. Focus is trapped in the dialog, Escape cancels the current rename/confirmation or closes it, and focus returns to the toolbar action.
-  7. New panes continue to receive fresh profiles; explicit profile assignment/sharing is deferred.
+  7. That slice kept fresh-profile-only pane creation; explicit sharing from the profile manager was added in ADR-015.
 
 - **Alternatives considered:**
   - **Native menu-only profile actions.** Rejected for rename/confirmation UX and list presentation.
@@ -380,7 +380,7 @@ Record material technical decisions here. Keep entries short but include context
   - Users must close panes before clearing or deleting their profile.
   - Duplicate profile labels are rejected case-insensitively.
   - Partition directory removal can be incomplete if Chromium still holds files, but profile data has already been cleared and is no longer reachable.
-  - Profile assignment/sharing and close-and-delete flows remain future work.
+  - Profile sharing is explicit via ADR-015; close-and-delete flows remain future work.
 
 - **Evidence / verification:**
   - Unit tests verify profile rename, duplicate/empty rejection, metadata removal, and reload persistence.
@@ -448,6 +448,36 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - Unit tests cover workspace create/list/switch/rename/delete, unique names, active/final deletion protection, and reload persistence.
   - E2e creates a second workspace, switches to it, adds a pane, renames it, duplicates it with fresh profiles, switches back to the authenticated original workspace, verifies active-state persistence, deletes the extras, and checks native alignment.
+
+## ADR-015 — Profile sharing is an explicit profile-manager action
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` §9.1 requires fresh profiles by default and permits sharing only when the user explicitly selects an existing profile. Shared status must be visible so it cannot happen accidentally. Profile metadata and pane creation are trusted-shell operations.
+
+- **Decision:**
+  1. Keep the toolbar Add pane action fresh-profile-only.
+  2. Add **Open pane** to every profile row and a typed `add-pane-with-profile` IPC. Main resolves the profile by validated ID and rejects unknown IDs; it never accepts arbitrary partition names from the renderer.
+  3. Shared-profile panes use the same profile ID/partition and therefore share cookies and site storage intentionally.
+  4. Pane headers display `· N panes` when more than one pane references the profile. Profile manager usage displays the count and pane titles.
+  5. Clear/delete remain blocked while any pane, including shared panes, references the profile.
+  6. The profile manager closes after creating the pane so the new pane can be measured and displayed with other panes.
+
+- **Alternatives considered:**
+  - **Profile picker in the main Add pane flow.** Deferred to keep the toolbar compact; the profile manager is the explicit sharing surface.
+  - **Duplicate pane with a fresh profile.** Deferred; duplication remains future work.
+  - **Share profiles by default when opening the same URL.** Rejected; sharing must be intentional.
+  - **Spoof or copy session data between fresh profiles.** Rejected; partitions remain isolated.
+
+- **Consequences:**
+  - Sharing is discoverable and labeled but requires opening the profile manager.
+  - Shared panes intentionally expose the same cookies/storage; this is not a private mode boundary.
+  - Profile clear/delete may require closing multiple panes.
+  - Duplicating panes and workspace import/export remain future work.
+
+- **Evidence / verification:**
+  - E2e opens two panes with the same unused profile, verifies distinct pane IDs and `2 panes` headers, navigates both to the fixture, writes localStorage in one, reads it from the other, verifies profile-manager usage and clear/delete protection, then closes both panes.
+  - Fresh-pane, isolation, session-restart, workspace, and profile-manager tests still pass.
 
 ## ADR template
 
