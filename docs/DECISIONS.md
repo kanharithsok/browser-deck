@@ -98,7 +98,36 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - `tests/unit/layout.test.ts` covers 33 cases for grid placement/reflow, columns 1–5, overflow flags, add/remove/reorder, clamping, move/resize, normalized conversion, snapping, ordering, and maximize/restore.
   - `npm run test:unit` passes with 67 tests across 5 files.
-  - The engine is not wired into the renderer yet; the existing CSS auto-fit grid and native bounds behavior are unchanged.
+  - Grid mode was subsequently wired in ADR-004; freeform and native-aware scrolling remain engine-only.
+
+## ADR-004 — Grid mode uses engine placements and defers native-aware scrolling
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** The pure layout engine was ready, but the renderer still used CSS auto-fit, which could not expose a user-selectable column count or guarantee equal pane geometry. Native `WebContentsView`s are not clipped by DOM scroll containers, so allowing an overflowing grid to scroll immediately would let browser views escape their workspace or cover chrome.
+
+- **Decision:**
+  1. Grid mode renders absolutely positioned `.pane-slot` elements from `layoutGrid` rectangles. The workspace content box is measured with `ResizeObserver`, and native pane content is re-measured after Vue commits each layout.
+  2. A compact toolbar selector exposes columns 1–5; add/remove and window resize reflow through the engine.
+  3. The engine reports vertical overflow and narrow columns. Until native-aware scrolling lands, the shell shows a notice and keeps the workspace non-scrollable rather than allowing native views to escape or misalign.
+  4. Native bounds remain measured from DOM content rectangles and validated by main. The grid engine does not write native bounds directly.
+  5. Freeform panes, drag reorder, and column persistence remain deferred.
+
+- **Alternatives considered:**
+  - **Keep CSS auto-fit.** Rejected because it hides layout math in CSS, cannot expose a real column count, and cannot be reused for freeform layout.
+  - **Enable DOM scrolling immediately.** Rejected because native views do not scroll or clip with the DOM; it would break alignment or draw browser content over chrome.
+  - **Hide excess panes.** Rejected; panes must never be silently dropped from the workspace.
+
+- **Consequences:**
+  - A window too short for all rows shows a warning and leaves lower panes inaccessible until the next scroll/clipping slice.
+  - Narrow columns produce a warning but remain usable in tested sizes; the engine and native minimums still need unification.
+  - Columns reset to the default on restart until workspace persistence arrives in Phase 3.
+  - Absolute pane placement makes later freeform and z-order integration possible without changing the native bounds path.
+
+- **Evidence / verification:**
+  - E2e switches 2 → 5 → 1 → 2 columns, verifies card geometry, compares DOM content rectangles with native `view.getBounds()` after each reflow, and repeats alignment after pane add/close.
+  - Manual macOS run showed the two-column grid, column control, 623 × 696 native pane viewports, and aligned chrome.
+  - Existing authentication, lifecycle, teardown, popup/permission, and restart-persistence checks still pass.
 
 ## ADR template
 

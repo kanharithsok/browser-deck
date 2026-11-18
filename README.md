@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, window resizing, and verified cleanup. The pure layout engine is implemented and unit-tested; renderer grid/freeform integration, viewport emulation, and packaging arrive in later slices.
+> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, and window resizing. Grid mode is engine-driven with a 1–5 column selector; freeform mode and native-aware scrolling are next. Viewport emulation and packaging arrive in later phases.
 
 ## Current capabilities
 
@@ -17,9 +17,10 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Denied popups, permissions, and downloads for remote content; sandboxed browser views with no app bridge or Node access.
 - Independent authenticated sessions on one local origin, with HttpOnly persistent cookies, localStorage, and IndexedDB isolated per profile and restored after restart.
 - Pure TypeScript layout engine for grid placement/reflow, normalized freeform geometry, clamping, snapping, ordering, and maximize/restore, with 33 unit tests.
+- Engine-driven grid mode with a compact 1–5 column selector, equal-width reflow, and native bounds alignment; add/remove reflow works.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test.
 
-The current build does **not** include renderer grid/freeform integration, workspace persistence, viewport presets, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
+The current build does **not** include freeform UI, native-aware grid scrolling, workspace persistence, viewport presets, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -72,6 +73,7 @@ The e2e test launches the built app against local fixtures and verifies:
 - no `window.paneflow`, `require`, or `process` in remote pages;
 - denied popups and notifications;
 - native view bounds matching shell content rectangles before and after window resize;
+- 2/5/1-column grid reflow with native bounds alignment at every step;
 - real address-bar navigation and history controls;
 - rejecting unsupported URLs and unknown pane IDs in main;
 - pane close destroying its `webContents` without touching the other pane;
@@ -84,7 +86,7 @@ The Playwright suite requires a local macOS GUI session. Unit tests include the 
 
 The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`; renderer wiring is the next Phase 2 slice. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`. Grid mode positions pane cards from engine results and re-measures native view rectangles after every reflow. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -122,8 +124,9 @@ opencode.jsonc        Project-level OpenCode configuration
 
 ## Known limitations
 
-- The workspace UI, renderer grid/freeform integration, viewport emulation, and profile manager are not implemented yet.
-- Workspace scrolling is deferred: many panes shrink the current CSS grid, and views below the minimum content size are rejected with an error banner. The pure engine reports overflow but is not wired in yet.
+- The workspace still lacks freeform mode, native-aware grid scrolling, viewport emulation, and a profile manager.
+- Grid overflow currently shows a warning but cannot be scrolled, so lower panes may be inaccessible until scroll-aware native clipping lands.
+- The selected column count resets on restart until workspace persistence arrives.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
 - Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.

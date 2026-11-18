@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0 and 1 complete; Phase 2 in progress. The native-view composition and per-profile browser session foundation are implemented and verified. The pure layout engine exists and is unit-tested; renderer integration is not started. See `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
+> Status: Phases 0 and 1 complete; Phase 2 in progress. The native-view composition and per-profile browser session foundation are implemented and verified. Grid mode is wired to the pure layout engine; freeform and native-aware scrolling are not started. See `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
 
 ## Technology baseline
 
@@ -74,6 +74,8 @@ BaseWindow.contentView
 
 The shell is the first child of `contentView` and fills the window content area. Each pane view is added afterwards and occupies only the rectangle of its `.pane-content` placeholder. Pane chrome therefore remains ordinary DOM and is never covered by a native view. Native menus are the only intentional overlay above browser content in the current composition.
 
+Grid mode positions absolutely placed `.pane-slot` elements from `layoutGrid` results. `App.vue` measures the workspace content box, recomputes placements for the selected 1–5 columns, and re-measures native content rectangles after Vue commits the layout. The old CSS auto-fit grid is no longer used. Overflow and narrow columns produce a shell notice because native-aware scrolling/clipping is not implemented yet.
+
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 
 The main process re-validates every rectangle in `parsePaneBounds`:
@@ -100,7 +102,7 @@ Contract:
 - Move and edge-resize helpers clamp to canvas bounds. Snapping produces candidate-aligned rectangles and guide coordinates for canvas edges/centers, neighboring pane edges/centers, and optional grid lines within a configurable threshold.
 - Ordering helpers treat the end of the list as the topmost/front pane. Maximize returns both the maximized rectangle and the previous rectangle for restore.
 
-The renderer still uses its CSS auto-fit grid; wiring the engine into DOM card placement and native bounds synchronization is the next Phase 2 slice. Scroll-aware clipping of native views is still unresolved and is intentionally not hidden behind the engine.
+The renderer uses grid placements from the engine and a compact 1–5 column selector. Vertical overflow currently shows a notice but is not scrollable; wiring scroll-aware native view visibility is the next Phase 2 slice. Freeform drag/resize/snap/z-order/maximize are still engine-only. Scroll-aware clipping of native views is intentionally not hidden behind the engine.
 
 ## Browser pane lifecycle
 
@@ -179,7 +181,7 @@ Only profile metadata and Electron-managed partition data exist so far. Workspac
 ## Testing
 
 - **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, DOM/native bounds alignment before and after resize, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, and visual alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
@@ -188,8 +190,10 @@ The Playwright test inspects the main process through a test hook that is only i
 
 - DOM content cannot be drawn over native browser views. Future contextual UI must use native menus, hide/shift the view, or introduce a separately proven overlay view.
 - Native views are not clipped by the shell's scroll containers. Scrolling many panes and partial off-screen clipping are Phase 2 work.
-- The current renderer grid still shrinks panes rather than using the new layout engine. Below the 80 × 60 native minimum the bounds update is rejected and the shell shows an error banner.
-- The layout engine's default 160 × 120 card minimum and main's 80 × 60 native view minimum must be reconciled when grid mode is wired.
+- Vertical grid overflow currently shows a notice but cannot be scrolled yet, so lower panes are inaccessible until the native-aware scroll slice.
+- The selected 1–5 column count is not persisted across restarts (Phase 3).
+- Freeform move/resize/snap/z-order/maximize are engine-only; UI wiring is pending.
+- The layout engine's default 160 × 120 card minimum and main's 80 × 60 native view minimum still need to be unified.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
 - Startup always creates two panes and uses the first two profile records. Workspace restoration replaces this in Phase 3.
 - Profile rename, clear, delete, explicit sharing, and an in-use profile manager are Phase 3 work.
