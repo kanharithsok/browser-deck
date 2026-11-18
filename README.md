@@ -88,8 +88,10 @@ npm run dev
 | `Cmd/Ctrl+Alt+Shift+R` | Reload all panes |
 | `Cmd/Ctrl+Shift+M` | Toggle maximize for active pane |
 | `Cmd/Ctrl+Shift+L` | Toggle grid/freeform |
+| `Cmd/Ctrl+Shift+]` | Next workspace |
+| `Cmd/Ctrl+Shift+[` | Previous workspace |
 
-The active pane follows shell chrome focus and native pane focus. Shortcuts are registered through the native Pane menu.
+Workspace cycling follows workspace name order, wraps at either end, and restores the target workspace's saved panes and layout. Both items are disabled when only one workspace exists. The active pane follows shell chrome focus and native pane focus. Shortcuts are registered through the native Pane and Workspace menus.
 
 ## Testing
 
@@ -113,6 +115,7 @@ The e2e tests launch the built app against local fixtures and verify:
 - temporary maximize/restore with unrelated native views hidden;
 - explicit freeform z-order changes reflected in native child order;
 - menu command routing for add/close/maximize/layout actions;
+- next/previous workspace menu shortcuts with stable IDs, accelerator discovery, enabled-state updates, and restored pane identity;
 - an eight-pane grid/freeform alignment stress pass;
 - overflowing grid scrolling with native views hidden when partially off-screen;
 - real address-bar navigation and history controls;
@@ -131,7 +134,7 @@ npm run build
 PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts
 ```
 
-The observed 50-cycle run took about 16 s, returned to 2 non-destroyed webContents after every cycle, and sampled whole-app working set at 577 MB before and 577 MB after. It is a switch soak, not a peak, per-process, multi-hour, or third-party-page profile.
+The observed 50-cycle run on the merged branch took about 19 s, returned to 2 non-destroyed webContents after every cycle, and sampled whole-app working set at 581 MB before and 677 MB after. An earlier isolated run measured 577 MB → 577 MB. It is a switch soak, not a peak, per-process, multi-hour, or third-party-page profile.
 
 The Playwright tests require a local macOS GUI session. Unit tests include the pure layout engine. The CI workflow is configured to run typecheck, lint, unit tests, and build; e2e remains a local check until headless Electron execution is proven.
 
@@ -182,7 +185,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
 - Active-pane chrome is indicated by an accent border and `aria-current`; dialog triggers expose expanded state, and the toolbar stays overflow-free at the tested 760 px width. Automated axe/role/AX checks cover the shell and dialogs, but VoiceOver order/announcements and focus-ring usability still need a manual pass.
 - Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
-- Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 577 MB → 577 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
+- Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 581 MB → 677 MB on the merged branch; an earlier isolated run measured 577 MB → 577 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
 - Maximized/focused state is not restored across restarts. Window bounds restore only when visible on a current display.

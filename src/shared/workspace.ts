@@ -12,6 +12,7 @@ export const APP_STATE_VERSION = 1
 export const DEFAULT_WORKSPACE_ID = 'default'
 export const DEFAULT_WORKSPACE_NAME = 'Workspace'
 export const MAX_WORKSPACE_NAME_LENGTH = 80
+export const MAX_PANE_TITLE_LENGTH = 80
 export const MAX_WORKSPACE_PANES = 512
 
 const WORKSPACE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -27,6 +28,8 @@ export interface WorkspacePaneDefinition {
   profileId: string
   url: string
   viewport: PaneViewport
+  /** Custom pane name. Absent means the pane title follows the page title. */
+  title?: string
 }
 
 export interface WorkspaceLayout {
@@ -97,6 +100,61 @@ export function normalizeWorkspaceName(name: string): string | null {
     return null
   }
   return trimmed
+}
+
+/**
+ * Validates a custom pane title. Whitespace-only input clears the custom title
+ * so the pane falls back to its live page title.
+ */
+export function parsePaneTitle(
+  value: unknown
+): { ok: true; title: string | null } | { ok: false; error: string } {
+  if (typeof value !== 'string') {
+    return { ok: false, error: 'Pane title must be text.' }
+  }
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return { ok: true, title: null }
+  }
+  if (CONTROL_CHARACTERS.test(trimmed)) {
+    return { ok: false, error: 'Pane title contains invalid characters.' }
+  }
+  if (trimmed.length > MAX_PANE_TITLE_LENGTH) {
+    return {
+      ok: false,
+      error: `Pane titles must be ${MAX_PANE_TITLE_LENGTH} characters or fewer.`
+    }
+  }
+  return { ok: true, title: trimmed }
+}
+
+export type WorkspaceCycleDirection = 'next' | 'previous'
+
+/**
+ * Returns the neighboring workspace in stable name order, wrapping at either
+ * end. The caller must still route the result through the normal workspace
+ * switch path; null means there is no other workspace to activate.
+ */
+export function adjacentWorkspaceId(
+  workspaces: readonly Pick<WorkspaceSummary, 'id' | 'name'>[],
+  activeWorkspaceId: string,
+  direction: WorkspaceCycleDirection
+): string | null {
+  if (workspaces.length < 2) {
+    return null
+  }
+  const ordered = [...workspaces].sort((left, right) => {
+    const byName = left.name.localeCompare(right.name, 'en', { sensitivity: 'base' })
+    return byName !== 0 ? byName : left.id.localeCompare(right.id)
+  })
+  const activeIndex = ordered.findIndex((workspace) => workspace.id === activeWorkspaceId)
+  if (activeIndex === -1) {
+    return null
+  }
+  const offset = direction === 'next' ? 1 : -1
+  const targetIndex = (activeIndex + offset + ordered.length) % ordered.length
+  const target = ordered[targetIndex]
+  return target && target.id !== activeWorkspaceId ? target.id : null
 }
 
 export function normalizeWindowBounds(input: unknown): WindowBounds | null {
@@ -295,13 +353,25 @@ export function parseWorkspaceData(
       return { ok: false, error: viewport.error }
     }
 
+    let title: string | undefined
+    if (pane.title !== undefined && pane.title !== null) {
+      const parsedTitle = parsePaneTitle(pane.title)
+      if (!parsedTitle.ok) {
+        return { ok: false, error: parsedTitle.error }
+      }
+      if (parsedTitle.title) {
+        title = parsedTitle.title
+      }
+    }
+
     seenPaneIds.add(pane.id)
     paneIds.push(pane.id)
     panes.push({
       id: pane.id,
       profileId: pane.profileId,
       url: pane.url,
-      viewport: viewport.viewport
+      viewport: viewport.viewport,
+      ...(title ? { title } : {})
     })
   }
 

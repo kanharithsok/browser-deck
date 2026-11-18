@@ -10,6 +10,7 @@ import {
   MAX_WORKSPACE_PANES,
   WORKSPACE_STORE_VERSION,
   normalizeWorkspaceName,
+  parsePaneTitle,
   type WorkspaceData,
   type WorkspaceLayoutMode,
   type WorkspacePaneDefinition
@@ -22,6 +23,7 @@ export const MAX_WORKSPACE_TRANSFER_BYTES = 1_000_000
 export interface WorkspaceTransferPane {
   url: string
   viewport: PaneViewport
+  title?: string
 }
 
 export interface WorkspaceTransferLayout {
@@ -107,7 +109,8 @@ export function serializeWorkspaceTransfer(workspace: WorkspaceData): WorkspaceT
     name: workspace.name,
     panes: workspace.panes.map((pane) => ({
       url: pane.url,
-      viewport: { ...pane.viewport }
+      viewport: { ...pane.viewport },
+      ...(pane.title ? { title: pane.title } : {})
     })),
     layout: {
       mode: workspace.layout.mode,
@@ -153,7 +156,21 @@ export function parseWorkspaceTransfer(
     if (!viewport.ok) {
       return { ok: false, error: viewport.error }
     }
-    panes.push({ url: pane.url, viewport: viewport.viewport })
+    let title: string | undefined
+    if (pane.title !== undefined && pane.title !== null) {
+      const parsedTitle = parsePaneTitle(pane.title)
+      if (!parsedTitle.ok) {
+        return { ok: false, error: parsedTitle.error }
+      }
+      if (parsedTitle.title) {
+        title = parsedTitle.title
+      }
+    }
+    panes.push({
+      url: pane.url,
+      viewport: viewport.viewport,
+      ...(title ? { title } : {})
+    })
   }
 
   if (typeof record.layout !== 'object' || record.layout === null || Array.isArray(record.layout)) {
@@ -231,7 +248,8 @@ export function materializeWorkspaceTransfer(
     id: paneIds[index] as string,
     profileId: profileIds[index] as string,
     url: pane.url,
-    viewport: { ...pane.viewport }
+    viewport: { ...pane.viewport },
+    ...(pane.title ? { title: pane.title } : {})
   }))
   const mapOrder = (order: number[]): string[] =>
     order.map((index) => paneIds[index]).filter((id): id is string => id !== undefined)

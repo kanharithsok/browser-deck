@@ -17,6 +17,8 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.addPaneWithProfile, profileId, url),
   duplicatePane: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.duplicatePane, paneId),
   closePane: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.closePane, paneId),
+  renamePane: (paneId: string, title: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.renamePane, paneId, title),
   navigate: (paneId, address) => ipcRenderer.invoke(IPC_CHANNELS.navigate, paneId, address),
   back: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.back, paneId),
   forward: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.forward, paneId),
@@ -88,6 +90,15 @@ const api: PaneFlowApi = {
     ipcRenderer.on(IPC_CHANNELS.paneFocused, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.paneFocused, wrapped)
+    }
+  },
+  onPaneRenameRequested: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, paneId: string): void => {
+      listener(paneId)
+    }
+    ipcRenderer.on(IPC_CHANNELS.paneRenameRequested, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.paneRenameRequested, wrapped)
     }
   }
 }

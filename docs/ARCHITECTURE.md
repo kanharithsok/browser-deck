@@ -289,7 +289,7 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
 - Workspace switching tears down and recreates native pane views; pages reload instead of staying warm in the background.
-- Leak stress is count-based (webContents/native views) over a 50-cycle switch loop, not long-duration memory profiling; memory is sampled before/after rather than peak/per-process.
+- Leak stress is count-based (webContents/native views) over a 50-cycle switch loop, not long-duration memory profiling; memory is sampled before/after rather than peak/per-process, and observed 50-cycle growth ranged from 0 MB in one run to ~96 MB on the merged branch.
 - Duplicated workspaces receive fresh profiles immediately, even if the duplicate is never opened.
 - Maximized/fullscreen state is not persisted. Window bounds restore only when visible on a current display.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
