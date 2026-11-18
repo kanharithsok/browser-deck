@@ -367,7 +367,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - verifies four stress-workspace native views during each stress activation, then deletes the stress workspace;
   - this covers BrowserManager teardown/recreation, profile reuse, renderer reset, and workspace-file persistence under repeated switching;
   - `PANEFLOW_STRESS_CYCLES` overrides the default 3 cycles for local soak runs;
-  - an 8-cycle run reported 2 webContents and working set 575 MB → 515 MB after returning to the original workspace.
+  - an 8-cycle run reported 2 webContents and working set 575 MB → 515 MB after returning to the original workspace;
+  - a 25-cycle run reported 2 webContents and working set 573 MB → 643 MB; no webContents/native-view leak was observed, but the +70 MB working-set change is recorded as cache/runtime variance rather than proof of long-term stability.
 - Close-and-delete profile lifecycle:
   - Clear/Delete remain available for in-use profiles instead of being disabled.
   - The confirmation text names how many panes will be closed; the confirm button reads **Close panes & clear** or **Close panes & delete**.
@@ -413,6 +414,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
 | `npm run test:e2e` | Passed: 1 Playwright test, 11.0 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
 | `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
+| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
@@ -432,7 +434,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Imported workspaces are created inactive and contain fresh profiles; authentication state is intentionally not imported.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
-- Leak stress covers four panes with two loaded fixture pages; the soak run is eight cycles, not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
+- Leak stress covers four panes with two loaded fixture pages; the longest soak is 25 cycles (≈14.5 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
+- Working-set sampling is informational, not a pass/fail memory threshold; the 25-cycle run grew by ~70 MB.
 - Duplicate pane copies only URL/viewport; custom titles are not copied, sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 
 ### Next smallest slice

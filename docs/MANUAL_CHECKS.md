@@ -101,7 +101,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 
 - [x] Repeated workspace switching does not leak `webContents` or native views. (E2e performs four round trips with a four-pane stress workspace, two loaded fixture pages, and compares non-destroyed webContents/view counts after every return.)
 - [x] Eight-pane grid/freeform alignment stress. (Existing e2e pass.)
-- [x] Short loaded-page soak with memory sampling. (8 cycles: 2 webContents, working set 575 MB → 515 MB.)
+- [x] Short loaded-page soak with memory sampling. (8 cycles: 2 webContents, 575 MB → 515 MB; 25 cycles: 2 webContents, 573 MB → 643 MB.)
 - [ ] Multi-hour memory/CPU profiling with loaded third-party pages. (Not run.)
 - [ ] CPU/frame measurement during drag, resize, and scrolling. (Not run.)
 
