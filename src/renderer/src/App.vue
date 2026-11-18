@@ -797,7 +797,7 @@ async function submitProfileRename(profile: ProfileSummary): Promise<void> {
 }
 
 function requestProfileAction(kind: ProfileActionKind, profile: ProfileSummary): void {
-  if (profileBusy.value || profile.inUse) {
+  if (profileBusy.value) {
     return
   }
   profileError.value = null
@@ -813,12 +813,7 @@ function cancelProfileAction(): void {
 
 async function confirmProfileAction(profile: ProfileSummary): Promise<void> {
   const action = profileAction.value
-  if (
-    profileBusy.value ||
-    !action ||
-    action.profileId !== profile.id ||
-    profile.inUse
-  ) {
+  if (profileBusy.value || !action || action.profileId !== profile.id) {
     return
   }
 
@@ -827,8 +822,8 @@ async function confirmProfileAction(profile: ProfileSummary): Promise<void> {
   try {
     const result =
       action.kind === 'clear'
-        ? await window.paneflow.clearProfile(profile.id)
-        : await window.paneflow.deleteProfile(profile.id)
+        ? await window.paneflow.clearProfile(profile.id, profile.inUse)
+        : await window.paneflow.deleteProfile(profile.id, profile.inUse)
     if (!result.ok) {
       profileError.value = result.error
       await refreshProfiles()
@@ -836,10 +831,11 @@ async function confirmProfileAction(profile: ProfileSummary): Promise<void> {
     }
 
     profileAction.value = null
+    const panesClosed = profile.inUse ? ' Closed its panes.' : ''
     profileNotice.value =
       action.kind === 'clear'
-        ? `Cleared browser data for “${profile.label}”.`
-        : `Deleted profile “${profile.label}”.`
+        ? `Cleared browser data for “${profile.label}”.${panesClosed}`
+        : `Deleted profile “${profile.label}”.${panesClosed}`
     await refreshProfiles()
   } catch {
     profileError.value =
@@ -1863,10 +1859,10 @@ onBeforeUnmount(() => {
               <button
                 class="text-button"
                 type="button"
-                :disabled="profileBusy || profile.inUse"
+                :disabled="profileBusy"
                 :title="
                   profile.inUse
-                    ? 'Close panes using this profile before clearing its data.'
+                    ? 'Close its panes and clear cookies, storage, and cache.'
                     : 'Clear cookies, storage, and cache.'
                 "
                 @click="requestProfileAction('clear', profile)"
@@ -1876,10 +1872,10 @@ onBeforeUnmount(() => {
               <button
                 class="text-button text-button-danger"
                 type="button"
-                :disabled="profileBusy || profile.inUse"
+                :disabled="profileBusy"
                 :title="
                   profile.inUse
-                    ? 'Close panes using this profile before deleting it.'
+                    ? 'Close its panes and delete this profile and its browser data.'
                     : 'Delete this profile and its browser data.'
                 "
                 @click="requestProfileAction('delete', profile)"
@@ -1896,9 +1892,15 @@ onBeforeUnmount(() => {
             >
               <span>
                 {{
-                  profileAction.kind === 'clear'
-                    ? `Clear cookies, storage, and cache for “${profile.label}”?`
-                    : `Delete “${profile.label}” and its browser data? This cannot be undone.`
+                  profile.inUse
+                    ? `Close ${profile.paneIds.length} ${
+                      profile.paneIds.length === 1 ? 'pane' : 'panes'
+                    } using “${profile.label}” and ${
+                      profileAction.kind === 'clear' ? 'clear its data' : 'delete it'
+                    }?`
+                    : profileAction.kind === 'clear'
+                      ? `Clear cookies, storage, and cache for “${profile.label}”?`
+                      : `Delete “${profile.label}” and its browser data? This cannot be undone.`
                 }}
               </span>
               <button
@@ -1907,7 +1909,15 @@ onBeforeUnmount(() => {
                 :disabled="profileBusy"
                 @click="confirmProfileAction(profile)"
               >
-                {{ profileAction.kind === 'clear' ? 'Clear data' : 'Delete profile' }}
+                {{
+                  profile.inUse
+                    ? profileAction.kind === 'clear'
+                      ? 'Close panes & clear'
+                      : 'Close panes & delete'
+                    : profileAction.kind === 'clear'
+                      ? 'Clear data'
+                      : 'Delete profile'
+                }}
               </button>
               <button
                 class="text-button"

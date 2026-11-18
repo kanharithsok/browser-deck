@@ -1449,8 +1449,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       `.profile-row[data-profile-id="${bobProfileId}"]`
     )
     await expect(aliceProfileRow).toContainText('In use by')
-    await expect(aliceProfileRow.getByRole('button', { name: 'Clear' })).toBeDisabled()
-    await expect(aliceProfileRow.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    await expect(aliceProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
+    await expect(aliceProfileRow.getByRole('button', { name: 'Delete' })).toBeEnabled()
     await expect(bobProfileRow).toContainText('Unused')
     await expect(bobProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
 
@@ -1554,23 +1554,23 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
     await expect(sharedProfileRow).toContainText('2 panes:')
-    await expect(sharedProfileRow.getByRole('button', { name: 'Clear' })).toBeDisabled()
-    await expect(sharedProfileRow.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    await expect(sharedProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
+    await expect(sharedProfileRow.getByRole('button', { name: 'Delete' })).toBeEnabled()
+    await sharedProfileRow.getByRole('button', { name: 'Delete' }).click()
+    await expect(
+      sharedProfileRow.getByRole('group', { name: /Confirm delete/ })
+    ).toContainText('Close 2 panes')
+    await sharedProfileRow.getByRole('button', { name: 'Close panes & delete' }).click()
+    await expect(sharedProfileRow).toHaveCount(0)
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.panes.length === 1 && state.panes[0]?.id === alicePaneId,
+      'shared panes closed with profile delete'
+    )
+    await expect(profilesDialog.getByRole('status')).toContainText('Closed its panes')
     await profilesDialog.getByRole('button', { name: 'Close' }).last().click()
-
-    for (const [index, pane] of sharedPanes.entries()) {
-      await restartShell
-        .locator(`.pane-card[data-pane-id="${pane.id}"]`)
-        .getByRole('button', { name: 'Close pane' })
-        .click()
-      await waitFor(
-        () => getSnapshot(restartApp),
-        (state) => state.panes.length === sharedPanes.length - index,
-        'shared pane close'
-      )
-    }
-    await waitForAlignedBounds(restartApp)
     await expect(profilesDialog).toHaveCount(0)
+    await waitForAlignedBounds(restartApp)
 
     // Workspace management: create, switch, rename, duplicate, and delete.
     const originalWorkspaceId = (await getSnapshot(restartApp)).workspace.id

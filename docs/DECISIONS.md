@@ -380,7 +380,7 @@ Record material technical decisions here. Keep entries short but include context
   - Users must close panes before clearing or deleting their profile.
   - Duplicate profile labels are rejected case-insensitively.
   - Partition directory removal can be incomplete if Chromium still holds files, but profile data has already been cleared and is no longer reachable.
-  - Profile sharing is explicit via ADR-015; close-and-delete flows remain future work.
+  - Profile sharing is explicit via ADR-015; close-and-delete was added in ADR-019.
 
 - **Evidence / verification:**
   - Unit tests verify profile rename, duplicate/empty rejection, metadata removal, and reload persistence.
@@ -443,7 +443,7 @@ Record material technical decisions here. Keep entries short but include context
   - Workspace switching has a short teardown/recreation cost and reloads pages.
   - Duplicated workspaces eagerly create fresh profiles, which appear unused until opened.
   - Window bounds remain application-wide rather than per workspace.
-  - Workspace imports/exports and close-and-delete profile flows remain future work.
+  - Workspace imports/exports remain future work; close-and-delete profile flows were added in ADR-019.
 
 - **Evidence / verification:**
   - Unit tests cover workspace create/list/switch/rename/delete, unique names, active/final deletion protection, and reload persistence.
@@ -460,7 +460,7 @@ Record material technical decisions here. Keep entries short but include context
   2. Add **Open pane** to every profile row and a typed `add-pane-with-profile` IPC. Main resolves the profile by validated ID and rejects unknown IDs; it never accepts arbitrary partition names from the renderer.
   3. Shared-profile panes use the same profile ID/partition and therefore share cookies and site storage intentionally.
   4. Pane headers display `· N panes` when more than one pane references the profile. Profile manager usage displays the count and pane titles.
-  5. Clear/delete remain blocked while any pane, including shared panes, references the profile.
+  5. That slice kept clear/delete blocked while any pane referenced the profile; ADR-019 added the confirmed close-panes flow.
   6. The profile manager closes after creating the pane so the new pane can be measured and displayed with other panes.
 
 - **Alternatives considered:**
@@ -570,6 +570,36 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e passes the four-cycle stress and keeps webContents/native-view counts at baseline.
   - Existing eight-pane alignment, profile, workspace, restart, and packaging checks remain green.
+
+## ADR-019 — Clearing/deleting an in-use profile requires closing its panes
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` allows deleting an active profile only through a confirmed flow that closes panes using it. Disabling Clear/Delete forced users to find and close every pane manually and did not satisfy the lifecycle requirement.
+
+- **Decision:**
+  1. Keep Clear/Delete enabled for in-use profiles.
+  2. Confirmation names the exact pane count and offers **Close panes & clear** or **Close panes & delete**.
+  3. Main receives an explicit `closePanes` boolean, closes all matching `BrowserManager` panes, verifies usage is empty, then clears session data and optionally removes metadata/partition.
+  4. No panes are closed unless the user confirms the close-panes action.
+  5. Pane destruction emits one state refresh; the manager list refreshes after the operation and reports that panes were closed.
+  6. The existing unused-profile flows remain unchanged.
+
+- **Alternatives considered:**
+  - **Keep disabling actions.** Rejected; fails the required close-and-delete flow.
+  - **Close panes automatically on first click.** Rejected; destructive actions need confirmation.
+  - **Delete metadata before closing panes.** Rejected; session/view teardown should happen first.
+  - **Separate close-all UI.** Rejected; combining confirmation and lifecycle keeps the profile context clear.
+
+- **Consequences:**
+  - Users can clear/delete profiles without manually locating every pane.
+  - Confirmation is destructive and precise about pane count.
+  - Closing a profile used by many panes can remove a large part of the workspace after explicit confirmation.
+  - If pane teardown somehow leaves usage non-empty, the operation aborts before clearing data.
+
+- **Evidence / verification:**
+  - E2e shares one profile between two panes, opens the manager, confirms Close panes & delete, verifies both panes disappear, the profile row is removed, Alice remains, and native alignment restores.
+  - Existing unused-profile clear/delete and in-use rename/open-pane checks still pass.
 
 ## ADR template
 

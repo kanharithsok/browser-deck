@@ -801,34 +801,46 @@ app.whenReady().then(async () => {
         return { ok: false, error: messageFromError(error, 'Could not rename the profile.') }
       }
     },
-    clearProfile: async (profileId) => {
+    clearProfile: async (profileId, closePanes) => {
       if (!profileStore?.get(profileId)) {
         return { ok: false, error: 'Profile not found.' }
       }
-      if (profileInUse(profileId)) {
+      if (profileInUse(profileId) && !closePanes) {
         return {
           ok: false,
-          error: 'Close panes using this profile before clearing its data.'
+          error: 'Confirm closing panes using this profile before clearing its data.'
         }
       }
       try {
+        if (closePanes) {
+          browserManager?.closePanesForProfile(profileId)
+        }
+        if (profileInUse(profileId)) {
+          return { ok: false, error: 'Could not close all panes using this profile.' }
+        }
         await clearProfileSession(profileId)
         return { ok: true }
       } catch (error) {
         return { ok: false, error: messageFromError(error, 'Could not clear the profile.') }
       }
     },
-    deleteProfile: async (profileId) => {
+    deleteProfile: async (profileId, closePanes) => {
       if (!profileStore?.get(profileId)) {
         return { ok: false, error: 'Profile not found.' }
       }
-      if (profileInUse(profileId)) {
+      if (profileInUse(profileId) && !closePanes) {
         return {
           ok: false,
-          error: 'Close panes using this profile before deleting it.'
+          error: 'Confirm closing panes using this profile before deleting it.'
         }
       }
       try {
+        if (closePanes) {
+          browserManager?.closePanesForProfile(profileId)
+        }
+        if (profileInUse(profileId)) {
+          return { ok: false, error: 'Could not close all panes using this profile.' }
+        }
         await clearProfileSession(profileId)
         await profileStore.remove(profileId)
         await removeProfilePartition(profileId).catch((error) => {

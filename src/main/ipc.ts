@@ -21,8 +21,8 @@ interface IpcContext {
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
-  clearProfile: (profileId: string) => Promise<ScriptResult>
-  deleteProfile: (profileId: string) => Promise<ScriptResult>
+  clearProfile: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
+  deleteProfile: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
   listWorkspaces: () => Promise<WorkspaceListResult>
   createWorkspace: (name: string) => Promise<ScriptResult>
   renameWorkspace: (workspaceId: string, name: string) => Promise<ScriptResult>
@@ -239,18 +239,24 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   const registerProfileAction = (
     channel: string,
-    action: (profileId: string) => Promise<ScriptResult>
+    action: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
   ): void => {
-    ipcMain.handle(channel, async (event, payload: unknown): Promise<ScriptResult> => {
-      if (!isTrustedSender(event, context)) {
-        return unauthorized
+    ipcMain.handle(
+      channel,
+      async (event, payload: unknown, closePanesInput: unknown): Promise<ScriptResult> => {
+        if (!isTrustedSender(event, context)) {
+          return unauthorized
+        }
+        const profileId = readString(payload, 100)
+        if (!profileId) {
+          return { ok: false, error: 'Invalid profile ID.' }
+        }
+        if (closePanesInput !== undefined && typeof closePanesInput !== 'boolean') {
+          return { ok: false, error: 'Invalid close-panes option.' }
+        }
+        return action(profileId, closePanesInput === true)
       }
-      const profileId = readString(payload, 100)
-      if (!profileId) {
-        return { ok: false, error: 'Invalid profile ID.' }
-      }
-      return action(profileId)
-    })
+    )
   }
 
   registerProfileAction(IPC_CHANNELS.clearProfile, context.clearProfile)
