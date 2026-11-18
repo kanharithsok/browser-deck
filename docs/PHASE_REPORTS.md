@@ -307,7 +307,7 @@ Met in the automated macOS run. Different panes used independent viewport config
 - Fit mode scales the emulated page inside the native view but does not center it; the unused area is page background.
 - Optional user-agent overrides from `SPEC.md` §10.2 are not implemented; no UA spoofing is performed.
 - Only the default workspace exists; there is no create/rename/duplicate/switch/delete workspace UI yet. `app-state.json` carries an active workspace ID for future switching.
-- Window bounds, theme preference, and multiple workspace files are not part of restored state yet.
+- Theme preference and multiple workspace files are not part of restored state yet; normal window bounds are now handled in Phase 4.
 - Maximized/focused state is intentionally not persisted.
 - Profile clear/delete require all panes using the profile to be closed first; there is no close-and-delete flow.
 - Profile assignment/sharing UI is not implemented; new panes always receive fresh profiles.
@@ -322,16 +322,34 @@ Phase 4: workspace creation/switching UI, explicit profile assignment/sharing, w
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** Not started
-- **Delivered:** —
-- **Verification commands and results:** —
-- **Known issues / risks:** —
-- **Next smallest slice:** —
+- **Status:** In progress. Safe window-bounds persistence is implemented and verified; remaining polish, performance, workspace management, and macOS packaging are open.
 
-## Phase 4 — Polish and macOS packaging
+### Delivered so far
 
-- **Status:** Not started
-- **Delivered:** —
-- **Verification commands and results:** —
-- **Known issues / risks:** —
-- **Next smallest slice:** —
+- Extended `app-state.json` with optional normal window bounds (`x`, `y`, `width`, `height`).
+- Bounds are validated (minimum 720 × 520, maximum 10,000 px dimensions, finite positions) and ignored when invalid.
+- On startup, saved bounds restore only when at least 120 × 80 px intersects a connected display's work area; otherwise the default window is used.
+- Normal bounds are persisted after debounced move/resize/maximize/fullscreen changes and flushed on close. Maximized/fullscreen state itself is not persisted.
+- App-state writes capture the workspace path at enqueue time, preventing a queued save from writing into a different active workspace.
+- 2 new unit tests cover window-bounds validation and store persistence; the restart e2e sets a distinctive 1120 × 760 window, verifies the bounds in `app-state.json`, and checks restoration after relaunch.
+
+### Verification commands and results
+
+| Command | Result |
+| --- | --- |
+| `npm run test:unit` | Passed: 8 files, 96 tests. |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 8.9 s, including window-bounds persistence and restore. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (71.69 kB), preload (3.71 kB), and the renderer bundle (244.72 kB). |
+
+### Known issues / risks
+
+- Theme preference and maximized/fullscreen state are not persisted.
+- Window restoration checks visibility against current displays but does not clamp oversized windows to the work area.
+- Workspace create/rename/duplicate/switch/delete UI and explicit profile assignment remain.
+- Packaging, signing, notarization, and release automation are not implemented.
+
+### Next smallest slice
+
+Add workspace creation and switching UI on top of the versioned store, including safe pane teardown/recreation and active workspace updates.

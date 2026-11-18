@@ -170,6 +170,27 @@ async function readPaneZOrder(page: Page): Promise<Record<string, string>> {
   )
 }
 
+async function readPersistedAppState(
+  userDataDir: string
+): Promise<{ windowBounds?: PaneViewRect } | null> {
+  try {
+    const raw = await readFile(join(userDataDir, 'app-state.json'), 'utf8')
+    return JSON.parse(raw) as { windowBounds?: PaneViewRect }
+  } catch {
+    return null
+  }
+}
+
+async function getWindowBounds(app: ElectronApplication): Promise<PaneViewRect> {
+  return app.evaluate(({ BaseWindow }) => {
+    const window = BaseWindow.getAllWindows()[0]
+    if (!window) {
+      throw new Error('PaneFlow window is unavailable')
+    }
+    return window.getNormalBounds()
+  })
+}
+
 async function getContentBounds(app: ElectronApplication): Promise<PaneViewRect> {
   return app.evaluate(() => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -1180,6 +1201,33 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       throw new Error('Persisted freeform geometry is unavailable')
     }
 
+    await app.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('PaneFlow window not found')
+      }
+      window.setBounds({ x: 80, y: 70, width: 1120, height: 760 })
+    })
+    const savedWindowBounds = await waitFor(
+      () => getWindowBounds(app as ElectronApplication),
+      (bounds) =>
+        bounds.width === 1120 &&
+        bounds.height === 760 &&
+        Math.abs(bounds.x - 80) <= 2 &&
+        Math.abs(bounds.y - 70) <= 2,
+      'window bounds to apply'
+    )
+    await waitFor(
+      () => readPersistedAppState(userDataDir),
+      (state) =>
+        state?.windowBounds !== undefined &&
+        state.windowBounds.width === savedWindowBounds.width &&
+        state.windowBounds.height === savedWindowBounds.height &&
+        Math.abs(state.windowBounds.x - savedWindowBounds.x) <= 1 &&
+        Math.abs(state.windowBounds.y - savedWindowBounds.y) <= 1,
+      'window bounds to persist'
+    )
+
     await app.evaluate(async ({ session }, profileIds) => {
       for (const profileId of profileIds) {
         await session.fromPartition(`persist:paneflow-profile-${profileId}`).cookies.flushStore()
@@ -1193,6 +1241,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // URL, viewport, and freeform arrangement must restore before new activity.
     const restartApp = await launchApp(userDataDir, `${fixture.url}/account,${fixture.url}/account`)
     app = restartApp
+
+    await waitFor(
+      () => getWindowBounds(restartApp),
+      (bounds) =>
+        bounds.width === savedWindowBounds.width &&
+        bounds.height === savedWindowBounds.height &&
+        Math.abs(bounds.x - savedWindowBounds.x) <= 2 &&
+        Math.abs(bounds.y - savedWindowBounds.y) <= 2,
+      'window bounds to restore'
+    )
 
     const restarted = await waitFor(
       () => getSnapshot(restartApp),

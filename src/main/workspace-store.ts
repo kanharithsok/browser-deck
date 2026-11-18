@@ -11,10 +11,12 @@ import {
   WORKSPACE_STORE_VERSION,
   defaultWorkspaceLayout,
   isValidPaneId,
+  normalizeWindowBounds,
   normalizeWorkspaceLayout,
   parseAppStateData,
   parseWorkspaceData,
   type AppStateData,
+  type WindowBounds,
   type WorkspaceData,
   type WorkspaceLayout,
   type WorkspacePaneDefinition
@@ -161,6 +163,29 @@ export class WorkspaceStore {
     return copyLayout(this.workspace.layout)
   }
 
+  windowBounds(): WindowBounds | null {
+    return this.appState.windowBounds ? { ...this.appState.windowBounds } : null
+  }
+
+  async setWindowBounds(input: unknown): Promise<void> {
+    this.ensureLoaded()
+    const bounds = normalizeWindowBounds(input)
+    if (!bounds) {
+      return
+    }
+    if (
+      this.appState.windowBounds &&
+      this.appState.windowBounds.x === bounds.x &&
+      this.appState.windowBounds.y === bounds.y &&
+      this.appState.windowBounds.width === bounds.width &&
+      this.appState.windowBounds.height === bounds.height
+    ) {
+      return
+    }
+    this.appState = { ...this.appState, windowBounds: bounds }
+    await this.save(false)
+  }
+
   async initialize(panes: WorkspacePaneDefinition[]): Promise<void> {
     this.ensureLoaded()
     const validated = validatePanes(panes)
@@ -215,21 +240,23 @@ export class WorkspaceStore {
     }
   }
 
-  private save(): Promise<void> {
-    if (!this.workspace) {
-      return Promise.resolve()
-    }
-
+  private save(includeWorkspace = true): Promise<void> {
     const appState = { ...this.appState }
-    const workspace: WorkspaceData = {
-      ...this.workspace,
-      panes: this.workspace.panes.map(copyPane),
-      layout: copyLayout(this.workspace.layout)
-    }
+    const workspacePath = this.workspacePath
+    const workspace: WorkspaceData | null =
+      includeWorkspace && this.workspace
+        ? {
+            ...this.workspace,
+            panes: this.workspace.panes.map(copyPane),
+            layout: copyLayout(this.workspace.layout)
+          }
+        : null
 
     const next = this.saveQueue.then(async () => {
       await writeJsonAtomically(this.appStatePath, appState)
-      await writeJsonAtomically(this.workspacePath, workspace)
+      if (workspace) {
+        await writeJsonAtomically(workspacePath, workspace)
+      }
     })
     this.saveQueue = next.catch(() => undefined)
     return next

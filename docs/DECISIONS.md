@@ -387,6 +387,36 @@ Record material technical decisions here. Keep entries short but include context
   - E2e opens the manager, verifies native views hide, checks in-use Alice actions are disabled, renames Bob, clears Bob's partition cookies, deletes Bob's profile metadata, and closes the dialog with native views restored aligned.
   - The existing restart test first verifies Bob's retained cookies before the manager clears/deletes the unused profile.
 
+## ADR-013 — Window bounds persist only when safe for the current displays
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` §11.3 suggests persisting safe application window bounds in `app-state.json`. Restoring stale coordinates can place the window entirely off-screen after a display change, and persisting maximized/fullscreen geometry can produce surprising restores.
+
+- **Decision:**
+  1. Store optional normal window bounds (`x`, `y`, `width`, `height`) in `app-state.json`; keep active workspace ID in the same file.
+  2. Validate bounds in the shared app-state parser: minimum 720 × 520, maximum 10,000 px width/height, finite positions, rounded integers. Invalid bounds are ignored without discarding the active workspace.
+  3. Save normal bounds (`getNormalBounds`) after debounced move/resize/maximize/fullscreen events and immediately before close. Do not persist maximized/fullscreen state.
+  4. On startup, restore bounds only when at least 120 × 80 px intersects a connected display's work area. Otherwise keep the default window.
+  5. Capture the workspace file path when a save is queued, so an active-workspace change cannot redirect an older queued write.
+  6. Flush pending app-state writes on window close and app quit.
+
+- **Alternatives considered:**
+  - **Restore bounds without display checks.** Rejected; windows can become unreachable after monitor changes.
+  - **Persist maximized/fullscreen flags.** Rejected for this slice; normal bounds are safer and match the temporary-state guidance.
+  - **Clamp all restored windows to the work area.** Deferred; visibility checking avoids off-screen windows without resizing intentional large windows.
+  - **Store bounds in workspace JSON.** Rejected; window state is application state, not workspace layout, and may be shared across workspaces.
+
+- **Consequences:**
+  - Normal window size/position survives restart when still visible.
+  - Off-screen or malformed bounds fall back to the default 1280 × 860 window.
+  - Theme preference and maximized/fullscreen state remain unpersisted.
+  - Tests use a distinctive window bound and verify the app-state file plus restored geometry.
+
+- **Evidence / verification:**
+  - Unit tests validate accepted/rejected bounds and app-state reload persistence.
+  - E2e sets a 1120 × 760 window, waits for `app-state.json`, relaunches, and asserts the restored normal bounds.
+
 ## ADR template
 
 ### ADR-NNN — Title

@@ -68,6 +68,25 @@ describe('WorkspaceStore', () => {
     })
   })
 
+  it('persists safe window bounds in app state without rewriting pane layout', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    await store.initialize([pane(PANE_A, PROFILE_A)])
+
+    await store.setWindowBounds({ x: 30, y: 40, width: 1120, height: 760 })
+    await store.flush()
+    expect(store.windowBounds()).toEqual({ x: 30, y: 40, width: 1120, height: 760 })
+
+    await store.setWindowBounds({ x: 0, y: 0, width: 100, height: 80 })
+    expect(store.windowBounds()).toEqual({ x: 30, y: 40, width: 1120, height: 760 })
+
+    const reloaded = new WorkspaceStore(directory)
+    await reloaded.load()
+    expect(reloaded.windowBounds()).toEqual({ x: 30, y: 40, width: 1120, height: 760 })
+    expect(reloaded.paneDefinitions()).toEqual([pane(PANE_A, PROFILE_A)])
+  })
+
   it('reconciles pane additions and persists freeform layout state', async () => {
     const directory = await makeDirectory()
     const store = new WorkspaceStore(directory)
