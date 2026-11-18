@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
 import {
   VIEWPORT_PRESETS,
@@ -9,6 +9,7 @@ import {
   type ViewportDisplayScale,
   type ViewportPresetId
 } from '../../../shared/viewports'
+import { MAX_PANE_TITLE_LENGTH } from '../../../shared/workspace'
 
 const props = withDefaults(
   defineProps<{
@@ -18,13 +19,15 @@ const props = withDefaults(
     suspended?: boolean
     active?: boolean
     profilePaneCount?: number
+    renameRequest?: number
   }>(),
   {
     freeform: false,
     maximized: false,
     suspended: false,
     active: false,
-    profilePaneCount: 1
+    profilePaneCount: 1,
+    renameRequest: 0
   }
 )
 
@@ -39,9 +42,14 @@ const emit = defineEmits<{
 }>()
 
 const addressInput = ref<HTMLInputElement | null>(null)
+const titleInput = ref<HTMLInputElement | null>(null)
 const address = ref(displayAddress(props.pane.url))
 const addressError = ref<string | null>(null)
 const editing = ref(false)
+const renaming = ref(false)
+const savingTitle = ref(false)
+const titleDraft = ref('')
+const titleError = ref<string | null>(null)
 const statusId = `pane-status-${props.pane.id}`
 
 const selectedPreset = ref<ViewportPresetId>(props.pane.viewport.preset)
@@ -62,6 +70,78 @@ const profileLabelText = computed(() =>
 function displayAddress(url: string): string {
   return url === 'about:blank' ? '' : url
 }
+
+const titleTooltip = computed(() => {
+  const title = props.pane.customTitle ?? props.pane.title
+  return props.pane.customTitle
+    ? `${title} (custom pane name; double-click to rename; clear it to use the page title)`
+    : `${title} (double-click to rename)`
+})
+
+function startRename(): void {
+  if (renaming.value) {
+    titleInput.value?.focus()
+    titleInput.value?.select()
+    return
+  }
+  titleDraft.value = (props.pane.customTitle ?? props.pane.title).slice(0, MAX_PANE_TITLE_LENGTH)
+  titleError.value = null
+  renaming.value = true
+  void nextTick(() => {
+    titleInput.value?.focus()
+    titleInput.value?.select()
+  })
+}
+
+function cancelRename(): void {
+  if (!renaming.value) {
+    return
+  }
+  renaming.value = false
+  titleError.value = null
+  titleInput.value?.blur()
+}
+
+async function submitRename(): Promise<void> {
+  if (!renaming.value || savingTitle.value) {
+    return
+  }
+  savingTitle.value = true
+  try {
+    const result = await window.paneflow.renamePane(props.pane.id, titleDraft.value.trim())
+    if (!result.ok) {
+      titleError.value = result.error
+      await nextTick()
+      titleInput.value?.focus()
+      titleInput.value?.select()
+      return
+    }
+    titleError.value = null
+    renaming.value = false
+    titleInput.value?.blur()
+  } catch {
+    titleError.value = 'Could not rename the pane.'
+    await nextTick()
+    titleInput.value?.focus()
+  } finally {
+    savingTitle.value = false
+  }
+}
+
+function onTitleBlur(): void {
+  if (renaming.value) {
+    void submitRename()
+  }
+}
+
+watch(
+  () => props.renameRequest,
+  (value, previous) => {
+    if (value > previous) {
+      startRename()
+    }
+  }
+)
 
 function onPresetChange(event: Event): void {
   const target = event.target
@@ -235,7 +315,28 @@ function requestClose(): void {
         <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
         <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
 
-        <span class="pane-title" :title="pane.title">{{ pane.title }}</span>
+        <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
+          {{ pane.title }}
+        </span>
+        <form v-else class="pane-title-form" @submit.prevent="submitRename">
+          <input
+            ref="titleInput"
+            v-model="titleDraft"
+            class="pane-title-input"
+            :class="{ 'pane-title-input-invalid': titleError }"
+            type="text"
+            :maxlength="MAX_PANE_TITLE_LENGTH"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Use page title"
+            :aria-label="`Pane name for ${pane.title}`"
+            :aria-invalid="titleError ? 'true' : 'false'"
+            :aria-describedby="titleError ? statusId : undefined"
+            @input="titleError = null"
+            @blur="onTitleBlur"
+            @keydown.esc.prevent="cancelRename"
+          />
+        </form>
         <span
           class="pane-profile"
           :title="
@@ -252,9 +353,10 @@ function requestClose(): void {
           class="pane-status"
           role="status"
           aria-live="polite"
-          :title="addressError ?? pane.error ?? undefined"
+          :title="titleError ?? addressError ?? pane.error ?? undefined"
         >
-          <template v-if="pane.isLoading">Loading</template>
+          <template v-if="titleError">{{ titleError }}</template>
+          <template v-else-if="pane.isLoading">Loading</template>
           <template v-else-if="addressError">{{ addressError }}</template>
           <template v-else-if="pane.error">Load failed</template>
         </span>
@@ -572,6 +674,37 @@ function requestClose(): void {
   letter-spacing: -0.005em;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pane-title-form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pane-title-input {
+  width: 100%;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  user-select: text;
+}
+
+.pane-title-input::placeholder {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.pane-title-input-invalid,
+.pane-title-input-invalid:focus {
+  border-color: var(--danger);
+  outline-color: var(--danger);
 }
 
 .pane-profile {

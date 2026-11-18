@@ -12,6 +12,7 @@ import {
 } from '../shared/viewports'
 import {
   isValidPaneId,
+  parsePaneTitle,
   type WorkspacePaneDefinition
 } from '../shared/workspace'
 import type { ProfileStore } from './profile-store'
@@ -22,6 +23,7 @@ interface PaneRecord {
   profile: BrowserProfile
   view: WebContentsView
   title: string
+  customTitle: string | null
   url: string
   pendingUrl: string | null
   isLoading: boolean
@@ -39,6 +41,7 @@ interface PaneRecord {
 interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
+  onPaneRenameRequested?: (paneId: string) => void
 }
 
 export interface PaneInitialization {
@@ -46,6 +49,7 @@ export interface PaneInitialization {
   profile: BrowserProfile
   url: string
   viewport?: PaneViewport
+  customTitle?: string | null
 }
 
 function fallbackTitle(url: string): string {
@@ -86,7 +90,8 @@ export class BrowserManager {
       const normalized = normalizeAddress(pane.url)
       this.createPane(pane.profile, normalized.ok ? normalized.url : 'about:blank', {
         id: pane.id,
-        viewport: pane.viewport
+        viewport: pane.viewport,
+        customTitle: pane.customTitle
       })
     }
   }
@@ -113,7 +118,34 @@ export class BrowserManager {
     if (this.destroyed || this.window.isDestroyed()) {
       return { ok: false, error: 'PaneFlow window is not available.' }
     }
-    this.createPane(profile, source.url, { viewport: { ...source.viewport } })
+    this.createPane(profile, source.url, {
+      viewport: { ...source.viewport },
+      customTitle: source.customTitle
+    })
+    return { ok: true }
+  }
+
+  renamePane(paneId: string, title: unknown): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Pane not found.' }
+    }
+
+    const parsed = parsePaneTitle(title)
+    if (!parsed.ok) {
+      return { ok: false, error: parsed.error }
+    }
+
+    // Pressing Enter on the prefilled page title should not pin it as a custom
+    // name; only an actual edit changes the pane title state.
+    if (record.customTitle === null && parsed.title === record.title) {
+      return { ok: true }
+    }
+
+    if (record.customTitle !== parsed.title) {
+      record.customTitle = parsed.title
+      this.emitState()
+    }
     return { ok: true }
   }
 
@@ -374,6 +406,12 @@ export class BrowserManager {
           void this.duplicatePane(record.id)
         }
       },
+      {
+        label: 'Rename Pane…',
+        click: () => {
+          this.options.onPaneRenameRequested?.(record.id)
+        }
+      },
       { type: 'separator' },
       {
         label: 'Open DevTools',
@@ -415,7 +453,8 @@ export class BrowserManager {
         id: record.id,
         profileId: record.profile.id,
         profileLabel: record.profile.label,
-        title: record.title || fallbackTitle(record.url),
+        title: record.customTitle ?? (record.title || fallbackTitle(record.url)),
+        customTitle: record.customTitle,
         url: record.url,
         isLoading: record.isLoading,
         canGoBack,
@@ -455,7 +494,8 @@ export class BrowserManager {
         id: record.id,
         profileId: record.profile.id,
         url: record.url,
-        viewport: { ...record.viewport }
+        viewport: { ...record.viewport },
+        ...(record.customTitle ? { title: record.customTitle } : {})
       })
     }
     return panes
@@ -532,7 +572,7 @@ export class BrowserManager {
   private createPane(
     profile: BrowserProfile,
     initialUrl: string,
-    options: { id?: string; viewport?: PaneViewport } = {}
+    options: { id?: string; viewport?: PaneViewport; customTitle?: string | null } = {}
   ): PaneRecord {
     if (this.destroyed || this.window.isDestroyed()) {
       throw new Error('PaneFlow window is not available.')
@@ -541,6 +581,15 @@ export class BrowserManager {
     const paneId = options.id ?? randomUUID()
     if (!isValidPaneId(paneId) || this.panes.has(paneId)) {
       throw new Error('Pane ID is invalid or duplicated.')
+    }
+
+    let customTitle: string | null = null
+    if (options.customTitle !== undefined && options.customTitle !== null) {
+      const parsedTitle = parsePaneTitle(options.customTitle)
+      if (!parsedTitle.ok) {
+        throw new Error(parsedTitle.error)
+      }
+      customTitle = parsedTitle.title
     }
 
     const parsedViewport =
@@ -568,6 +617,7 @@ export class BrowserManager {
       profile,
       view,
       title: fallbackTitle(initialUrl),
+      customTitle,
       url: initialUrl,
       pendingUrl: null,
       isLoading: true,

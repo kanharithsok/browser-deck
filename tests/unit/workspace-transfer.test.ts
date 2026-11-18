@@ -7,7 +7,7 @@ import {
   parseWorkspaceTransfer,
   serializeWorkspaceTransfer
 } from '../../src/shared/workspace-transfer'
-import { WORKSPACE_STORE_VERSION, type WorkspaceData } from '../../src/shared/workspace'
+import { MAX_PANE_TITLE_LENGTH, WORKSPACE_STORE_VERSION, type WorkspaceData } from '../../src/shared/workspace'
 
 const PANE_A = '11111111-1111-4111-8111-111111111111'
 const PANE_B = '22222222-2222-4222-8222-222222222222'
@@ -28,7 +28,8 @@ function workspace(): WorkspaceData {
         id: PANE_A,
         profileId: PROFILE_A,
         url: 'https://example.com/one',
-        viewport: viewportFromPreset('mobile', 'fit')
+        viewport: viewportFromPreset('mobile', 'fit'),
+        title: 'Alice QA'
       },
       {
         id: PANE_B,
@@ -58,7 +59,11 @@ describe('workspace transfer serialization', () => {
       version: WORKSPACE_TRANSFER_VERSION,
       name: 'Responsive QA',
       panes: [
-        { url: 'https://example.com/one', viewport: { preset: 'mobile' } },
+        {
+          url: 'https://example.com/one',
+          viewport: { preset: 'mobile' },
+          title: 'Alice QA'
+        },
         { url: 'http://localhost:3000/two', viewport: { preset: 'responsive' } }
       ],
       layout: {
@@ -96,7 +101,8 @@ describe('workspace transfer serialization', () => {
         id: PANE_C,
         profileId: PROFILE_C,
         url: 'https://example.com/one',
-        viewport: expect.objectContaining({ preset: 'mobile' })
+        viewport: expect.objectContaining({ preset: 'mobile' }),
+        title: 'Alice QA'
       },
       {
         id: PANE_D,
@@ -134,6 +140,16 @@ describe('workspace transfer validation', () => {
       displayScale: 'fit'
     }
     expect(parseWorkspaceTransfer(badViewport).ok).toBe(false)
+
+    const badTitle = valid()
+    ;(badTitle.panes as Array<Record<string, unknown>>)[0]!.title = 'x'.repeat(
+      MAX_PANE_TITLE_LENGTH + 1
+    )
+    expect(parseWorkspaceTransfer(badTitle).ok).toBe(false)
+
+    const controlCharacter = valid()
+    ;(controlCharacter.panes as Array<Record<string, unknown>>)[0]!.title = 'Alice\u0007QA'
+    expect(parseWorkspaceTransfer(controlCharacter).ok).toBe(false)
   })
 
   it('rejects invalid pane order and freeform geometry', () => {

@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -336,7 +336,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - `WorkspaceStore` now lists, creates, renames, duplicates, switches, and deletes validated workspace files with unique case-insensitive names.
   - The active workspace ID is persisted in `app-state.json`; deleting the active or last workspace is blocked.
   - Switching persists the current pane definitions and layout, destroys the current native manager/views, creates the target panes and profiles, restores its persisted layout, and sends a full state refresh.
-  - Duplicating a workspace copies pane URLs/viewports and maps layout order/freeform geometry to new pane IDs while generating fresh profiles for every pane.
+  - Duplicating a workspace copies pane URLs/viewports/custom titles and maps layout order/freeform geometry to new pane IDs while generating fresh profiles for every pane.
   - A toolbar workspace switcher opens a trusted dialog with active-state badges, pane counts, create, rename, duplicate, switch, and confirmed delete actions. Native views hide while the dialog is open.
   - The renderer resets pane/order/layout state when the workspace ID changes and applies the target workspace's saved layout.
   - Main-process test hooks now read the current manager/store rather than a captured initial manager, so switching works under e2e inspection.
@@ -377,11 +377,17 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - E2e deletes the two-pane shared profile through this flow, verifies both panes close, the profile row disappears, Alice remains, and native alignment restores.
 - Duplicate pane:
   - native **Pane → Duplicate Pane** (`CmdOrCtrl+D`) and pane context-menu action duplicate the active/source pane;
-  - the duplicate always receives a fresh profile and copies the source URL and viewport settings;
+  - the duplicate always receives a fresh profile and copies the source URL, viewport settings, and custom title;
   - added a validated `duplicate-pane` IPC path and renderer command handler;
   - e2e duplicates Alice, verifies the new pane has a fresh profile and matching URL/viewport, then closes it.
+- Custom pane names:
+  - double-clicking a pane title starts inline editing; the native pane context menu also exposes **Rename Pane…**;
+  - main validates the pane ID and title text (`rename-pane` IPC), trims whitespace, limits names to 80 characters, and rejects control characters;
+  - `BrowserManager` keeps the live page title separate from the optional `customTitle`, so clearing the field restores the current page title immediately;
+  - custom titles persist in workspace JSON, restart with the workspace, are copied by duplicate pane/workspace, and round-trip through workspace import/export while profile IDs and session data stay excluded;
+  - e2e rejects unsafe/unknown-pane renames, renames Alice inline, verifies the workspace file and restart restore, then clears the name and verifies the page title returns and the stored title is removed.
 - Workspace import/export:
-  - added a versioned `paneflow-workspace` transfer format containing only name, pane URLs, viewport settings, and index-based layout;
+  - added a versioned `paneflow-workspace` transfer format containing only name, pane URLs, viewport settings, custom titles, and index-based layout;
   - profile IDs, cookies, storage, session data, executable content, and filesystem paths are never exported;
   - export uses a native Save dialog and atomic JSON write; import uses a native Open dialog, a 1 MB size limit, strict schema/URL/viewport/layout validation, and fresh profiles;
   - imported workspaces receive new IDs, pane IDs, profiles, a unique `(imported)` name, and mapped grid/freeform order/geometry;
@@ -408,14 +414,14 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 9 files, 104 tests. |
+| `npm run test:unit` | Passed: 9 files, 108 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.0 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including custom pane rename/persistence/reset, duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
 | `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
 | `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (103.95 kB), preload (5.75 kB), renderer bundle (270.52 kB), and CSS (22.69 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -436,7 +442,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
 - Leak stress covers four panes with two loaded fixture pages; the longest soak is 25 cycles (≈14.5 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
 - Working-set sampling is informational, not a pass/fail memory threshold; the 25-cycle run grew by ~70 MB.
-- Duplicate pane copies only URL/viewport; custom titles are not copied, sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
+- Duplicate pane copies URL/viewport/custom title; sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 
 ### Next smallest slice
 
