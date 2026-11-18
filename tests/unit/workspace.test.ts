@@ -161,6 +161,32 @@ describe('app state validation', () => {
     )
   })
 
+  it('restores valid window bounds and drops invalid ones', () => {
+    const valid = parseAppStateData({
+      version: APP_STATE_VERSION,
+      activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+      windowBounds: { x: 40, y: 50, width: 1100, height: 760 }
+    })
+    expect(valid).toEqual({
+      ok: true,
+      data: {
+        version: APP_STATE_VERSION,
+        activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+        windowBounds: { x: 40, y: 50, width: 1100, height: 760 }
+      }
+    })
+
+    const invalid = parseAppStateData({
+      version: APP_STATE_VERSION,
+      activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+      windowBounds: { x: 0, y: 0, width: 120, height: 80 }
+    })
+    expect(invalid).toEqual({
+      ok: true,
+      data: { version: APP_STATE_VERSION, activeWorkspaceId: DEFAULT_WORKSPACE_ID }
+    })
+  })
+
   it('creates empty workspaces with a valid default layout', () => {
     const workspace = createEmptyWorkspace()
     expect(workspace.version).toBe(WORKSPACE_STORE_VERSION)

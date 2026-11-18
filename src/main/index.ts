@@ -6,6 +6,7 @@ import {
   BaseWindow,
   Menu,
   nativeTheme,
+  screen,
   session,
   WebContentsView,
   type MenuItemConstructorOptions
@@ -20,7 +21,10 @@ import {
   type ProfileSummary
 } from '../shared/profiles'
 import {
+  MIN_APP_WINDOW_HEIGHT,
+  MIN_APP_WINDOW_WIDTH,
   defaultWorkspaceLayout,
+  type WindowBounds,
   type WorkspacePaneDefinition
 } from '../shared/workspace'
 import { BrowserManager, type PaneInitialization } from './browser-manager'
@@ -205,6 +209,24 @@ async function removeProfilePartition(profileId: string): Promise<void> {
   await rm(partitionDirectory, { recursive: true, force: true })
 }
 
+function isWindowBoundsVisible(bounds: WindowBounds): boolean {
+  return screen.getAllDisplays().some((display) => {
+    const area = display.workArea
+    const overlapWidth =
+      Math.min(bounds.x + bounds.width, area.x + area.width) - Math.max(bounds.x, area.x)
+    const overlapHeight =
+      Math.min(bounds.y + bounds.height, area.y + area.height) - Math.max(bounds.y, area.y)
+    return overlapWidth >= 120 && overlapHeight >= 80
+  })
+}
+
+function applySavedWindowBounds(window: BaseWindow, store: WorkspaceStore): void {
+  const bounds = store.windowBounds()
+  if (bounds && !window.isDestroyed() && isWindowBoundsVisible(bounds)) {
+    window.setBounds(bounds)
+  }
+}
+
 function buildApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
 
@@ -350,8 +372,8 @@ async function createWindow(): Promise<void> {
   const window = new BaseWindow({
     width: 1280,
     height: 860,
-    minWidth: 720,
-    minHeight: 520,
+    minWidth: MIN_APP_WINDOW_WIDTH,
+    minHeight: MIN_APP_WINDOW_HEIGHT,
     show: false,
     title: 'PaneFlow',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#171716' : '#f5f5f3'
@@ -406,14 +428,44 @@ async function createWindow(): Promise<void> {
     requestMeasurement()
   }
 
-  window.on('resize', syncLayout)
-  window.on('maximize', syncLayout)
-  window.on('unmaximize', syncLayout)
-  window.on('enter-full-screen', syncLayout)
-  window.on('leave-full-screen', syncLayout)
+  let boundsSaveTimer: ReturnType<typeof setTimeout> | null = null
+  const saveWindowBounds = (): void => {
+    const store = workspaceStore
+    if (!store || window.isDestroyed()) {
+      return
+    }
+    void store.setWindowBounds(window.getNormalBounds()).catch((error) => {
+      console.error('Could not persist the window bounds.', error)
+    })
+  }
+  const scheduleWindowBoundsSave = (): void => {
+    if (boundsSaveTimer !== null) {
+      clearTimeout(boundsSaveTimer)
+    }
+    boundsSaveTimer = setTimeout(() => {
+      boundsSaveTimer = null
+      saveWindowBounds()
+    }, 350)
+  }
+  const handleWindowLayoutChange = (): void => {
+    syncLayout()
+    scheduleWindowBoundsSave()
+  }
+
+  window.on('resize', handleWindowLayoutChange)
+  window.on('move', scheduleWindowBoundsSave)
+  window.on('maximize', handleWindowLayoutChange)
+  window.on('unmaximize', handleWindowLayoutChange)
+  window.on('enter-full-screen', handleWindowLayoutChange)
+  window.on('leave-full-screen', handleWindowLayoutChange)
   window.on('show', requestMeasurement)
 
   window.on('close', () => {
+    if (boundsSaveTimer !== null) {
+      clearTimeout(boundsSaveTimer)
+      boundsSaveTimer = null
+    }
+    saveWindowBounds()
     void workspaceStore?.flush().catch((error) => {
       console.error('Could not flush the workspace while closing the window.', error)
     })
@@ -488,8 +540,10 @@ async function createWindow(): Promise<void> {
     lastPersistedPaneKey = JSON.stringify(manager.workspacePanes())
     panePersistenceEnabled = true
     await loadShell(shell, devServer)
+    applySavedWindowBounds(window, store)
     syncShellBounds(window, shell)
     window.show()
+    requestMeasurement()
   } catch (error) {
     console.error('Failed to initialize the PaneFlow window.', error)
     window.destroy()

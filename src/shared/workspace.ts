@@ -46,9 +46,22 @@ export interface WorkspaceData {
   updatedAt: string
 }
 
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export const MIN_APP_WINDOW_WIDTH = 720
+export const MIN_APP_WINDOW_HEIGHT = 520
+export const MAX_APP_WINDOW_DIMENSION = 10_000
+const MAX_WINDOW_POSITION = 100_000
+
 export interface AppStateData {
   version: typeof APP_STATE_VERSION
   activeWorkspaceId: string
+  windowBounds?: WindowBounds
 }
 
 export function isValidWorkspaceId(value: unknown): value is string {
@@ -69,6 +82,42 @@ export function normalizeWorkspaceName(name: string): string | null {
     return null
   }
   return trimmed
+}
+
+export function normalizeWindowBounds(input: unknown): WindowBounds | null {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return null
+  }
+  const record = input as Record<string, unknown>
+  const { x, y, width, height } = record
+  if (
+    typeof x !== 'number' ||
+    typeof y !== 'number' ||
+    typeof width !== 'number' ||
+    typeof height !== 'number' ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height)
+  ) {
+    return null
+  }
+  if (
+    width < MIN_APP_WINDOW_WIDTH ||
+    height < MIN_APP_WINDOW_HEIGHT ||
+    width > MAX_APP_WINDOW_DIMENSION ||
+    height > MAX_APP_WINDOW_DIMENSION ||
+    Math.abs(x) > MAX_WINDOW_POSITION ||
+    Math.abs(y) > MAX_WINDOW_POSITION
+  ) {
+    return null
+  }
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
 }
 
 export function defaultWorkspaceLayout(paneIds: readonly string[] = []): WorkspaceLayout {
@@ -271,9 +320,14 @@ export function parseAppStateData(
   if (!isValidWorkspaceId(record.activeWorkspaceId)) {
     return { ok: false, error: 'Active workspace ID is invalid.' }
   }
+  const windowBounds = normalizeWindowBounds(record.windowBounds)
   return {
     ok: true,
-    data: { version: APP_STATE_VERSION, activeWorkspaceId: record.activeWorkspaceId }
+    data: {
+      version: APP_STATE_VERSION,
+      activeWorkspaceId: record.activeWorkspaceId,
+      ...(windowBounds ? { windowBounds } : {})
+    }
   }
 }
 

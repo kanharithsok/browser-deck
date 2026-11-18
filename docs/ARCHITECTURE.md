@@ -235,7 +235,9 @@ Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: fa
 - The renderer owns layout state and sends normalized updates through `save-workspace-layout`; the main process validates and normalizes pane references. Saves are skipped during active drags and committed after the interaction.
 - Maximized/focused state is intentionally not persisted. No cookies, tokens, page contents, or credentials are written to workspace JSON.
 
-Shutdown flushes queued writes through `will-quit`. Only the default workspace and active-workspace pointer exist today; workspace creation/switching UI and window bounds are Phase 4 work.
+`app-state.json` also carries optional normal window bounds. Bounds are validated, saved after debounced move/resize events, and restored only if they intersect a connected display's work area. Maximized/fullscreen state is not persisted. Save snapshots capture the target workspace path at enqueue time so an active-workspace change cannot redirect a queued write.
+
+Shutdown flushes queued writes through `will-quit`. Only the default workspace and active-workspace pointer exist today; workspace creation/switching UI is future work.
 
 ## Testing
 
@@ -251,7 +253,7 @@ The Playwright test inspects the main process through a test hook that is only i
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
 - Only the default workspace exists; there is no workspace creation/switching/rename UI yet.
-- Window bounds, theme preference, and maximized state are not persisted.
+- Theme preference and maximized/fullscreen state are not persisted. Window bounds restore only when visible on a current display.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
 - Profile clear/delete require all panes using the profile to be closed; there is no close-and-delete flow.
 - Profile assignment/sharing and workspace create/switch UI are not implemented.
