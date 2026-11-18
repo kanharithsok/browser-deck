@@ -30,11 +30,11 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
 - Profile manager dialog with creation dates, live pane usage, rename, and confirmed clear/delete. In-use profiles can be closed and deleted through a single explicit confirmation.
 - Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
-- Workspace manager for create, rename, duplicate, switch, and delete, with active-state persistence and fresh profiles for duplicated panes.
+- Workspace manager for create, rename, duplicate, switch, delete, and secret-free import/export. Imported/duplicated workspaces receive fresh profiles.
 - Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass, viewport-emulation checks, a full workspace/session restart, profile-manager lifecycle checks, and workspace management.
 
-The current build does **not** include optional user-agent overrides, background-warm workspace switching, workspace import/export, packaging, or macOS signing. See the roadmap in [`SPEC.md`](./SPEC.md).
+The current build does **not** include optional user-agent overrides, background-warm workspace switching, or signed/notarized distribution. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -166,6 +166,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - New panes receive fresh profiles by default; sharing requires the profile manager's Open pane action.
 - Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
+- Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
 - Leak coverage is count-based over four switch cycles; long-duration memory and loaded-page performance profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.

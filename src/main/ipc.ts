@@ -6,7 +6,8 @@ import {
   type ShellState,
   type ScriptResult,
   type WorkspaceIdentity,
-  type WorkspaceListResult
+  type WorkspaceListResult,
+  type WorkspaceTransferResult
 } from '../shared/ipc'
 import type { ThemePreference, WorkspaceLayout } from '../shared/workspace'
 import type { BrowserManager } from './browser-manager'
@@ -24,6 +25,8 @@ interface IpcContext {
   clearProfile: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
   deleteProfile: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
   listWorkspaces: () => Promise<WorkspaceListResult>
+  exportWorkspace: (workspaceId: string) => Promise<WorkspaceTransferResult>
+  importWorkspace: () => Promise<WorkspaceTransferResult>
   createWorkspace: (name: string) => Promise<ScriptResult>
   renameWorkspace: (workspaceId: string, name: string) => Promise<ScriptResult>
   duplicateWorkspace: (workspaceId: string) => Promise<ScriptResult>
@@ -286,6 +289,41 @@ export function registerIpcHandlers(context: IpcContext): void {
       return { ok: false, error: 'Unauthorized sender.' }
     }
     return context.listWorkspaces()
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.exportWorkspace,
+    async (event, payload: unknown): Promise<WorkspaceTransferResult> => {
+      if (!isTrustedSender(event, context)) {
+        return { ok: false, error: 'Unauthorized sender.' }
+      }
+      const workspaceId = readString(payload, 100)
+      if (!workspaceId) {
+        return { ok: false, error: 'Invalid workspace ID.' }
+      }
+      try {
+        return await context.exportWorkspace(workspaceId)
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Could not export the workspace.'
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(IPC_CHANNELS.importWorkspace, async (event): Promise<WorkspaceTransferResult> => {
+    if (!isTrustedSender(event, context)) {
+      return { ok: false, error: 'Unauthorized sender.' }
+    }
+    try {
+      return await context.importWorkspace()
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Could not import the workspace.'
+      }
+    }
   })
 
   ipcMain.handle(

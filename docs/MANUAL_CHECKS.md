@@ -65,6 +65,8 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Maximized/fullscreen window state restores. (Intentionally not persisted.)
 - [ ] Maximized/focused state restores. (Intentionally not persisted.)
 - [x] Workspace create/rename/duplicate/switch/delete. (E2e creates a second workspace, switches, adds a pane, renames, duplicates with fresh profiles, switches back to the authenticated original, verifies active-state persistence, and deletes the extras.)
+- [x] Workspace export/import serialization excludes profiles and restores fresh identities. (Unit tests cover round-trip, profile stripping, fresh IDs, unsafe URLs/viewports, and invalid layout.)
+- [ ] Native workspace import/export dialogs. (Pure logic is unit-tested; the Save/Open dialog path is not automated or manually re-run in this slice.)
 - [ ] Workspace switching keeps background pages warm. (Switching destroys and recreates native views; pages reload.)
 - [x] Explicit profile assignment/sharing across panes. (Profile manager Open pane; shared count shown in pane headers and usage.)
 

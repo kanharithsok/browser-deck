@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { rm } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { join, isAbsolute } from 'node:path'
 import {
   app,
   BaseWindow,
+  dialog,
   Menu,
   nativeTheme,
   screen,
@@ -12,7 +13,12 @@ import {
   WebContentsView,
   type MenuItemConstructorOptions
 } from 'electron'
-import { IPC_CHANNELS, type PaneCommand, type ShellState } from '../shared/ipc'
+import {
+  IPC_CHANNELS,
+  type PaneCommand,
+  type ShellState,
+  type WorkspaceTransferResult
+} from '../shared/ipc'
 import { isLoopbackHostname, normalizeAddress } from '../shared/url'
 import type { CanvasSize } from '../shared/geometry'
 import { RESPONSIVE_VIEWPORT } from '../shared/viewports'
@@ -31,8 +37,15 @@ import {
   type WindowBounds,
   type WorkspacePaneDefinition
 } from '../shared/workspace'
+import {
+  MAX_WORKSPACE_TRANSFER_BYTES,
+  materializeWorkspaceTransfer,
+  parseWorkspaceTransfer,
+  serializeWorkspaceTransfer
+} from '../shared/workspace-transfer'
 import { BrowserManager, type PaneInitialization } from './browser-manager'
 import { registerIpcHandlers } from './ipc'
+import { writeJsonAtomically } from './json-file'
 import { ProfileStore } from './profile-store'
 import { installTestHook } from './test-hook'
 import { WorkspaceStore } from './workspace-store'
@@ -249,6 +262,86 @@ async function switchWorkspaceTo(workspaceId: string): Promise<void> {
   } finally {
     workspaceSwitching = false
   }
+}
+
+async function exportWorkspaceTransfer(workspaceId: string): Promise<WorkspaceTransferResult> {
+  const store = workspaceStore
+  const window = mainWindow
+  if (!store || !window) {
+    return { ok: false, error: 'Workspace is not ready.' }
+  }
+  const workspace = await store.getWorkspaceData(workspaceId)
+  const transfer = serializeWorkspaceTransfer(workspace)
+  const safeName = workspace.name.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '')
+  const result = await dialog.showSaveDialog(window, {
+    title: 'Export Workspace',
+    defaultPath: `${safeName || 'workspace'}.paneflow.json`,
+    filters: [{ name: 'PaneFlow Workspace', extensions: ['json'] }],
+    properties: ['createDirectory', 'showOverwriteConfirmation']
+  })
+  if (result.canceled || !result.filePath) {
+    return { ok: true, canceled: true }
+  }
+  await writeJsonAtomically(result.filePath, transfer)
+  return { ok: true }
+}
+
+async function importWorkspaceTransfer(): Promise<WorkspaceTransferResult> {
+  const store = workspaceStore
+  const profiles = profileStore
+  const window = mainWindow
+  if (!store || !profiles || !window) {
+    return { ok: false, error: 'Workspace is not ready.' }
+  }
+  const result = await dialog.showOpenDialog(window, {
+    title: 'Import Workspace',
+    filters: [{ name: 'PaneFlow Workspace', extensions: ['json'] }],
+    properties: ['openFile']
+  })
+  const filePath = result.filePaths[0]
+  if (result.canceled || !filePath) {
+    return { ok: true, canceled: true }
+  }
+  const fileStat = await stat(filePath)
+  if (fileStat.size > MAX_WORKSPACE_TRANSFER_BYTES) {
+    return { ok: false, error: 'Workspace file is too large.' }
+  }
+  let parsedJson: unknown
+  try {
+    parsedJson = JSON.parse(await readFile(filePath, 'utf8'))
+  } catch {
+    return { ok: false, error: 'Workspace file is not valid JSON.' }
+  }
+  const parsed = parseWorkspaceTransfer(parsedJson)
+  if (!parsed.ok) {
+    return { ok: false, error: parsed.error }
+  }
+
+  const paneIds: string[] = []
+  const profileIds: string[] = []
+  for (let index = 0; index < parsed.transfer.panes.length; index += 1) {
+    const profile = await profiles.create()
+    paneIds.push(randomUUID())
+    profileIds.push(profile.id)
+  }
+  const existingNames = new Set(
+    (await store.listWorkspaces()).map((workspace) => workspace.name.toLowerCase())
+  )
+  let name = `${parsed.transfer.name} (imported)`
+  let suffix = 2
+  while (existingNames.has(name.toLowerCase())) {
+    name = `${parsed.transfer.name} (imported ${suffix})`
+    suffix += 1
+  }
+  const workspace = materializeWorkspaceTransfer(
+    parsed.transfer,
+    randomUUID(),
+    name,
+    paneIds,
+    profileIds
+  )
+  await store.writeWorkspaceData(workspace)
+  return { ok: true, workspaceName: name }
 }
 
 async function duplicateWorkspace(sourceId: string): Promise<void> {
@@ -867,6 +960,8 @@ app.whenReady().then(async () => {
         return { ok: false, error: messageFromError(error, 'Could not read workspaces.') }
       }
     },
+    exportWorkspace: (workspaceId) => exportWorkspaceTransfer(workspaceId),
+    importWorkspace: () => importWorkspaceTransfer(),
     createWorkspace: async (name) => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }

@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management, duplicate pane, profile sharing/close-and-delete, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; import/export, accessibility polish, and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management, workspace import/export, duplicate pane, profile sharing/close-and-delete, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; accessibility polish and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -377,16 +377,24 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - the duplicate always receives a fresh profile and copies the source URL and viewport settings;
   - added a validated `duplicate-pane` IPC path and renderer command handler;
   - e2e duplicates Alice, verifies the new pane has a fresh profile and matching URL/viewport, then closes it.
+- Workspace import/export:
+  - added a versioned `paneflow-workspace` transfer format containing only name, pane URLs, viewport settings, and index-based layout;
+  - profile IDs, cookies, storage, session data, executable content, and filesystem paths are never exported;
+  - export uses a native Save dialog and atomic JSON write; import uses a native Open dialog, a 1 MB size limit, strict schema/URL/viewport/layout validation, and fresh profiles;
+  - imported workspaces receive new IDs, pane IDs, profiles, a unique `(imported)` name, and mapped grid/freeform order/geometry;
+  - workspace dialog adds **Import…** and **Export active** actions with canceled/error/no-op handling;
+  - 5 unit tests cover serialization, profile stripping, JSON round-trip, fresh-ID materialization, unsafe URLs/viewports, invalid pane order/freeform geometry, and mapping errors;
+  - native file-dialog interaction itself is not automated in e2e; the pure transfer and materialization paths are unit-tested.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 8 files, 99 tests. |
+| `npm run test:unit` | Passed: 9 files, 104 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including duplicate pane, window-bounds persistence, workspace lifecycle/switching, profile management/sharing/close-and-delete, theme restore, and repeated-switch leak stress. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (90.64 kB), preload (4.99 kB), renderer bundle (264.19 kB), and CSS (21.41 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including duplicate pane, window-bounds persistence, workspace lifecycle toggling, profile management/sharing/close-and-delete, theme restore, and repeated-switch leak stress. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.11 kB), and CSS (21.65 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -400,7 +408,9 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Deleting a workspace does not delete profiles that were referenced only by that workspace.
 - Profile sharing is initiated from the profile manager; the toolbar Add pane action always creates a fresh profile.
 - Shared profiles are intentional but still share one Chromium partition; there is no clone-profile-with-session feature.
-- Workspace import/export and workspace-specific window bounds remain.
+- Workspace-specific window bounds remain.
+- Native file-dialog flows for import/export are not covered by Playwright; only the transfer/materialization logic is unit-tested.
+- Imported workspaces are created inactive and contain fresh profiles; authentication state is intentionally not imported.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
 - Leak stress covers four about:blank panes and four switch cycles; it does not include long-duration memory profiling or loaded-page churn.
@@ -408,4 +418,4 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ### Next smallest slice
 
-Implement workspace import/export with validation and fresh-profile defaults, then finish accessibility and minimum-window polish.
+Finish accessibility, keyboard, minimum-window, and visual polish; then add long-duration memory/CPU profiling with loaded pages.

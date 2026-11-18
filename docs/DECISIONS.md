@@ -630,6 +630,37 @@ Record material technical decisions here. Keep entries short but include context
   - E2e selects Alice, invokes Pane → Duplicate Pane, verifies three panes, a fresh profile, matching URL/viewport, then closes the duplicate and returns to two panes.
   - Existing menu, profile, workspace, and native alignment checks remain green.
 
+## ADR-021 — Workspace transfer files exclude profiles and imports get fresh identities
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` allows workspace import/export only for configuration, never cookies/credentials, and requires fresh isolated profiles on import. Imported files are untrusted and need strict validation.
+
+- **Decision:**
+  1. Use a separate versioned `paneflow-workspace` JSON format, not the internal workspace file.
+  2. Export only workspace name, pane URLs, viewport settings, and index-based layout. Strip pane/profile IDs, profile records, cookies, storage, session data, paths, and executable content.
+  3. Export through a native Save dialog with atomic JSON writing; the default filename is sanitized.
+  4. Import through a native Open dialog with a 1 MB limit and strict validation of format/version, name, URL schemes, viewport settings, pane-index order, and normalized freeform geometry.
+  5. Generate fresh profiles and pane IDs on import; map layout indices to new IDs, ensure a unique imported name, and create the workspace inactive.
+  6. Keep transfer/materialization logic in a pure shared module and unit-test it; native dialog orchestration stays in main.
+
+- **Alternatives considered:**
+  - **Export internal workspace JSON directly.** Rejected; it contains profile IDs and internal paths/schema.
+  - **Restore profile IDs/sessions on import.** Rejected by isolation and secret-handling requirements.
+  - **Trust the file and let store validation catch issues later.** Rejected; import validates before creating profiles or writing state.
+  - **Import as the active workspace immediately.** Rejected; creating inactive lets the user review before switching.
+  - **Commit exported files/fixtures.** Rejected; transfer files remain user data.
+
+- **Consequences:**
+  - Imported workspaces preserve layout/URLs/viewports but require sign-in again.
+  - Invalid or oversized imports fail without creating profiles/workspaces.
+  - Native dialogs are not covered by e2e; pure logic is comprehensively unit-tested.
+  - Exporting is limited to the active workspace in the current UI.
+
+- **Evidence / verification:**
+  - Five unit tests cover serialization, profile stripping, JSON round-trip, fresh-ID materialization, unsafe URLs/viewports, invalid order/freeform geometry, and mapping errors.
+  - Build/typecheck/lint/e2e remain green; no native dialog automation is claimed.
+
 ## ADR template
 
 ### ADR-NNN — Title
