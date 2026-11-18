@@ -502,6 +502,22 @@ function applySavedWindowBounds(window: BaseWindow, store: WorkspaceStore): void
   }
 }
 
+function applySavedWindowPresentation(window: BaseWindow, store: WorkspaceStore): void {
+  if (window.isDestroyed()) {
+    return
+  }
+  const bounds = store.windowBounds()
+  if (!bounds || !isWindowBoundsVisible(bounds)) {
+    return
+  }
+  const presentation = store.windowPresentation()
+  if (presentation.fullScreen) {
+    window.setFullScreen(true)
+  } else if (presentation.maximized) {
+    window.maximize()
+  }
+}
+
 function windowBackgroundColor(): string {
   return nativeTheme.shouldUseDarkColors ? '#171716' : '#f5f5f3'
 }
@@ -865,7 +881,10 @@ async function createWindow(): Promise<void> {
     if (!store || window.isDestroyed()) {
       return
     }
-    void store.setWindowBounds(window.getNormalBounds()).catch((error) => {
+    void store.setWindowBounds(window.getNormalBounds(), {
+      maximized: window.isMaximized(),
+      fullScreen: window.isFullScreen()
+    }).catch((error) => {
       console.error('Could not persist the window bounds.', error)
     })
   }
@@ -954,6 +973,7 @@ async function createWindow(): Promise<void> {
     syncShellBounds(window, shell)
     await refreshWorkspaceMenu()
     window.show()
+    applySavedWindowPresentation(window, store)
     applyThemePreference(store.theme(), false)
     requestMeasurement()
   } catch (error) {

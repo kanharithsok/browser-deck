@@ -66,6 +66,11 @@ export interface WindowBounds {
   height: number
 }
 
+export interface WindowPresentation {
+  maximized: boolean
+  fullScreen: boolean
+}
+
 export function isThemePreference(value: unknown): value is ThemePreference {
   return value === 'system' || value === 'light' || value === 'dark'
 }
@@ -79,6 +84,8 @@ export interface AppStateData {
   version: typeof APP_STATE_VERSION
   activeWorkspaceId: string
   windowBounds?: WindowBounds
+  maximized?: boolean
+  fullScreen?: boolean
   theme?: ThemePreference
 }
 
@@ -412,6 +419,8 @@ export function parseAppStateData(
       version: APP_STATE_VERSION,
       activeWorkspaceId: record.activeWorkspaceId,
       ...(windowBounds ? { windowBounds } : {}),
+      ...(record.maximized === true ? { maximized: true } : {}),
+      ...(record.fullScreen === true ? { fullScreen: true } : {}),
       ...(isThemePreference(record.theme) ? { theme: record.theme } : {})
     }
   }

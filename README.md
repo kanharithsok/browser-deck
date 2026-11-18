@@ -26,7 +26,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Native **Pane** menu commands for add, close, reload active/all, maximize, and grid/freeform toggle, with an active pane inferred from shell/native focus.
 - Per-pane viewport emulation with responsive, mobile, tablet, laptop, and desktop presets, custom width/height/DPR, and fit/actual display scale. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
 - Versioned workspace persistence: pane IDs, profile references, URLs, viewport settings, grid columns/order, grid/freeform mode, and freeform geometry restore after restart. Profile partitions and sessions are retained.
-- Safe normal window-bounds restoration: saved bounds are validated and applied only when visible on a connected display.
+- Safe window restoration: normal bounds, maximized state, and full-screen state restore after restart when the saved normal bounds remain visible on a connected display.
 - Hidden-inset macOS title bar: traffic lights sit inside the compact toolbar, the shell fills the full window content, and empty toolbar space drags the window.
 - Persisted System/Light/Dark theme from the native View menu, with matching window chrome and shell tokens.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
@@ -194,7 +194,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 589 MB → 684 MB on final `main`; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
-- Maximized/focused state is not restored across restarts. Window bounds restore only when visible on a current display.
+- Window position, size, maximized state, and full-screen state restore when the saved normal bounds remain visible on a current display. Minimized and focused state are not restored.
 - Partially visible grid panes are hidden while scrolling and only become interactive when fully in view.
 - A fully covered freeform pane may be unreachable until the covering pane moves.
 - Raw keyboard accelerators are configured in the native menu; menu command routing is tested, raw key chords are not yet automated.

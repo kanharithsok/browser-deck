@@ -201,6 +201,8 @@ async function readPersistedAppState(
 ): Promise<{
   activeWorkspaceId?: string
   windowBounds?: PaneViewRect
+  maximized?: boolean
+  fullScreen?: boolean
   theme?: string
 } | null> {
   try {
@@ -208,6 +210,8 @@ async function readPersistedAppState(
     return JSON.parse(raw) as {
       activeWorkspaceId?: string
       windowBounds?: PaneViewRect
+      maximized?: boolean
+      fullScreen?: boolean
       theme?: string
     }
   } catch {
@@ -1475,6 +1479,28 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       )
       .toBe('#171716')
 
+    await app.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('PaneFlow window not found')
+      }
+      window.maximize()
+    })
+    await waitFor(
+      () =>
+        (app as ElectronApplication).evaluate(({ BaseWindow }) => {
+          const window = BaseWindow.getAllWindows()[0]
+          return window?.isMaximized() ?? false
+        }),
+      (maximized) => maximized === true,
+      'window to maximize'
+    )
+    await waitFor(
+      () => readPersistedAppState(userDataDir),
+      (state) => state?.maximized === true,
+      'maximized state to persist'
+    )
+
     await app.evaluate(async ({ session }, profileIds) => {
       for (const profileId of profileIds) {
         await session.fromPartition(`persist:paneflow-profile-${profileId}`).cookies.flushStore()
@@ -1497,6 +1523,36 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         Math.abs(bounds.x - savedWindowBounds.x) <= 2 &&
         Math.abs(bounds.y - savedWindowBounds.y) <= 2,
       'window bounds to restore'
+    )
+    await waitFor(
+      () =>
+        restartApp.evaluate(({ BaseWindow }) => {
+          const window = BaseWindow.getAllWindows()[0]
+          return window?.isMaximized() ?? false
+        }),
+      (maximized) => maximized === true,
+      'maximized window state to restore'
+    )
+    await restartApp.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('PaneFlow window not found')
+      }
+      window.unmaximize()
+    })
+    await waitFor(
+      () =>
+        restartApp.evaluate(({ BaseWindow }) => {
+          const window = BaseWindow.getAllWindows()[0]
+          return window?.isMaximized() ?? false
+        }),
+      (maximized) => maximized === false,
+      'window to unmaximize'
+    )
+    await waitFor(
+      () => readPersistedAppState(userDataDir),
+      (state) => state?.maximized !== true,
+      'maximized state to clear'
     )
 
     const restarted = await waitFor(

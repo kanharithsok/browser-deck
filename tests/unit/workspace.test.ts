@@ -230,6 +230,35 @@ describe('app state validation', () => {
     })
   })
 
+  it('restores valid window presentation flags and ignores invalid ones', () => {
+    const valid = parseAppStateData({
+      version: APP_STATE_VERSION,
+      activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+      maximized: true,
+      fullScreen: true
+    })
+    expect(valid).toEqual({
+      ok: true,
+      data: {
+        version: APP_STATE_VERSION,
+        activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+        maximized: true,
+        fullScreen: true
+      }
+    })
+
+    const invalid = parseAppStateData({
+      version: APP_STATE_VERSION,
+      activeWorkspaceId: DEFAULT_WORKSPACE_ID,
+      maximized: 'yes',
+      fullScreen: 1
+    })
+    expect(invalid).toEqual({
+      ok: true,
+      data: { version: APP_STATE_VERSION, activeWorkspaceId: DEFAULT_WORKSPACE_ID }
+    })
+  })
+
   it('accepts valid theme preferences and ignores invalid values', () => {
     expect(
       parseAppStateData({

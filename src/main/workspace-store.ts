@@ -24,6 +24,7 @@ import {
   type AppStateData,
   type ThemePreference,
   type WindowBounds,
+  type WindowPresentation,
   type WorkspaceData,
   type WorkspaceLayout,
   type WorkspacePaneDefinition,
@@ -195,6 +196,13 @@ export class WorkspaceStore {
     return this.appState.windowBounds ? { ...this.appState.windowBounds } : null
   }
 
+  windowPresentation(): WindowPresentation {
+    return {
+      maximized: this.appState.maximized === true,
+      fullScreen: this.appState.fullScreen === true
+    }
+  }
+
   theme(): ThemePreference {
     return this.appState.theme ?? 'system'
   }
@@ -211,22 +219,42 @@ export class WorkspaceStore {
     await this.save(false)
   }
 
-  async setWindowBounds(input: unknown): Promise<void> {
+  async setWindowBounds(
+    input: unknown,
+    presentation?: WindowPresentation
+  ): Promise<void> {
     this.ensureLoaded()
     const bounds = normalizeWindowBounds(input)
     if (!bounds) {
       return
     }
+    const currentPresentation = this.windowPresentation()
+    const nextPresentation = presentation ?? currentPresentation
+    const nextMaximized = nextPresentation.maximized === true
+    const nextFullScreen = nextPresentation.fullScreen === true
     if (
       this.appState.windowBounds &&
       this.appState.windowBounds.x === bounds.x &&
       this.appState.windowBounds.y === bounds.y &&
       this.appState.windowBounds.width === bounds.width &&
-      this.appState.windowBounds.height === bounds.height
+      this.appState.windowBounds.height === bounds.height &&
+      currentPresentation.maximized === nextMaximized &&
+      currentPresentation.fullScreen === nextFullScreen
     ) {
       return
     }
-    this.appState = { ...this.appState, windowBounds: bounds }
+    this.appState = {
+      ...this.appState,
+      windowBounds: bounds,
+      ...(nextMaximized ? { maximized: true } : {}),
+      ...(nextFullScreen ? { fullScreen: true } : {})
+    }
+    if (!nextMaximized) {
+      delete this.appState.maximized
+    }
+    if (!nextFullScreen) {
+      delete this.appState.fullScreen
+    }
     await this.save(false)
   }
 

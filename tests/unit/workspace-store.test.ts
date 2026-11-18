@@ -111,7 +111,50 @@ describe('WorkspaceStore', () => {
     const reloaded = new WorkspaceStore(directory)
     await reloaded.load()
     expect(reloaded.windowBounds()).toEqual({ x: 30, y: 40, width: 1120, height: 760 })
+    expect(reloaded.windowPresentation()).toEqual({ maximized: false, fullScreen: false })
     expect(reloaded.paneDefinitions()).toEqual([pane(PANE_A, PROFILE_A)])
+  })
+
+  it('persists window presentation and clears flags when restored to normal', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    await store.initialize([pane(PANE_A, PROFILE_A)])
+
+    await store.setWindowBounds(
+      { x: 30, y: 40, width: 1120, height: 760 },
+      { maximized: true, fullScreen: false }
+    )
+    await store.flush()
+    expect(store.windowPresentation()).toEqual({ maximized: true, fullScreen: false })
+
+    const maximized = new WorkspaceStore(directory)
+    await maximized.load()
+    expect(maximized.windowPresentation()).toEqual({ maximized: true, fullScreen: false })
+
+    await maximized.setWindowBounds(
+      { x: 30, y: 40, width: 1120, height: 760 },
+      { maximized: false, fullScreen: true }
+    )
+    await maximized.flush()
+    const fullScreen = new WorkspaceStore(directory)
+    await fullScreen.load()
+    expect(fullScreen.windowPresentation()).toEqual({ maximized: false, fullScreen: true })
+
+    await fullScreen.setWindowBounds(
+      { x: 30, y: 40, width: 1120, height: 760 },
+      { maximized: false, fullScreen: false }
+    )
+    await fullScreen.flush()
+    const normal = new WorkspaceStore(directory)
+    await normal.load()
+    expect(normal.windowPresentation()).toEqual({ maximized: false, fullScreen: false })
+    expect(JSON.parse(await readFile(join(directory, 'app-state.json'), 'utf8'))).not.toHaveProperty(
+      'maximized'
+    )
+    expect(JSON.parse(await readFile(join(directory, 'app-state.json'), 'utf8'))).not.toHaveProperty(
+      'fullScreen'
+    )
   })
 
   it('reconciles pane additions and persists freeform layout state', async () => {

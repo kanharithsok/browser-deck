@@ -389,14 +389,14 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-013 — Window bounds persist only when safe for the current displays
 
-- **Status:** Accepted
+- **Status:** Accepted; presentation-flag clause superseded by ADR-027
 - **Date:** 2026-11-19
 - **Context:** `SPEC.md` §11.3 suggests persisting safe application window bounds in `app-state.json`. Restoring stale coordinates can place the window entirely off-screen after a display change, and persisting maximized/fullscreen geometry can produce surprising restores.
 
 - **Decision:**
   1. Store optional normal window bounds (`x`, `y`, `width`, `height`) in `app-state.json`; keep active workspace ID in the same file.
   2. Validate bounds in the shared app-state parser: minimum 720 × 520, maximum 10,000 px width/height, finite positions, rounded integers. Invalid bounds are ignored without discarding the active workspace.
-  3. Save normal bounds (`getNormalBounds`) after debounced move/resize/maximize/fullscreen events and immediately before close. Do not persist maximized/fullscreen state.
+  3. Save normal bounds (`getNormalBounds`) after debounced move/resize/maximize/fullscreen events and immediately before close. Do not persist maximized/fullscreen state. (Presentation restore is superseded by ADR-027.)
   4. On startup, restore bounds only when at least 120 × 80 px intersects a connected display's work area. Otherwise keep the default window.
   5. Capture the workspace file path when a save is queued, so an active-workspace change cannot redirect an older queued write.
   6. Flush pending app-state writes on window close and app quit.
@@ -410,7 +410,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - Normal window size/position survives restart when still visible.
   - Off-screen or malformed bounds fall back to the default 1280 × 860 window.
-  - Theme preference is handled separately in ADR-016; maximized/fullscreen state remains unpersisted.
+  - Theme preference is handled separately in ADR-016; maximized/fullscreen presentation is now handled by ADR-027.
   - Tests use a distinctive window bound and verify the app-state file plus restored geometry.
 
 - **Evidence / verification:**
@@ -800,6 +800,35 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e asserts content bounds equal window bounds, traffic lights report `{ x: 16, y: 16 }`, the toolbar computed `-webkit-app-region` is `drag`, the brand starts at least 76 px from the leading edge, and the toolbar does not overflow at 760 px.
   - A macOS window capture confirmed the traffic lights sit inside the toolbar without overlapping the brand or workspace switcher.
+
+## ADR-027 — Restore maximized and full-screen window presentation after safe bounds
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** ADR-013 persisted normal window position and size but deliberately left maximized/full-screen state unpersisted. Users closing a maximized or full-screen window expect it to reopen in that state, not merely at the old normal bounds.
+
+- **Decision:**
+  1. Store optional `maximized` and `fullScreen` booleans beside `windowBounds` in `app-state.json`.
+  2. Save the complete window snapshot — normal bounds plus presentation flags — after debounced move/resize/maximize/unmaximize/full-screen events and immediately before close.
+  3. On startup, apply the validated normal bounds first. Restore full-screen or maximized state only when those bounds remain visible on a connected display.
+  4. Clear the stored presentation flags when the window returns to normal state.
+  5. Do not persist minimized or focused state.
+
+- **Alternatives considered:**
+  - **Always reopen at the normal window size.** Rejected; it ignores the user's last visible state.
+  - **Persist raw maximized/full-screen bounds.** Rejected; those bounds are display-dependent and unsafe after monitor changes.
+  - **Restore minimized state.** Rejected; launching into a hidden window is surprising.
+  - **Restore presentation even when bounds are off-screen.** Rejected; fall back to a safe normal window instead.
+
+- **Consequences:**
+  - Window position, size, maximized state, and full-screen state survive a normal quit or window close when the display layout is still valid.
+  - Off-screen bounds discard both the saved position and presentation flags.
+  - Pane maximize remains temporary renderer state; this ADR applies only to the application window.
+
+- **Evidence / verification:**
+  - Unit tests cover parsing, persistence, clearing, and invalid presentation values.
+  - E2e maximizes a window, verifies app-state, relaunches, asserts maximized restoration, then unmaximizes and verifies the flags clear.
+  - A focused relaunch script verified full-screen persistence, restoration, and clearing.
 
 ## ADR template
 
