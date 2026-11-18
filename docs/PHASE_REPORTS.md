@@ -77,7 +77,7 @@ ADR-001 in `docs/DECISIONS.md`: trusted shell `WebContentsView` plus inset `WebC
 - Zoom is not implemented. The application menu deliberately omits zoom roles so shell zoom cannot desynchronize CSS-pixel measurements from native DIP bounds.
 - `npm audit` has 13 high-severity dev-toolchain advisories with no fixed `picomatch` release at verification time.
 - TypeScript is pinned to 6.0.3 because current `typescript-eslint` does not support TypeScript 7.
-- CI passed on PR #1 and PR #2. Phase 2 changes are uncommitted and have not run in GitHub CI.
+- CI passed on PR #1 and PR #2. Phase 2 changes are in stacked PRs #10 and #11; both passed CI.
 
 ### Next smallest slice
 
@@ -135,7 +135,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** Complete; uncommitted working-tree changes await repository-owner review. Phase 3 not started.
+- **Status:** Complete; PR #11 open (stacked on PR #10), CI passed. Phase 3 not started.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
