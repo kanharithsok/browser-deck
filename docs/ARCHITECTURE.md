@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0 and 1 complete; Phase 2 in progress. The native-view composition and per-profile browser session foundation are implemented and verified. Grid mode and native-aware vertical scrolling are wired to the pure layout engine; freeform remains. See `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
+> Status: Phases 0 and 1 complete; Phase 2 in progress. The native-view composition and per-profile browser session foundation are implemented and verified. Grid mode, native-aware vertical scrolling, and drag reordering are wired to the pure layout engine; freeform remains. See `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
 
 ## Technology baseline
 
@@ -77,6 +77,8 @@ The shell is the first child of `contentView` and fills the window content area.
 Grid mode positions absolutely placed `.pane-slot` elements from `layoutGrid` results. `App.vue` measures the workspace content box, recomputes placements for the selected 1–5 columns, and re-measures native content rectangles after Vue commits the layout. The old CSS auto-fit grid is no longer used. The workspace scrolls to the engine's full content height.
 
 Native views cannot be clipped by DOM overflow. Pane content is shown only when its content rectangle is fully inside the visible workspace viewport. Partially visible or off-screen panes are hidden in the native layer, show a shell message, and have no bounds applied while hidden. On scroll, visible panes get updated native bounds, and the main process re-validates the visibility flag before showing any view.
+
+Grid order is renderer state, independent of the main-process pane snapshot order; add/close operations reconcile it. Dragging a pane title hides all native views for the duration of the drag so pointer events stay in the shell, highlights the drop target, then reorders the ID list and restores views using fresh bounds. Grid order and column selection are not persisted yet.
 
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 
@@ -183,7 +185,7 @@ Only profile metadata and Electron-managed partition data exist so far. Workspac
 ## Testing
 
 - **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, native-aware scrolling with hidden off-screen views, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, and visual alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
@@ -193,6 +195,7 @@ The Playwright test inspects the main process through a test hook that is only i
 - DOM content cannot be drawn over native browser views. Future contextual UI must use native menus, hide/shift the view, or introduce a separately proven overlay view.
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
+- Grid drag reordering is pointer-only and not persisted; keyboard reordering and Phase 3 persistence remain.
 - The selected 1–5 column count is not persisted across restarts (Phase 3).
 - Freeform move/resize/snap/z-order/maximize are engine-only; UI wiring is pending.
 - The layout engine's default 160 × 140 card minimum and main's 80 × 60 native view minimum still need to be unified and verified at the minimum window size.

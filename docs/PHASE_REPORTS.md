@@ -135,7 +135,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** In progress. Grid mode and native-aware vertical scrolling are wired; freeform, drag reorder, and keyboard layout interactions remain pending.
+- **Status:** In progress. Grid mode, native-aware scrolling, and drag reordering are wired; freeform and keyboard layout interactions remain pending.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -169,6 +169,12 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
   - partially off-screen views are hidden, with a shell message, so they can never cover chrome or escape the workspace;
   - `setPaneBounds` carries a validated visibility flag; hidden off-canvas geometry is not applied to native views;
   - e2e forces an overflowing four-pane single-column grid, scrolls to the bottom, and verifies visible/hidden native view states and workspace-safe bounds.
+- Grid drag reordering:
+  - dragging a pane title row reorders the grid through the pure engine helper;
+  - native views hide during an active drag so pointer movement continues to reach the trusted shell across the whole workspace;
+  - the drop target gets a visible shell outline, and views restore with fresh bounds after the drop;
+  - grid order is kept separately from the main-process pane snapshot order and reconciled on add/close;
+  - e2e drags Bob onto Alice, verifies the order and native alignment, then drags back and verifies restoration.
 
 ### Verification commands and results
 
@@ -178,7 +184,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 | `npm run test:unit` | Passed: 5 files, 72 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test. Verifies native/auth/lifecycle/persistence behavior, 2 → 5 → 1 → 2 column reflow with native alignment, and an overflowing four-pane grid whose partially off-screen native views are hidden and never leave the workspace. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 3.1 s. Verifies native/auth/lifecycle/persistence behavior, 2 → 5 → 1 → 2 column reflow, drag reorder with native views hidden during drag and alignment restored, and an overflowing four-pane grid whose partially off-screen native views are hidden and never leave the workspace. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (36.72 kB) and the renderer bundle including the layout engine. |
 | Manual grid check | Passed. Two-column grid rendered with the new `Columns` control at 623 × 696 pane viewports and aligned native views. |
 
@@ -190,15 +196,15 @@ Not yet met. Phase 2 still requires freeform drag/resize/snapping/z-order/maximi
 
 - Partially visible panes hide their native view while scrolling and show a shell message; the page is only interactive when fully in view.
 - Freeform move/resize/snap/z-order/maximize helpers are not exposed through the renderer yet.
-- Pane drag reorder in grid mode is not implemented; add/remove reflow works.
-- The selected column count is not persisted across restarts (Phase 3).
+- Grid drag reordering is pointer-only; keyboard reordering and persistence of grid order are pending.
+- The selected column count and grid order are not persisted across restarts (Phase 3).
 - The engine's default minimum pane card is now 160 × 140 CSS px, while main enforces a minimum native view of 80 × 60. Tested grid sizes produce valid bounds, but the two contracts should still be unified and checked at the minimum window size.
 - Snap calculations use CSS-pixel/DIP distances; zoom is still excluded from the shell.
 - The native scroll path is verified at one window size with four panes; more stress and performance measurement remain.
 
 ### Next smallest slice
 
-Implement freeform mode UI on top of the existing engine helpers: toggle grid/freeform, preserve both arrangements, drag/resize panes with canvas/minimum clamping and guides, z-order controls, fit-organize, and maximize/restore. Extend e2e to verify native alignment after freeform moves/resizes and mode switching.
+Implement freeform mode UI on top of the existing engine helpers: toggle grid/freeform, preserve both arrangements, drag/resize panes with canvas/minimum clamping and snapping, z-order controls, fit-organize, and maximize/restore. Extend e2e to verify native alignment after freeform moves/resizes and mode switching.
 
 ## Phase 3 — Viewport emulation and persistence
 

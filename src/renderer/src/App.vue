@@ -6,11 +6,13 @@ import {
   DEFAULT_GRID_COLUMNS,
   isRectFullyVisible,
   layoutGrid,
+  reorderPaneIds,
   type GridLayout,
   type Size
 } from '../../shared/layout'
 
 const panes = ref<PaneState[]>([])
+const paneOrder = ref<string[]>([])
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
 const gridColumns = ref(DEFAULT_GRID_COLUMNS)
@@ -18,6 +20,16 @@ const suspendedPaneIds = ref<ReadonlySet<string>>(new Set())
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
+
+interface DragState {
+  paneId: string
+  startX: number
+  startY: number
+}
+
+const dragState = ref<DragState | null>(null)
+const dropTargetId = ref<string | null>(null)
+const isDragging = ref(false)
 
 let disposeStateListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
@@ -30,16 +42,27 @@ const paneCountLabel = computed(() => {
   return `${count} ${count === 1 ? 'pane' : 'panes'}`
 })
 
-const paneLayoutKey = computed(() => panes.value.map((pane) => pane.id).join('|'))
+const orderedPanes = computed(() => {
+  const byId = new Map(panes.value.map((pane) => [pane.id, pane]))
+  return paneOrder.value
+    .map((paneId) => byId.get(paneId))
+    .filter((pane): pane is PaneState => pane !== undefined)
+})
+
+const paneLayoutKey = computed(() => orderedPanes.value.map((pane) => pane.id).join('|'))
 const errorMessage = computed(() => actionError.value ?? layoutError.value)
 
 const gridLayout = computed<GridLayout | null>(() => {
-  if (panes.value.length === 0 || workspaceSize.value.width < 1 || workspaceSize.value.height < 1) {
+  if (
+    orderedPanes.value.length === 0 ||
+    workspaceSize.value.width < 1 ||
+    workspaceSize.value.height < 1
+  ) {
     return null
   }
 
   const result = layoutGrid(
-    panes.value.map((pane) => pane.id),
+    orderedPanes.value.map((pane) => pane.id),
     workspaceSize.value,
     { columns: gridColumns.value, padding: 10, gap: 10 }
   )
@@ -131,6 +154,13 @@ function applyState(state: ShellState): void {
       : undefined
   const removedPane = focusManagementEnabled && state.panes.length < panes.value.length
 
+  const nextIds = new Set(state.panes.map((pane) => pane.id))
+  const retained = paneOrder.value.filter((paneId) => nextIds.has(paneId))
+  const retainedIds = new Set(retained)
+  const appended = state.panes
+    .map((pane) => pane.id)
+    .filter((paneId) => !retainedIds.has(paneId))
+  paneOrder.value = [...retained, ...appended]
   panes.value = state.panes
 
   void nextTick(() => {
@@ -200,6 +230,109 @@ function dismissErrors(): void {
   layoutError.value = null
 }
 
+function findDropTarget(x: number, y: number, draggedPaneId: string): string | null {
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    return null
+  }
+
+  for (const card of workspace.querySelectorAll<HTMLElement>('[data-pane-id]')) {
+    const paneId = card.dataset.paneId
+    if (!paneId || paneId === draggedPaneId) {
+      continue
+    }
+    const rect = card.getBoundingClientRect()
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+      return paneId
+    }
+  }
+
+  return null
+}
+
+function finishDrag(): void {
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', finishDrag)
+  window.removeEventListener('pointercancel', finishDrag)
+
+  const state = dragState.value
+  const target = dropTargetId.value
+  const wasDragging = isDragging.value
+
+  dragState.value = null
+  dropTargetId.value = null
+  isDragging.value = false
+  document.body.classList.remove('paneflow-dragging')
+
+  if (wasDragging && state && target) {
+    const fromIndex = paneOrder.value.indexOf(state.paneId)
+    const targetIndex = paneOrder.value.indexOf(target)
+    if (fromIndex >= 0 && targetIndex >= 0 && fromIndex !== targetIndex) {
+      const next = reorderPaneIds(paneOrder.value, state.paneId, targetIndex)
+      if (next) {
+        paneOrder.value = next
+      }
+    }
+  }
+
+  void nextTick(scheduleMeasure)
+}
+
+function onPointerMove(event: PointerEvent): void {
+  const state = dragState.value
+  if (!state) {
+    return
+  }
+
+  if (!isDragging.value) {
+    const distance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY)
+    if (distance < 5) {
+      return
+    }
+    isDragging.value = true
+    document.body.classList.add('paneflow-dragging')
+    void nextTick(scheduleMeasure)
+  }
+
+  event.preventDefault()
+  dropTargetId.value = findDropTarget(event.clientX, event.clientY, state.paneId)
+}
+
+function onWorkspacePointerDown(event: PointerEvent): void {
+  if (event.button !== 0) {
+    return
+  }
+
+  const target = event.target
+  if (!(target instanceof Element)) {
+    return
+  }
+  if (!target.closest('.pane-title-row')) {
+    return
+  }
+  if (target.closest('button, a, input, select, textarea, form, [role="button"]')) {
+    return
+  }
+
+  const card = target.closest('[data-pane-id]')
+  if (!(card instanceof HTMLElement)) {
+    return
+  }
+  const paneId = card.dataset.paneId
+  if (!paneId) {
+    return
+  }
+
+  dragState.value = {
+    paneId,
+    startX: event.clientX,
+    startY: event.clientY
+  }
+  window.addEventListener('pointermove', onPointerMove)
+  window.addEventListener('pointerup', finishDrag)
+  window.addEventListener('pointercancel', finishDrag)
+}
+
 function scheduleMeasure(): void {
   if (measureFrame !== 0) {
     return
@@ -237,8 +370,8 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
-    const visible = isRectFullyVisible(rect, workspaceRect)
-    if (!visible) {
+    const visible = !isDragging.value && isRectFullyVisible(rect, workspaceRect)
+    if (!visible && !isDragging.value) {
       suspended.add(paneId)
     }
     updates.push({
@@ -281,6 +414,10 @@ watch(
   }
 )
 
+watch(isDragging, () => {
+  void nextTick(scheduleMeasure)
+})
+
 onMounted(async () => {
   disposeStateListener = window.paneflow.onStateChanged(applyState)
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
@@ -309,6 +446,10 @@ onBeforeUnmount(() => {
   disposeMeasureListener?.()
   resizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('pointermove', onPointerMove)
+  window.removeEventListener('pointerup', finishDrag)
+  window.removeEventListener('pointercancel', finishDrag)
+  document.body.classList.remove('paneflow-dragging')
   if (measureFrame !== 0) {
     window.cancelAnimationFrame(measureFrame)
   }
@@ -316,7 +457,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'is-dragging': isDragging }">
     <header class="toolbar">
       <span class="brand">PaneFlow</span>
 
@@ -373,16 +514,21 @@ onBeforeUnmount(() => {
       class="workspace"
       aria-label="Browser workspace"
       @scroll.passive="scheduleMeasure"
+      @pointerdown="onWorkspacePointerDown"
     >
       <div
-        v-if="panes.length > 0"
+        v-if="orderedPanes.length > 0"
         class="pane-grid"
         :style="{ height: `${gridContentHeight}px` }"
       >
         <div
-          v-for="pane in panes"
+          v-for="pane in orderedPanes"
           :key="pane.id"
           class="pane-slot"
+          :class="{
+            'pane-slot-dragging': isDragging && dragState?.paneId === pane.id,
+            'pane-slot-drop-target': dropTargetId === pane.id
+          }"
           :style="paneSlotStyle(pane.id)"
         >
           <PaneCard
@@ -610,6 +756,16 @@ onBeforeUnmount(() => {
 
 .pane-slot {
   position: absolute;
+}
+
+.pane-slot-dragging {
+  opacity: 0.65;
+}
+
+.pane-slot-drop-target {
+  border-radius: 11px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .empty-state {

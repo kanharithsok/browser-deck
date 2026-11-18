@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, and window resizing. Grid mode is engine-driven with a 1–5 column selector and native-aware vertical scrolling; freeform mode is next. Viewport emulation and packaging arrive in later phases.
+> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, and window resizing. Grid mode is engine-driven with a 1–5 column selector, native-aware vertical scrolling, and drag reordering; freeform mode is next. Viewport emulation and packaging arrive in later phases.
 
 ## Current capabilities
 
@@ -19,6 +19,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Pure TypeScript layout engine for grid placement/reflow, normalized freeform geometry, clamping, snapping, ordering, and maximize/restore, with 33 unit tests.
 - Engine-driven grid mode with a compact 1–5 column selector, equal-width reflow, native bounds alignment, and add/remove reflow.
 - Native-aware vertical grid scrolling: partially off-screen panes hide their browser view so it cannot cover chrome or escape the workspace.
+- Grid drag reordering from the pane title row, with native views temporarily hidden so pointer movement stays in the shell.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test.
 
 The current build does **not** include freeform UI, workspace persistence, viewport presets, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
@@ -75,6 +76,7 @@ The e2e test launches the built app against local fixtures and verifies:
 - denied popups and notifications;
 - native view bounds matching shell content rectangles before and after window resize;
 - 2/5/1-column grid reflow with native bounds alignment at every step;
+- drag reordering with native views hidden during drag and alignment restored afterward;
 - overflowing grid scrolling with native views hidden when partially off-screen;
 - real address-bar navigation and history controls;
 - rejecting unsupported URLs and unknown pane IDs in main;
@@ -88,7 +90,7 @@ The Playwright suite requires a local macOS GUI session. Unit tests include the 
 
 The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, and hides native views when their panes are only partially visible. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging so the shell keeps pointer input. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -128,7 +130,8 @@ opencode.jsonc        Project-level OpenCode configuration
 
 - The workspace still lacks freeform mode, viewport emulation, and a profile manager.
 - Partially visible panes are hidden while scrolling and only become interactive when fully in view.
-- The selected column count resets on restart until workspace persistence arrives.
+- Grid drag reordering is pointer-only; keyboard reordering and persistence of grid order are pending.
+- The selected column count and grid order reset on restart until workspace persistence arrives.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
 - Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
