@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, and theme persistence are implemented and verified. Remaining Phase 4 work covers performance, polish, import/export, and macOS packaging.
+> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, and unsigned arm64 packaging are implemented and verified. Remaining Phase 4 work covers performance, polish, import/export, and signed/notarized distribution.
 
 ## Technology baseline
 
@@ -13,6 +13,8 @@
 | Renderer | Vue 3.5.45 |
 | Language | TypeScript 6.0.3, strict |
 | Build tooling | electron-vite 6.0.0, Vite 8.3.8 |
+| Packaging | electron-builder 26.18.0, unsigned arm64 DMG/ZIP |
+| License | MIT |
 | Tests | Vitest 5.1.1, Playwright 1.65.1 (Electron integration) |
 | Package manager | npm 11.19.1 with committed `package-lock.json` |
 
@@ -256,9 +258,15 @@ Shutdown flushes queued writes through `will-quit`.
 
 - **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
 - **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns, window bounds, theme), retained closed-profile cookies, profile-manager usage/rename/clear/delete and in-use protection, explicit shared-profile panes with shared localStorage and clear/delete protection, workspace create/switch/rename/duplicate/delete with active-state persistence, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
-- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace/profile dialog review, theme menu/token review, workspace restore smoke check, and alignment on macOS.
+- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace/profile dialog review, theme menu/token review, workspace restore smoke check, packaged unsigned app launch, and alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
+
+## Packaging
+
+`electron-builder.yml` packages the built `out/` tree with asar enabled. Product metadata is PaneFlow 0.1.0, app ID `com.kanharithsok.paneflow`, developer-tools category, MIT license, and the `build/icon.icns` icon generated from the checked-in SVG source. `npm run package:mac` builds arm64 DMG and ZIP artifacts into `dist/`; `npm run package:dir` produces the unpacked app for faster checks. `dist/` is ignored by Git.
+
+Code signing is intentionally disabled with `identity: null` for the current unsigned local builds. The local machine has only an Apple Development certificate, not a Developer ID Application certificate or notarization credentials. Signed distribution requires installing the Developer ID certificate, configuring notarytool credentials outside the repository, enabling hardened runtime/signing in builder config, and notarizing/stapling both the app and disk image.
 
 ## Known architectural gaps
 
@@ -286,5 +294,5 @@ The Playwright test inspects the main process through a test hook that is only i
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
 - Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.
-- macOS packaging, code signing, and notarization are deferred to Phase 4.
+- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, and release automation remain.
 - The shell CSP still permits inline styles and local development connections; revisit in the packaging/hardening phase.

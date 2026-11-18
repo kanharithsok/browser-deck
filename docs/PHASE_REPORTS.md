@@ -318,11 +318,11 @@ Met in the automated macOS run. Different panes used independent viewport config
 
 ### Next smallest slice
 
-Phase 4: theme restoration, accessibility and visual polish, performance stress, import/export, and macOS packaging. Workspace management, safe window bounds, and explicit profile sharing are complete. Do not treat the current build output as a distributable app.
+Phase 4: accessibility and visual polish, performance stress, import/export, and signed/notarized distribution. Workspace management, safe window bounds, explicit profile sharing, theme persistence, and unsigned arm64 packaging are complete. The unsigned artifacts are local builds, not notarized releases.
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Safe window-bounds persistence, workspace management, explicit profile sharing, and theme persistence are implemented and verified; performance work and macOS packaging remain.
+- **Status:** In progress. Window bounds, workspace management, profile sharing, theme persistence, and unsigned arm64 packaging are implemented and verified; performance/import-export work and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -354,6 +354,12 @@ Phase 4: theme restoration, accessibility and visual polish, performance stress,
   - The shell applies an explicit `data-theme` token override so light/dark selection is independent of the Playwright/Chromium `prefers-color-scheme` propagation limitation; `system` removes the override and follows system appearance.
   - Native window/shell background colors update with the theme, and menu checkmarks stay synchronized.
   - E2e selects Dark, verifies the persisted value and dark tokens before restart, confirms Dark restores after relaunch, then resets to System.
+- Unsigned macOS packaging:
+  - added `electron-builder` 26.18.0 with `electron-builder.yml`: app ID `com.kanharithsok.paneflow`, product name PaneFlow, version 0.1.0, developer-tools category, arm64 DMG/ZIP targets, asar, and signing disabled (`identity: null`);
+  - added a locally generated minimalist PaneFlow icon (`build/icon.svg` source, `build/icon.icns` bundle asset) with transparent rounded-square geometry;
+  - added an MIT license and matching package metadata;
+  - added `npm run package:mac` and `npm run package:dir` scripts; `dist/` remains ignored;
+  - documented that arm64-only unsigned builds are for local verification, not notarized distribution.
 
 ### Verification commands and results
 
@@ -362,8 +368,11 @@ Phase 4: theme restoration, accessibility and visual polish, performance stress,
 | `npm run test:unit` | Passed: 8 files, 99 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 9.8 s, including window-bounds persistence, workspace lifecycle/switching, profile management, explicit profile sharing, and theme restore. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 10.2 s, including window-bounds persistence, workspace lifecycle/switching, profile management, explicit profile sharing, and theme restore. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (88.34 kB), preload (4.79 kB), renderer bundle (263.46 kB), and CSS (21.41 kB). |
+| `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
+| Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
+| Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
 
 ### Known issues / risks
 
@@ -375,8 +384,9 @@ Phase 4: theme restoration, accessibility and visual polish, performance stress,
 - Profile sharing is initiated from the profile manager; the toolbar Add pane action always creates a fresh profile.
 - Shared profiles are intentional but still share one Chromium partition; there is no clone-profile-with-session feature.
 - Close-and-delete profile flows, workspace import/export, and workspace-specific window bounds remain.
-- Packaging, signing, notarization, and release automation are not implemented.
+- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
+- Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
 
 ### Next smallest slice
 
-Add performance/leak stress for repeated pane and workspace switching, then prepare macOS packaging.
+Add performance/leak stress for repeated pane and workspace switching, then implement workspace import/export and signed/notarized release prerequisites.

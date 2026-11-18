@@ -1,0 +1,25 @@
+appId: com.kanharithsok.paneflow
+productName: PaneFlow
+asar: true
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip
+      arch:
+        - arm64
+dmg:
+  title: PaneFlow ${version}
+artifactName: PaneFlow-${version}-${arch}.${ext}
