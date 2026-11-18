@@ -4,7 +4,7 @@ The agent updates this file at the end of each phase. Record actual outcomes, no
 
 ## Phase 0 — Repository bootstrap and native-view spike
 
-- **Status:** Complete; awaiting repository-owner review. Phase 1 not started.
+- **Status:** Complete; merged in PR #1. CI passed for that PR.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -25,7 +25,7 @@ The agent updates this file at the end of each phase. Record actual outcomes, no
 - System light/dark tokens exercised in the renderer; explicit theme selection remains Phase 4.
 - Deterministic local fixture server; e2e launches the built app, not a mock.
 - Restored the documented `.opencode/commands` and `.opencode/skills` assets that were missing from the checkout.
-- Added CI configuration for typecheck, lint, unit tests, and build. It has not run on GitHub yet because nothing was pushed.
+- Added CI configuration for typecheck, lint, unit tests, and build. CI passed on PR #1; the later Phase 1 test changes have not been pushed yet.
 
 ### Verification commands and results
 
@@ -37,7 +37,7 @@ The agent updates this file at the end of each phase. Record actual outcomes, no
 | `npm run lint` | Passed with no warnings or errors. |
 | `npm run test:unit` | Passed: 4 files, 34 tests. Covers bounds validation, URL normalization/scheme rejection, loopback hostname checks, profile IDs/partitions/labels, store seeding, corrupt-file recovery, concurrent write safety, and persistence. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (35.44 kB), `out/preload/index.js` (1.93 kB), and the renderer bundle/CSS. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 1.2 s. It launches the built app against a random local fixture server, verifies two isolated profiles, cookies, `localStorage`, bridge/Node absence, popup and notification denial, light/dark design tokens, page viewport matching the pane content rectangle, DOM/native bounds alignment before and after resize, address/back controls, address-error recovery, focus handoff after add/close, malformed IPC rejection, closed-pane `webContents` destruction, self-closed pane removal, fresh profile for a new pane, and cookie/profile-ID persistence after restart. |
+| `npm run test:e2e` | Passed at Phase 0 completion: 1 Playwright test, 1.2 s. It launched the built app against a random local fixture server, verified two isolated profiles, cookies, `localStorage`, bridge/Node absence, popup and notification denial, light/dark design tokens, page viewport matching the pane content rectangle, DOM/native bounds alignment before and after resize, address/back controls, address-error recovery, focus handoff after add/close, malformed IPC rejection, closed-pane `webContents` destruction, self-closed pane removal, fresh profile for a new pane, and cookie/profile-ID persistence after restart. The same test was expanded with Phase 1 authentication coverage. |
 | `npm run dev` | Passed manually. Fixture server and electron-vite started; the app window loaded the Vue shell and both fixture panes. |
 | Native menu check | Passed manually. The pane actions `Menu.popup` rendered above native browser content. Automated menu interaction is not yet in the e2e suite. |
 | Retina/composition check | Passed manually. Both panes reported `623 × 696` CSS pixels and `devicePixelRatio: 2`; chrome and native content remained aligned. |
@@ -50,7 +50,7 @@ ADR-001 in `docs/DECISIONS.md`: trusted shell `WebContentsView` plus inset `WebC
 
 ### Independent reviews
 
-- **Security review:** no critical or high findings. Confirmed IPC sender/payload validation, partition isolation, sandboxing, and popup/permission/download policy. Fixed confirmed issues: cross-origin/unpackaged dev-shell loading is now loopback-only and origin-checked; unexpected `webContents` destruction removes stale panes; profile saves are serialized with unique temp files; window-teardown races no longer leak a new view. Remote HTTP ambiguity is documented as Phase 1 UI work.
+- **Security review:** no critical or high findings. Confirmed IPC sender/payload validation, partition isolation, sandboxing, and popup/permission/download policy. Fixed confirmed issues: cross-origin/unpackaged dev-shell loading is now loopback-only and origin-checked; unexpected `webContents` destruction removes stale panes; profile saves are serialized with unique temp files; window-teardown races no longer leak a new view. Remote HTTP ambiguity remains a documented security-UI gap.
 - **UI/accessibility review:** addressed narrow-width address-error visibility and persistence, focus ring/contrast, neutral/error status indication, 24 px targets, focus handoff after add/close, async error handling, and redundant bounds IPC. Native-pane keyboard focus remains deferred to Phase 2.
 
 ### Manual evidence
@@ -68,8 +68,8 @@ ADR-001 in `docs/DECISIONS.md`: trusted shell `WebContentsView` plus inset `WebC
 - During live window resizing, alignment converges after a layout frame rather than synchronously.
 - Pane drag/resize, freeform layout, snapping, maximize/restore, viewport presets, and profile management are not implemented.
 - Only profile metadata and cookie/storage partition data persist. URLs, titles, layout, and active workspace do not.
-- Remote `http:` addresses are not visually distinguished from HTTPS yet. The URL helper computes `insecureRemote`, but the state/UI does not surface it; this is required in Phase 1.
-- If a page closes its own `webContents`, the pane is removed cleanly but without a user-facing explanation. Add a shell notice in Phase 1.
+- Remote `http:` addresses are not visually distinguished from HTTPS yet. The URL helper computes `insecureRemote`, but the state/UI does not surface it; this is a later security-UI gap.
+- If a page closes its own `webContents`, the pane is removed cleanly but without a user-facing explanation. This needs a later shell notice.
 - The shell CSP allows inline styles and localhost WebSocket connections for development; production hardening is deferred to Phase 4.
 - The app is not packaged, signed, or notarized. The macOS menu shows “Electron” while running unpackaged.
 - Native menu behavior is verified manually; the test driver must close a native popup before shutdown, and the automated suite does not cover popup interaction.
@@ -77,19 +77,61 @@ ADR-001 in `docs/DECISIONS.md`: trusted shell `WebContentsView` plus inset `WebC
 - Zoom is not implemented. The application menu deliberately omits zoom roles so shell zoom cannot desynchronize CSS-pixel measurements from native DIP bounds.
 - `npm audit` has 13 high-severity dev-toolchain advisories with no fixed `picomatch` release at verification time.
 - TypeScript is pinned to 6.0.3 because current `typescript-eslint` does not support TypeScript 7.
-- CI is configured but unexecuted in GitHub because the repository has not been pushed.
+- CI passed on PR #1. The Phase 1 changes later in this file are uncommitted and have not run in GitHub CI.
 
 ### Next smallest slice
 
-Phase 1: formalize the secure browser/session foundation — finish the profile registry and shared-profile rules, harden navigation/error UI, and build deterministic per-pane integration tests for independent authentication and restart persistence on a local fixture origin. Do not begin the Phase 2 layout engine until Phase 1 exit criteria are verified.
+Phase 1 (completed below): independent authentication with a deterministic local fixture and restart persistence. Do not begin the Phase 2 layout engine until the Phase 1 exit criteria and report are reviewed.
 
 ## Phase 1 — Browser isolation foundation
 
-- **Status:** Not started
-- **Delivered:** —
-- **Verification commands and results:** —
-- **Known issues / risks:** —
-- **Next smallest slice:** —
+- **Status:** Complete; uncommitted working-tree changes await repository-owner review.
+- **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
+
+### Delivered
+
+- Phase 0's secure shell, BrowserManager, per-pane persistent partitions, navigation controls, loading/error states, popup/permission policies, and teardown remain the foundation.
+- Deterministic fixture authentication:
+  - `/login` signs into a synthetic Alice or Bob account with a form POST and no passwords or real credentials.
+  - `/account` is server-rendered from an HttpOnly, persistent session cookie scoped to the browser profile.
+  - `/logout` clears only the current profile's server session.
+  - Sessions are held only in the fixture server process and each profile's Electron cookie jar.
+- Integration coverage now proves:
+  - Alice and Bob authenticate independently on the same fixture origin in separate panes.
+  - The session cookie is HttpOnly and invisible to `document.cookie`.
+  - Signing out of Bob does not sign Alice out.
+  - Persistent cookies, localStorage, and the authenticated session survive an app restart.
+  - IndexedDB and localStorage stay isolated between profiles.
+  - Pane-specific back navigation does not affect the other pane.
+- No production authentication code was added: PaneFlow does not own credentials or authorization; it preserves each website's cookies and storage inside the selected profile partition.
+
+### Verification commands and results
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run test:unit` | Passed: 4 files, 34 tests. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (35.44 kB), `out/preload/index.js` (1.93 kB), and the renderer bundle/CSS. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 2.0 s. The test signs both panes into different fixture accounts through the real forms, verifies HttpOnly session separation and logout isolation, then restarts the app and confirms both sessions, profile cookies, localStorage, and profile IDs persist. It also retains the Phase 0 native bounds, lifecycle, security, focus, and self-close checks. |
+
+### Exit criteria
+
+At least two panes authenticate independently on the same local fixture origin and retain their intended persistent profile data after restart. Verified by the e2e flow above: Alice and Bob sign in separately, survive a full app relaunch with the same user-data directory, and remain isolated.
+
+### Known issues / risks
+
+- Profile manager operations (rename, clear data, delete, explicit shared-profile selection) remain Phase 3 work; the registry is still the minimal Phase 0/1 implementation.
+- The fixture intentionally has no passwords and only two synthetic accounts; it verifies session isolation, not credential validation or identity-provider compatibility.
+- Session-only cookies and `sessionStorage` remain outside restart guarantees; persistent cookies, localStorage, IndexedDB, and HttpOnly session cookies are covered.
+- Shared-profile behavior is not exercised because explicit profile sharing is not implemented.
+- Remote non-local HTTP is not yet visually distinguished; the URL helper computes `insecureRemote`.
+- A page that closes its own `webContents` is removed cleanly without an explanatory notice.
+- UI e2e depends on a macOS GUI session; CI runs typecheck, lint, unit tests, and build only.
+
+### Next smallest slice
+
+Phase 2: implement the pure TypeScript layout engine first (grid placement/reflow, normalized freeform geometry, minimum-size clamping, and snap calculations with unit tests), then wire grid mode to the existing pane model without regressing native bounds synchronization.
 
 ## Phase 2 — Workspace engine
 

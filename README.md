@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phase 0 complete. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, editable address chrome, window resizing, and verified cleanup. The full workspace/layout/product UI, viewport emulation, and packaging arrive in later phases.
+> **Project status:** Phases 0 and 1 complete. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, window resizing, and verified cleanup. The full workspace/layout/product UI, viewport emulation, and packaging arrive in later phases.
 
 ## Current capabilities
 
@@ -15,9 +15,10 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Per-pane native menu for back/forward/reload/DevTools/close.
 - Retina-correct bounds synchronization verified at `devicePixelRatio: 2`.
 - Denied popups, permissions, and downloads for remote content; sandboxed browser views with no app bridge or Node access.
+- Independent authenticated sessions on one local origin, with HttpOnly persistent cookies, localStorage, and IndexedDB isolated per profile and restored after restart.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test.
 
-Phase 0 does **not** include workspace persistence, viewport presets, freeform layout, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
+Phases 0–1 do **not** include workspace persistence, viewport presets, freeform layout, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -37,7 +38,7 @@ npm install
 npm run dev
 ```
 
-`npm run dev` starts a local fixture server on a random loopback port and launches electron-vite. Two panes open with independent fixture sessions (`alice` and `bob`) that display their per-profile cookie, localStorage, viewport, and device pixel ratio.
+`npm run dev` starts a local fixture server on a random loopback port and launches electron-vite. Two panes open with independent fixture sessions (`alice` and `bob`) that display their per-profile cookie, localStorage, viewport, and device pixel ratio. Open `/login` in a pane to try the fixture's independent authenticated sessions.
 
 ## Scripts
 
@@ -65,7 +66,8 @@ npm run test:e2e
 
 The e2e test launches the built app against local fixtures and verifies:
 
-- two panes with distinct persistent profiles and isolated cookies/localStorage;
+- two panes with distinct persistent profiles and isolated cookies/localStorage/IndexedDB;
+- two independent fixture accounts signed in on the same origin, HttpOnly session cookies, and logout isolation;
 - no `window.paneflow`, `require`, or `process` in remote pages;
 - denied popups and notifications;
 - native view bounds matching shell content rectangles before and after window resize;
@@ -73,7 +75,7 @@ The e2e test launches the built app against local fixtures and verifies:
 - rejecting unsupported URLs and unknown pane IDs in main;
 - pane close destroying its `webContents` without touching the other pane;
 - fresh profiles for new panes;
-- persistent cookies and profile IDs after an app restart.
+- authenticated sessions, persistent cookies, localStorage, and profile IDs surviving an app restart.
 
 The Playwright suite requires a local macOS GUI session. The CI workflow is configured to run typecheck, lint, unit tests, and build; e2e remains a local check until headless Electron execution is proven.
 
@@ -81,7 +83,7 @@ The Playwright suite requires a local macOS GUI session. The CI workflow is conf
 
 The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the accepted composition decision in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase 0 evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the composition decision in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase 0/1 evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -122,7 +124,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - The workspaces, grid/freeform layout engine, viewport emulation, and profile manager are not implemented yet.
 - Workspace scrolling is deferred: many panes shrink the grid, and views below the minimum content size are rejected with an error banner.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
-- Remote HTTP addresses are not visually distinguished from HTTPS yet; this is a Phase 1 item.
+- Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
 - Some identity providers and sites may block Electron user agents or behave differently from Chrome/Safari.
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.

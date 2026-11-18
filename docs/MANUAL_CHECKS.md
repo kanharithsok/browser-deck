@@ -18,15 +18,17 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 
 ## Browser isolation
 
-- [x] Separate profiles do not share cookies. (`alice` and `bob` cookies read independently.)
+- [x] Separate profiles do not share cookies. (`alice` and `bob` cookies, including HttpOnly session cookies, read independently.)
 - [x] Separate profiles do not share localStorage. (Fixture click wrote only one pane; the other stayed empty.)
-- [x] The same fixture origin can be used by different sessions in separate panes. (Same origin, different profile cookies.)
-- [x] Persistent cookie/profile data survives app restart. (E2e relaunched with the same user data; profile IDs and cookies persisted.)
-- [x] Closing one pane does not sign out or navigate another. (Remaining pane cookie unchanged; e2e.)
-- [x] New and duplicated panes receive a fresh profile by default. (New-pane profile ID checked; pane duplication is not implemented yet.)
-- [ ] Explicitly shared profiles share expected cookie/storage state. (Sharing UI not implemented.)
-- [ ] IndexedDB isolation and two-account sign-in flow. (Deferred to Phase 1 integration tests.)
-- [ ] Document session-only cookie and `sessionStorage` limitations in product docs. (Already documented in `SPEC.md`; final product documentation pending.)
+- [x] Separate profiles do not share IndexedDB. (E2e writes and reads a probe store in each profile.)
+- [x] The same fixture origin supports two independently authenticated accounts. (Form sign-in as Alice and Bob in separate panes.)
+- [x] Signing out of one profile does not sign out the other. (E2e logs Bob out and verifies Alice remains authenticated.)
+- [x] Persistent cookie, localStorage, and authenticated session data survive app restart. (E2e relaunches with the same user data; profile IDs, cookies, localStorage, and both account sessions persisted.)
+- [x] Closing one pane does not sign out or navigate another. (Remaining pane's session and account stay active; e2e.)
+- [x] New panes receive a fresh profile by default. (New-pane profile ID checked.)
+- [ ] Duplicated panes receive a fresh profile by default. (Pane duplication is not implemented yet.)
+- [ ] Explicitly shared profiles share expected cookie/storage state. (Sharing UI is Phase 3.)
+- [x] Session-only cookie and `sessionStorage` limitations are documented. (`SPEC.md`, `README.md`, and architecture docs state the limits.)
 
 ## Workspace
 

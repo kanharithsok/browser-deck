@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 0 complete. The native-view composition approach is implemented and verified. Later phases build on it; see `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
+> Status: Phases 0 and 1 complete. The native-view composition and per-profile browser session foundation are implemented and verified. Later phases build on them; see `docs/DECISIONS.md` and `docs/PHASE_REPORTS.md`.
 
 ## Technology baseline
 
@@ -47,7 +47,7 @@ src/
 tests/
   unit/                 Vitest tests for pure modules and profile storage
   e2e/                  Playwright integration test against the built app
-  fixtures/             deterministic local HTTP fixture server
+  fixtures/             deterministic local HTTP + authentication fixture server
 scripts/
   dev.mjs               starts fixtures + electron-vite dev
 ```
@@ -71,7 +71,7 @@ BaseWindow.contentView
 └──────────────────────────────────────────────────────────┘
 ```
 
-The shell is the first child of `contentView` and fills the window content area. Each pane view is added afterwards and occupies only the rectangle of its `.pane-content` placeholder. Pane chrome therefore remains ordinary DOM and is never covered by a native view. Native menus are the only Phase 0 overlay that intentionally draws above browser content.
+The shell is the first child of `contentView` and fills the window content area. Each pane view is added afterwards and occupies only the rectangle of its `.pane-content` placeholder. Pane chrome therefore remains ordinary DOM and is never covered by a native view. Native menus are the only intentional overlay above browser content in the current composition.
 
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 
@@ -132,9 +132,11 @@ Every `ipcMain.handle` validates that the sender is the shell `webContents` and 
 
 ## Sessions and profiles
 
-`ProfileStore` currently seeds two profile records on first launch so the Phase 0 experiment can reuse stable partitions across restarts. Newly created panes receive a new UUID and a new `persist:paneflow-profile-<uuid>` partition. Labels are presentation metadata and never appear in partition names. Records live in `<userData>/profiles.json`, written with a temp-file + flush + rename sequence. Writes are serialized and use a unique temporary name so concurrent saves cannot overwrite a newer snapshot. Invalid files are renamed with a `.corrupt-<timestamp>` suffix and replaced with safe defaults.
+`ProfileStore` currently seeds two profile records on first launch so the Phase 0/1 experiment can reuse stable partitions across restarts. Newly created panes receive a new UUID and a new `persist:paneflow-profile-<uuid>` partition. Labels are presentation metadata and never appear in partition names. Records live in `<userData>/profiles.json`, written with a temp-file + flush + rename sequence. Writes are serialized and use a unique temporary name so concurrent saves cannot overwrite a newer snapshot. Invalid files are renamed with a `.corrupt-<timestamp>` suffix and replaced with safe defaults.
 
-This is provisional Phase 0 infrastructure. Rename, clear, delete, sharing, and an in-use registry belong to Phase 3.
+This is provisional infrastructure. Rename, clear, delete, explicit sharing, and an in-use registry belong to Phase 3.
+
+PaneFlow is not an identity provider and stores no credentials. Authentication remains owned by each website: the website sets cookies in its profile's Electron session, and the app preserves that session across pane recreation and app restarts. The local fixture demonstrates this with server-issued HttpOnly session cookies for two synthetic accounts, including logout isolation and restart persistence.
 
 Every remote session applies:
 
@@ -161,7 +163,7 @@ Only profile metadata and Electron-managed partition data exist so far. Workspac
 ## Testing
 
 - **Unit:** pure bounds validation, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, cookies and `localStorage` isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, DOM/native bounds alignment before and after resize, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and cookie/profile persistence after a restart.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, DOM/native bounds alignment before and after resize, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, and visual alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
@@ -173,7 +175,9 @@ The Playwright test inspects the main process through a test hook that is only i
 - The current grid shrinks panes rather than scrolling. Below the 80 × 60 minimum the bounds update is rejected and the shell shows an error banner.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
 - Startup always creates two panes and uses the first two profile records. Workspace restoration replaces this in Phase 3.
+- Profile rename, clear, delete, explicit sharing, and an in-use profile manager are Phase 3 work.
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
+- Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.
 - macOS packaging, code signing, and notarization are deferred to Phase 4.
 - The shell CSP still permits inline styles and local development connections; revisit in the packaging/hardening phase.
