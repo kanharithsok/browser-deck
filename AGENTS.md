@@ -24,7 +24,11 @@ The product requirements and acceptance criteria live in `SPEC.md`. Read the rel
 - Support system appearance plus light/dark themes, keyboard navigation, visible focus, readable contrast, and reduced-motion preferences.
 - Provide useful empty, loading, error, disabled, and recovery states.
 - Never add a visible control that does nothing. Either implement it or clearly mark it unavailable for the current phase.
-- Load `.opencode/skills/paneflow-design-system/SKILL.md` before meaningful renderer or CSS work.
+- Load `.opencode/skills/paneflow-design-system/SKILL.md` before meaningful renderer, component, or CSS work.
+- Load `.opencode/skills/paneflow-ux-design/SKILL.md` before changing user flows, navigation, pane interactions, workspace behavior, menus, dialogs, keyboard shortcuts, or accessibility.
+- For meaningful UI work, use both skills: the design-system skill governs visual consistency; the UX skill governs interaction design and usability.
+- Load `.opencode/skills/electron-native-views/SKILL.md` before changing native browser-view composition, bounds, z-order, hit-testing, or related interactions.
+- Load `.opencode/skills/electron-security/SKILL.md` before changing IPC, preload, navigation, permissions, or packaging.
 
 ## Architecture and security guardrails
 - Follow the stack and requirements in `SPEC.md`. Do not substitute deprecated Electron APIs.
