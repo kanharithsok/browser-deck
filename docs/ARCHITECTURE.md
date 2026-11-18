@@ -192,6 +192,8 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:clear-profile` | Clear cookies, storage, cache, and auth cache for an unused profile |
 | `paneflow:delete-profile` | Clear and remove an unused profile and its partition data |
 | `paneflow:list-workspaces` | Workspace summaries, pane counts, update dates, and active flag |
+| `paneflow:export-workspace` | Write a secret-free workspace transfer through a native Save dialog |
+| `paneflow:import-workspace` | Validate a transfer file and create a fresh-profile workspace |
 | `paneflow:create-workspace` | Create a validated empty workspace |
 | `paneflow:rename-workspace` | Rename a validated workspace with unique-name checks |
 | `paneflow:duplicate-workspace` | Clone a workspace with fresh profiles and mapped pane IDs |
@@ -253,11 +255,13 @@ Multiple workspace files can coexist under `workspaces/`. The active workspace I
 
 Duplicating a workspace creates new pane IDs and fresh profiles, then remaps grid/freeform order and geometry to the new IDs. Deleting a workspace leaves its profiles and partition data intact for independent profile-manager cleanup. Workspace switching reloads pages rather than keeping background panes warm.
 
+Workspace transfer files use a separate versioned `paneflow-workspace` schema containing only workspace name, pane URLs/viewports, and index-based layout. Profile IDs and browser data are stripped. Import enforces a 1 MB file limit and validates the full schema, URLs, viewports, pane-index order, and freeform geometry before generating fresh profiles, pane IDs, a unique imported name, and a mapped workspace. Imported workspaces are inactive and never carry authentication. Native Save/Open dialogs stay in main; transfer/materialization logic is pure and unit-tested.
+
 Shutdown flushes queued writes through `will-quit`.
 
 ## Testing
 
-- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, workspace export/import serialization/profile stripping/fresh-ID materialization, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
 - **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, duplicate pane with fresh profile/URL/viewport, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns, window bounds, theme), retained closed-profile cookies, profile-manager usage/rename/clear/delete and explicit close-panes flows, shared-profile panes with shared localStorage and profile deletion, workspace create/switch/rename/duplicate/delete with active-state persistence, repeated workspace switching with baseline webContents/native-view counts, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace/profile dialog review, theme menu/token review, workspace restore smoke check, packaged unsigned app launch, and alignment on macOS.
 
@@ -282,8 +286,8 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Profile clear/delete of in-use profiles closes all panes using them after confirmation.
 - Profile sharing is initiated only from the profile manager; there is no profile picker in the main Add pane flow.
 - Duplicate pane copies URL/viewport and always creates a fresh profile; custom titles and session copying are not supported.
-- Workspace import/export and background-warm switching are not implemented.
-- Long-duration memory/CPU profiling with loaded third-party pages is not automated.
+- Native workspace import/export file dialogs are not automated in Playwright; pure transfer/materialization logic is unit-tested.
+- Background-warm workspace switching and long-duration memory/CPU profiling with loaded pages are not implemented.
 - Partition-directory deletion is best-effort after session data is cleared.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
 - Grid drag reordering is pointer-only; keyboard reordering remains.

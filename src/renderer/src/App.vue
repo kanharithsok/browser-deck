@@ -945,6 +945,56 @@ function closeWorkspaces(): void {
   })
 }
 
+async function importWorkspaceFile(): Promise<void> {
+  if (workspaceBusy.value) {
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  workspaceNotice.value = null
+  try {
+    const result = await window.paneflow.importWorkspace()
+    if (!result.ok) {
+      workspaceError.value = result.error
+      return
+    }
+    if (!result.canceled) {
+      workspaceNotice.value = result.workspaceName
+        ? `Imported “${result.workspaceName}”.`
+        : 'Imported workspace.'
+      await refreshWorkspaces()
+    }
+  } catch {
+    workspaceError.value = 'Could not import the workspace.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+async function exportActiveWorkspace(): Promise<void> {
+  const active = workspaces.value.find((workspace) => workspace.active)
+  if (!active || workspaceBusy.value) {
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  workspaceNotice.value = null
+  try {
+    const result = await window.paneflow.exportWorkspace(active.id)
+    if (!result.ok) {
+      workspaceError.value = result.error
+      return
+    }
+    if (!result.canceled) {
+      workspaceNotice.value = `Exported “${active.name}”.`
+    }
+  } catch {
+    workspaceError.value = 'Could not export the workspace.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
 async function createWorkspace(): Promise<void> {
   if (workspaceBusy.value) {
     return
@@ -2128,7 +2178,25 @@ onBeforeUnmount(() => {
           <span class="profiles-count">
             {{ workspaces.length }} workspace{{ workspaces.length === 1 ? '' : 's' }}
           </span>
-          <button class="text-button" type="button" @click="closeWorkspaces">Close</button>
+          <div class="workspace-footer-actions">
+            <button
+              class="text-button"
+              type="button"
+              :disabled="workspaceBusy"
+              @click="importWorkspaceFile"
+            >
+              Import…
+            </button>
+            <button
+              class="text-button"
+              type="button"
+              :disabled="workspaceBusy || !workspaces.some((workspace) => workspace.active)"
+              @click="exportActiveWorkspace"
+            >
+              Export active
+            </button>
+            <button class="text-button" type="button" @click="closeWorkspaces">Close</button>
+          </div>
         </footer>
       </section>
     </div>
@@ -2704,5 +2772,18 @@ onBeforeUnmount(() => {
 
 .workspace-rename-input {
   width: min(300px, 100%);
+}
+
+.workspace-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.workspace-footer-actions .text-button {
+  margin-top: 0;
+  padding: 3px 8px;
+  font-size: 11.5px;
 }
 </style>

@@ -25,6 +25,8 @@ export const IPC_CHANNELS = {
   clearProfile: 'paneflow:clear-profile',
   deleteProfile: 'paneflow:delete-profile',
   listWorkspaces: 'paneflow:list-workspaces',
+  exportWorkspace: 'paneflow:export-workspace',
+  importWorkspace: 'paneflow:import-workspace',
   createWorkspace: 'paneflow:create-workspace',
   renameWorkspace: 'paneflow:rename-workspace',
   duplicateWorkspace: 'paneflow:duplicate-workspace',
@@ -56,6 +58,10 @@ export type ProfileListResult =
 
 export type WorkspaceListResult =
   | { ok: true; workspaces: WorkspaceSummary[] }
+  | { ok: false; error: string }
+
+export type WorkspaceTransferResult =
+  | { ok: true; canceled?: boolean; workspaceName?: string }
   | { ok: false; error: string }
 
 export interface PaneViewRect {
@@ -124,6 +130,8 @@ export interface PaneFlowApi {
   clearProfile(profileId: string, closePanes?: boolean): Promise<ScriptResult>
   deleteProfile(profileId: string, closePanes?: boolean): Promise<ScriptResult>
   listWorkspaces(): Promise<WorkspaceListResult>
+  exportWorkspace(workspaceId: string): Promise<WorkspaceTransferResult>
+  importWorkspace(): Promise<WorkspaceTransferResult>
   createWorkspace(name: string): Promise<ScriptResult>
   renameWorkspace(workspaceId: string, name: string): Promise<ScriptResult>
   duplicateWorkspace(workspaceId: string): Promise<ScriptResult>
