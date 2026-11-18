@@ -91,7 +91,8 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Full screen-reader pass across toolbar, pane chrome, and status announcements. (Not run.)
 - [x] System light/dark tokens resolve correctly. (E2e emulates both color schemes; dark appearance manually reviewed.)
 - [ ] Contrast audit across every control and state. (Small-text tokens were improved during review; full audit remains.)
-- [ ] Reduced-motion behavior. (CSS preference handling exists; no dedicated manual check.)
+- [x] Reduced-motion behavior. (Global media rule disables animations/transitions/smooth scrolling when requested.)
+- [x] Active pane is visible and announced. (E2e verifies one accent-bordered `aria-current` card and updates it from focus.)
 - [ ] Narrow-window and minimum-pane-width control usability. (Container query exists; dedicated check pending.)
 - [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
 

@@ -2008,6 +2008,24 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitForAlignedBounds(restartApp)
     await restartShell.getByRole('button', { name: 'Grid' }).click()
     await waitForAlignedBounds(restartApp)
+
+    // The active pane is visible in chrome and exposed to assistive tech.
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(1)
+    const secondPaneId = (await getSnapshot(restartApp)).panes[1]?.id
+    expect(secondPaneId).toBeTruthy()
+    await restartShell
+      .locator(`.pane-card[data-pane-id="${secondPaneId}"] .address-input`)
+      .click()
+    await expect
+      .poll(() =>
+        restartShell
+          .locator('.pane-card-active')
+          .getAttribute('data-pane-id')
+      )
+      .toBe(secondPaneId)
+    await expect(
+      restartShell.locator(`.pane-card[data-pane-id="${secondPaneId}"]`)
+    ).toHaveAttribute('aria-current', 'true')
   } finally {
     if (app) {
       await app.close().catch(() => undefined)

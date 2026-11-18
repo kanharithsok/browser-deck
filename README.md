@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, repeated-switch leak stress, and close-and-delete profile lifecycle. Remaining Phase 4 work covers import/export, polish, and signed/notarized distribution.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, and active-pane accessibility polish. Remaining Phase 4 work covers broader accessibility/profiling and signed/notarized distribution.
 
 ## Current capabilities
 
@@ -166,6 +166,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - New panes receive fresh profiles by default; sharing requires the profile manager's Open pane action.
 - Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
+- Active-pane chrome is indicated by an accent border and `aria-current`; a full screen-reader/contrast audit remains.
 - Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
 - Leak coverage is count-based over four switch cycles; long-duration memory and loaded-page performance profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
