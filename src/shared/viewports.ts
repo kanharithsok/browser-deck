@@ -1,14 +1,12 @@
 import type { Size } from './layout'
 
 export type ViewportPresetId = 'responsive' | 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'custom'
-export type ViewportDisplayScale = 'fit' | 'actual'
 
 export interface PaneViewport {
   preset: ViewportPresetId
   width: number
   height: number
   deviceScaleFactor: number
-  displayScale: ViewportDisplayScale
 }
 
 export interface ViewportPreset {
@@ -28,8 +26,7 @@ export const RESPONSIVE_VIEWPORT: PaneViewport = {
   preset: 'responsive',
   width: 0,
   height: 0,
-  deviceScaleFactor: 1,
-  displayScale: 'fit'
+  deviceScaleFactor: 1
 }
 
 export const VIEWPORT_PRESETS: readonly ViewportPreset[] = [
@@ -54,28 +51,24 @@ export function isViewportPresetId(value: unknown): value is ViewportPresetId {
   )
 }
 
-export function viewportFromPreset(
-  preset: ViewportPresetId,
-  displayScale: ViewportDisplayScale = 'fit'
-): PaneViewport {
+export function viewportFromPreset(preset: ViewportPresetId): PaneViewport {
   if (preset === 'responsive') {
-    return { ...RESPONSIVE_VIEWPORT, displayScale }
+    return { ...RESPONSIVE_VIEWPORT }
   }
   if (preset === 'custom') {
-    return { ...RESPONSIVE_VIEWPORT, preset: 'custom', width: 800, height: 600, displayScale }
+    return { ...RESPONSIVE_VIEWPORT, preset: 'custom', width: 800, height: 600 }
   }
 
   const definition = findViewportPreset(preset)
   if (!definition) {
-    return { ...RESPONSIVE_VIEWPORT, displayScale }
+    return { ...RESPONSIVE_VIEWPORT }
   }
 
   return {
     preset,
     width: definition.width,
     height: definition.height,
-    deviceScaleFactor: definition.deviceScaleFactor,
-    displayScale
+    deviceScaleFactor: definition.deviceScaleFactor
   }
 }
 
@@ -106,16 +99,13 @@ export function parsePaneViewport(
   if (!isViewportPresetId(record.preset)) {
     return { ok: false, error: 'Unknown viewport preset.' }
   }
-  if (record.displayScale !== 'fit' && record.displayScale !== 'actual') {
-    return { ok: false, error: 'Unknown display scale mode.' }
-  }
 
   if (record.preset === 'responsive') {
-    return { ok: true, viewport: { ...RESPONSIVE_VIEWPORT, displayScale: record.displayScale } }
+    return { ok: true, viewport: { ...RESPONSIVE_VIEWPORT } }
   }
 
   if (record.preset !== 'custom') {
-    const preset = viewportFromPreset(record.preset, record.displayScale)
+    const preset = viewportFromPreset(record.preset)
     return { ok: true, viewport: preset }
   }
 
@@ -150,18 +140,19 @@ export function parsePaneViewport(
       preset: 'custom',
       width,
       height,
-      deviceScaleFactor,
-      displayScale: record.displayScale
+      deviceScaleFactor
     }
   }
 }
 
 /**
  * Visual scale for a fixed emulated viewport inside the available pane content.
- * Responsive panes never call this; actual mode uses 1.
+ * Fixed viewports always fit; responsive panes use the pane size directly.
+ * Legacy `displayScale` values are intentionally ignored so older workspaces
+ * migrate to the current always-fit behavior.
  */
 export function viewportDisplayScale(viewport: PaneViewport, available: Size): number {
-  if (viewport.preset === 'responsive' || viewport.displayScale === 'actual') {
+  if (viewport.preset === 'responsive') {
     return 1
   }
   if (available.width < 1 || available.height < 1) {

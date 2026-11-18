@@ -26,13 +26,12 @@ describe('viewport presets', () => {
     }
   })
 
-  it('builds fixed presets with the chosen display scale', () => {
-    expect(viewportFromPreset('mobile', 'actual')).toEqual({
+  it('builds fixed presets and responsive panes without a display scale mode', () => {
+    expect(viewportFromPreset('mobile')).toEqual({
       preset: 'mobile',
       width: 390,
       height: 844,
-      deviceScaleFactor: 3,
-      displayScale: 'actual'
+      deviceScaleFactor: 3
     })
     expect(viewportFromPreset('responsive')).toEqual(RESPONSIVE_VIEWPORT)
   })
@@ -40,21 +39,35 @@ describe('viewport presets', () => {
 
 describe('parsePaneViewport', () => {
   it('accepts responsive and named presets', () => {
-    expect(parsePaneViewport({ preset: 'responsive', displayScale: 'fit' })).toEqual({
+    expect(parsePaneViewport({ preset: 'responsive' })).toEqual({
       ok: true,
       viewport: RESPONSIVE_VIEWPORT
     })
-    const tablet = parsePaneViewport({ preset: 'tablet', displayScale: 'actual' })
+    const tablet = parsePaneViewport({ preset: 'tablet' })
     expect(tablet.ok).toBe(true)
     if (tablet.ok) {
       expect(tablet.viewport).toMatchObject({
         preset: 'tablet',
         width: 820,
         height: 1180,
-        deviceScaleFactor: 2,
-        displayScale: 'actual'
+        deviceScaleFactor: 2
       })
     }
+  })
+
+  it('ignores legacy display scale values and always uses fit', () => {
+    const legacyActual = parsePaneViewport({ preset: 'tablet', displayScale: 'actual' })
+    expect(legacyActual.ok).toBe(true)
+    if (legacyActual.ok) {
+      expect(legacyActual.viewport).toEqual({
+        preset: 'tablet',
+        width: 820,
+        height: 1180,
+        deviceScaleFactor: 2
+      })
+    }
+
+    expect(parsePaneViewport({ preset: 'mobile', displayScale: 'zoom' }).ok).toBe(true)
   })
 
   it('accepts valid custom dimensions and device scale', () => {
@@ -63,8 +76,7 @@ describe('parsePaneViewport', () => {
         preset: 'custom',
         width: 500,
         height: 700,
-        deviceScaleFactor: 2,
-        displayScale: 'fit'
+        deviceScaleFactor: 2
       })
     ).toEqual({
       ok: true,
@@ -72,23 +84,20 @@ describe('parsePaneViewport', () => {
         preset: 'custom',
         width: 500,
         height: 700,
-        deviceScaleFactor: 2,
-        displayScale: 'fit'
+        deviceScaleFactor: 2
       }
     })
   })
 
-  it('rejects bad presets, scales, dimensions, and device factors', () => {
+  it('rejects bad presets, dimensions, and device factors', () => {
     expect(parsePaneViewport(null).ok).toBe(false)
-    expect(parsePaneViewport({ preset: 'watch', displayScale: 'fit' }).ok).toBe(false)
-    expect(parsePaneViewport({ preset: 'mobile', displayScale: 'zoom' }).ok).toBe(false)
+    expect(parsePaneViewport({ preset: 'watch' }).ok).toBe(false)
     expect(
       parsePaneViewport({
         preset: 'custom',
         width: MIN_VIEWPORT_DIMENSION - 1,
         height: 700,
-        deviceScaleFactor: 2,
-        displayScale: 'fit'
+        deviceScaleFactor: 2
       }).ok
     ).toBe(false)
     expect(
@@ -96,8 +105,7 @@ describe('parsePaneViewport', () => {
         preset: 'custom',
         width: MAX_VIEWPORT_DIMENSION + 1,
         height: 700,
-        deviceScaleFactor: 2,
-        displayScale: 'fit'
+        deviceScaleFactor: 2
       }).ok
     ).toBe(false)
     expect(
@@ -105,8 +113,7 @@ describe('parsePaneViewport', () => {
         preset: 'custom',
         width: 500,
         height: 700,
-        deviceScaleFactor: MAX_DEVICE_SCALE_FACTOR + 1,
-        displayScale: 'fit'
+        deviceScaleFactor: MAX_DEVICE_SCALE_FACTOR + 1
       }).ok
     ).toBe(false)
     expect(
@@ -114,8 +121,7 @@ describe('parsePaneViewport', () => {
         preset: 'custom',
         width: 500,
         height: 700,
-        deviceScaleFactor: MIN_DEVICE_SCALE_FACTOR - 1,
-        displayScale: 'fit'
+        deviceScaleFactor: MIN_DEVICE_SCALE_FACTOR - 1
       }).ok
     ).toBe(false)
   })
@@ -128,9 +134,17 @@ describe('viewportDisplayScale', () => {
     expect(scale).toBeCloseTo(0.711, 2)
   })
 
-  it('uses actual scale for actual mode and responsive panes', () => {
-    const mobile = viewportFromPreset('mobile', 'actual')
-    expect(viewportDisplayScale(mobile, { width: 100, height: 100 })).toBe(1)
+  it('recomputes the fit scale when the pane content changes size', () => {
+    const mobile = viewportFromPreset('mobile')
+    const wide = viewportDisplayScale(mobile, { width: 780, height: 600 })
+    const narrow = viewportDisplayScale(mobile, { width: 300, height: 300 })
+
+    expect(wide).toBeCloseTo(0.711, 2)
+    expect(narrow).toBeCloseTo(0.355, 2)
+    expect(narrow).toBeLessThan(wide)
+  })
+
+  it('uses actual scale for responsive panes', () => {
     expect(viewportDisplayScale(RESPONSIVE_VIEWPORT, { width: 100, height: 100 })).toBe(1)
   })
 

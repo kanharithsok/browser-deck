@@ -29,7 +29,7 @@ function pane(
     id,
     profileId,
     url,
-    viewport: viewportFromPreset(preset, 'fit')
+    viewport: viewportFromPreset(preset)
   }
 }
 

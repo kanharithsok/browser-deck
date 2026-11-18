@@ -677,11 +677,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(Math.abs(aliceViewport.height - (aliceDomRect?.rect.height ?? 0))).toBeLessThanOrEqual(1)
 
     // Per-pane viewport emulation: presets, custom dimensions, validation,
-    // independent pane settings, fit/actual, and return to responsive sizing.
+    // independent pane settings, always-fit scaling, and return to responsive
+    // sizing. There is intentionally no display-scale selector.
     const alicePaneCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
     const bobPaneCard = shellPage.locator(`.pane-card[data-pane-id="${bobPaneId}"]`)
     const viewportSelect = alicePaneCard.locator('.viewport-select')
-    const scaleSelect = alicePaneCard.locator('.scale-select')
+    const columnSelect = shellPage.getByLabel('Grid columns')
+    await expect(alicePaneCard.locator('.scale-select')).toHaveCount(0)
     const paneMetrics = (paneId: string) =>
       evaluateInPane<{ width: number; height: number; dpr: number }>(
         app as ElectronApplication,
@@ -742,17 +744,46 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 700, dpr: 2 })
     await waitForAlignedBounds(app)
 
-    await scaleSelect.selectOption('actual')
-    await waitFor(
-      () => getSnapshot(app as ElectronApplication),
-      (state) => state.panes[0]?.viewport.displayScale === 'actual',
-      'actual display scale state'
-    )
-    await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 700, dpr: 2 })
-    const actualEmulation = await getEmulationState(app, alicePaneId as string)
-    expect(actualEmulation?.enabled).toBe(true)
-    expect(actualEmulation?.scale).toBe(1)
+    const customFitEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(customFitEmulation?.enabled).toBe(true)
+    expect(customFitEmulation?.scale).toBeGreaterThan(0)
+    expect(customFitEmulation?.scale).toBeLessThan(1)
+
+    // Resizing the pane frame must recompute the fit scale. Narrowing the grid
+    // to five columns shrinks the pane without changing the emulated viewport.
+    const beforeResizeScale = customFitEmulation?.scale ?? 0
+    await columnSelect.selectOption('5')
+    await expect
+      .poll(async () => {
+        const cards = await readPaneCardRects(shellPage)
+        return cards.length === 2 && (cards[0]?.width ?? 0) < 400
+      })
+      .toBe(true)
     await waitForAlignedBounds(app)
+    const narrowedFitEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(narrowedFitEmulation?.scale).toBeGreaterThan(0)
+    expect(narrowedFitEmulation?.scale).toBeLessThan(beforeResizeScale)
+    const narrowedBounds = (await getViewBounds(app as ElectronApplication)).find(
+      (entry) => entry.paneId === alicePaneId
+    )
+    if (!narrowedBounds) {
+      throw new Error('Narrowed pane bounds are unavailable')
+    }
+    const expectedNarrowedScale = Math.max(
+      0.1,
+      Math.min(
+        4,
+        Math.round(
+          Math.min(narrowedBounds.rect.width / 500, narrowedBounds.rect.height / 700) * 1000
+        ) / 1000
+      )
+    )
+    expect(narrowedFitEmulation?.scale).toBeCloseTo(expectedNarrowedScale, 2)
+    await columnSelect.selectOption('2')
+    await waitForAlignedBounds(app)
+    await expect
+      .poll(async () => (await getEmulationState(app as ElectronApplication, alicePaneId as string))?.scale ?? 0)
+      .toBeCloseTo(beforeResizeScale, 2)
 
     await viewportSelect.selectOption('responsive')
     await waitFor(
@@ -790,7 +821,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitForAlignedBounds(app)
 
     // Grid mode: the column control reflows cards and native views together.
-    const columnSelect = shellPage.getByLabel('Grid columns')
     await expect(columnSelect).toHaveValue('2')
     const twoColumnCards = await readPaneCardRects(shellPage)
     expect(twoColumnCards).toHaveLength(2)
@@ -818,15 +848,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         const title = card.querySelector<HTMLElement>('.pane-title-row')
         const address = card.querySelector<HTMLElement>('.address-input')
         const viewport = card.querySelector<HTMLElement>('.viewport-select')
-        const scale = card.querySelector<HTMLElement>('.scale-select')
         return {
           navClient: nav?.clientWidth ?? 0,
           navScroll: nav?.scrollWidth ?? 0,
           titleClient: title?.clientWidth ?? 0,
           titleScroll: title?.scrollWidth ?? 0,
           addressWidth: address?.getBoundingClientRect().width ?? 0,
-          viewportWidth: viewport?.getBoundingClientRect().width ?? 0,
-          scaleWidth: scale?.getBoundingClientRect().width ?? 0
+          viewportWidth: viewport?.getBoundingClientRect().width ?? 0
         }
       })
     )
@@ -836,7 +864,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       expect(header.titleScroll).toBeLessThanOrEqual(header.titleClient + 1)
       expect(header.addressWidth).toBeGreaterThanOrEqual(79)
       expect(header.viewportWidth).toBeGreaterThanOrEqual(77)
-      expect(header.scaleWidth).toBeGreaterThanOrEqual(45)
     }
     await waitForAlignedBounds(app)
 

@@ -336,16 +336,12 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
         await expect(
           card.getByRole('combobox', { name: `Viewport preset for ${pane.title}` })
         ).toHaveValue('responsive')
-        await expect(
-          card.getByRole('combobox', { name: `Display scale for ${pane.title}` })
-        ).toHaveValue('fit')
       }
 
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain(`article:Browser pane: ${firstPane.title}`)
       expect(axPairs).toContain(`textbox:Address for ${firstPane.title}`)
       expect(axPairs).toContain(`combobox:Viewport preset for ${firstPane.title}`)
-      expect(axPairs).toContain(`combobox:Display scale for ${firstPane.title}`)
 
       await firstAddress.focus()
       await shellPage.keyboard.press('Shift+Tab')
@@ -363,10 +359,6 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(viewportFocus.ariaLabel).toBe(`Viewport preset for ${firstPane.title}`)
       expect(viewportFocus.focusVisible).toBe(true)
       expect(viewportFocus.outlineStyle).toBe('solid')
-
-      await shellPage.keyboard.press('Tab')
-      const scaleFocus = await readFocus(shellPage)
-      expect(scaleFocus.ariaLabel).toBe(`Display scale for ${firstPane.title}`)
 
       await shellPage.keyboard.press('Tab')
       const nextCardFocus = await readFocus(shellPage)

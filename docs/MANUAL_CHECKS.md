@@ -78,10 +78,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Fixture `window.innerWidth` matches configured width. (E2e: mobile 390, tablet 820, custom 500.)
 - [x] Fixture `window.innerHeight` matches configured height. (E2e: mobile 844, tablet 1180, custom 700.)
 - [x] Device scale factor behavior documented and verified for emulation. (E2e: mobile DPR 3, tablet DPR 2, custom DPR 2; see ADR-010.)
-- [x] Fit and actual display modes behave as specified. (E2e asserts fit scale below 1, actual scale 1, and unchanged CSS viewport values. Manual macOS capture shows fit scaled inside the pane and actual at 1:1; actual clips a viewport taller than the pane.)
+- [x] Fixed viewport presets always fit the pane content and refit after frame resizing. (E2e asserts fit scale below 1, recomputes the scale when the grid narrows, and restores it when the frame returns to its prior size. Responsive panes remain 1:1.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
 - [x] Pane chrome remains usable at five grid columns. (E2e asserts no horizontal header overflow and a usable address width; controls wrap to a second row.)
-- [ ] Pane-level scrolling/panning for an actual-mode viewport larger than the pane. (Not implemented; the oversized surface is clipped.)
+- [ ] Fill/crop display mode for panes whose aspect ratio differs from the viewport preset. (Not implemented; fixed viewports letterbox to keep the full viewport visible.)
 - [ ] Optional per-pane user-agent override. (Not implemented.)
 
 ## Accessibility and appearance

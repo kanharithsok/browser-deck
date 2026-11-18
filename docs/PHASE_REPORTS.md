@@ -528,3 +528,28 @@ The MVP is complete. These items are post-MVP hardening and validation, not Phas
 - Multi-hour CPU/memory profiling with loaded third-party pages, plus CPU/frame measurement during drag, resize, and scrolling.
 - Developer ID signing, notarization, and stapling when a paid Apple Developer account exists; the supported distribution remains the unsigned local arm64 build until then.
 - Windows/Linux packaging and release automation, which SPEC §19 explicitly defers.
+
+## Post-MVP — Always-fit pane scaling
+
+**Date:** 2026-11-19
+
+**Status:** Complete.
+
+**Change:** Removed the per-pane Fit/Actual display-scale selector. Fixed viewport presets and custom dimensions now always scale the emulated page to fit the current pane content. Responsive panes continue to use the pane content size directly. The fit scale is recomputed from the current native view bounds whenever the pane frame, window, grid, freeform layout, or maximize state changes. Legacy workspace and transfer records containing `displayScale` are accepted but ignored, so existing `actual` selections migrate to always-fit. This supersedes the Phase 3/4 fit/actual notes above.
+
+**Files changed:** `src/shared/viewports.ts`, `src/main/browser-manager.ts`, `src/renderer/src/components/PaneCard.vue`, viewport/workspace unit tests, browser-pane and accessibility e2e tests, `SPEC.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-028), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed (`tsc` and `vue-tsc`). |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run test:unit` | Passed: 11 files, 126 tests in 333 ms. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.7 s. Includes a five-column frame narrowing that changes the fit scale and a return to two columns that restores it. |
+| `npm run build` | Passed: main 115.54 kB, preload 5.75 kB, renderer JS 269.94 kB, CSS 23.05 kB. |
+| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
+
+**Automated coverage:** The viewport unit suite covers legacy `displayScale` parsing, always-fit scale math, and recomputation for different available sizes. Workspace validation verifies a persisted legacy `displayScale: 'actual'` viewport migrates to the current preset without retaining the obsolete field. The browser-pane e2e verifies mobile and custom viewport metrics, fit scale below 1, removing the scale selector, refit after frame narrowing, and restoration after returning to the prior width. The accessibility e2e verifies the pane-header focus order after removing the selector.
+
+**Known behavior / limitations:** Fixed viewports letterbox when the emulated aspect ratio differs from the pane; there is no fill/crop mode. The obsolete `displayScale` field is no longer written.
+
+**Manual GUI verification still outstanding:** Visual review of letterboxing at unusual pane aspect ratios. The automated checks cover scale changes and native bounds alignment, but not a human visual pass.

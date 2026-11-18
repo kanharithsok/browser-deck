@@ -29,7 +29,7 @@ function workspaceInput(overrides: Record<string, unknown> = {}): Record<string,
         id: PANE_A,
         profileId: PROFILE_A,
         url: 'https://example.com/one',
-        viewport: viewportFromPreset('mobile', 'fit')
+        viewport: viewportFromPreset('mobile')
       },
       {
         id: PANE_B,
@@ -77,6 +77,25 @@ describe('workspace data validation', () => {
     })
   })
 
+  it('migrates legacy display scale values to always-fit', () => {
+    const legacy = workspaceInput()
+    ;(legacy.panes as Array<Record<string, unknown>>)[0]!.viewport = {
+      preset: 'mobile',
+      displayScale: 'actual'
+    }
+
+    const parsed = parseWorkspaceData(legacy)
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.data.panes[0]?.viewport).toEqual({
+        preset: 'mobile',
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 3
+      })
+    }
+  })
+
   it('rejects unsupported versions, invalid IDs, URLs, and viewports', () => {
     expect(parseWorkspaceData(null).ok).toBe(false)
     expect(parseWorkspaceData(workspaceInput({ version: 2 })).ok).toBe(false)
@@ -100,8 +119,7 @@ describe('workspace data validation', () => {
       preset: 'custom',
       width: 20,
       height: 600,
-      deviceScaleFactor: 1,
-      displayScale: 'fit'
+      deviceScaleFactor: 1
     }
     expect(parseWorkspaceData(invalidViewport).ok).toBe(false)
   })

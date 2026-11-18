@@ -285,7 +285,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-010 — Viewport emulation uses desktop positioning and a display-only scale
 
-- **Status:** Accepted
+- **Status:** Accepted; the fit/actual mode choice is superseded by ADR-028
 - **Date:** 2026-11-18
 - **Context:** `SPEC.md` §10 requires per-pane viewport presets, custom dimensions, a device scale factor, and fit/actual display scale modes. The emulated CSS viewport must match the configured values even when visual fit changes the rendered size. Electron 45 exposes `webContents.enableDeviceEmulation` with `screenPosition`, `screenSize`, `viewPosition`, `deviceScaleFactor`, `viewSize`, and `scale`.
 
@@ -829,6 +829,35 @@ Record material technical decisions here. Keep entries short but include context
   - Unit tests cover parsing, persistence, clearing, and invalid presentation values.
   - E2e maximizes a window, verifies app-state, relaunches, asserts maximized restoration, then unmaximizes and verifies the flags clear.
   - A focused relaunch script verified full-screen persistence, restoration, and clearing.
+
+## ADR-028 — Fixed viewports always fit the pane frame
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** PaneFlow exposed a per-pane `fit`/`actual` display-scale selector. The product requirement is now simpler: every pane's website should always fit its pane content, including after window, grid, freeform, or maximize resizing. Keeping `actual` as a persisted mode with no visible control would leave some panes clipped and inconsistent.
+
+- **Decision:**
+  1. Remove `displayScale` from `PaneViewport` and remove the header selector.
+  2. Fixed viewport presets and custom dimensions always use the fit scale: `min(availableWidth / width, availableHeight / height)`, clamped to the existing safe range.
+  3. Recompute the scale from the current native view bounds on every bounds update; the existing `setBounds` path re-applies emulation.
+  4. Responsive panes continue to disable emulation and use the pane content size directly.
+  5. Accept legacy workspace and transfer records containing `displayScale` but ignore the value, so existing files migrate to always-fit without a schema break.
+
+- **Alternatives considered:**
+  - **Keep `actual` hidden and persisted.** Rejected; it would still produce clipped pages with no way to change the mode.
+  - **Require a workspace version migration.** Rejected; ignoring the obsolete field is simpler and preserves existing files.
+  - **Width-only scaling to fill the frame.** Rejected; it would crop height and break the guarantee that the whole viewport is visible.
+  - **CSS transforms in the renderer.** Rejected; pane content is a native `WebContentsView` and must be scaled through Electron device emulation.
+
+- **Consequences:**
+  - Fixed viewports always show the complete emulated page, with letterboxing when aspect ratios differ.
+  - The pane header has one fewer control and remains simpler at narrow widths.
+  - Existing `displayScale: 'actual'` values silently become fit; the obsolete field is no longer written.
+  - There is no actual-size/overflow mode for users who want a 1:1 clipped viewport.
+
+- **Evidence / verification:**
+  - Unit tests cover preset parsing, legacy `displayScale` values becoming fit, fit-scale math, and recomputation for different available sizes.
+  - E2e selects mobile and custom viewports, verifies the scale is below 1, narrows the grid to five columns, verifies the fit scale decreases and matches the new native bounds, restores two columns, and verifies the original scale returns.
 
 ## ADR template
 

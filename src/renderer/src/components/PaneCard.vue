@@ -6,7 +6,6 @@ import {
   parsePaneViewport,
   viewportFromPreset,
   type PaneViewport,
-  type ViewportDisplayScale,
   type ViewportPresetId
 } from '../../../shared/viewports'
 import { MAX_PANE_TITLE_LENGTH } from '../../../shared/workspace'
@@ -53,7 +52,6 @@ const titleError = ref<string | null>(null)
 const statusId = `pane-status-${props.pane.id}`
 
 const selectedPreset = ref<ViewportPresetId>(props.pane.viewport.preset)
-const displayScale = ref<ViewportDisplayScale>(props.pane.viewport.displayScale)
 const customOpen = ref(props.pane.viewport.preset === 'custom')
 const customWidth = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.width : 800)
 const customHeight = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.height : 600)
@@ -174,7 +172,7 @@ function onPresetChange(event: Event): void {
   if (wasOpen) {
     emit('layout-changed')
   }
-  emit('set-viewport', viewportFromPreset(preset, displayScale.value))
+  emit('set-viewport', viewportFromPreset(preset))
 }
 
 function applyCustomViewport(): void {
@@ -182,8 +180,7 @@ function applyCustomViewport(): void {
     preset: 'custom',
     width: Number(customWidth.value),
     height: Number(customHeight.value),
-    deviceScaleFactor: Number(customDeviceScaleFactor.value),
-    displayScale: displayScale.value
+    deviceScaleFactor: Number(customDeviceScaleFactor.value)
   })
 
   if (!parsed.ok) {
@@ -195,21 +192,9 @@ function applyCustomViewport(): void {
   emit('set-viewport', parsed.viewport)
 }
 
-function onDisplayScaleChange(): void {
-  viewportError.value = null
-  if (selectedPreset.value === 'custom') {
-    if (customOpen.value) {
-      applyCustomViewport()
-    }
-    return
-  }
-  emit('set-viewport', viewportFromPreset(selectedPreset.value, displayScale.value))
-}
-
 function cancelCustomViewport(): void {
   const viewport = props.pane.viewport
   selectedPreset.value = viewport.preset
-  displayScale.value = viewport.displayScale
   customWidth.value = viewport.preset === 'custom' ? viewport.width : 800
   customHeight.value = viewport.preset === 'custom' ? viewport.height : 600
   customDeviceScaleFactor.value = viewport.preset === 'custom' ? viewport.deviceScaleFactor : 1
@@ -498,16 +483,6 @@ function requestClose(): void {
             {{ preset.label }}
           </option>
           <option value="custom">Custom…</option>
-        </select>
-
-        <select
-          v-model="displayScale"
-          class="scale-select"
-          :aria-label="`Display scale for ${pane.title}`"
-          @change="onDisplayScaleChange"
-        >
-          <option value="fit">Fit</option>
-          <option value="actual">Actual</option>
         </select>
       </div>
 
@@ -815,10 +790,11 @@ function requestClose(): void {
   outline-color: var(--danger);
 }
 
-.viewport-select,
-.scale-select {
+.viewport-select {
   flex: none;
+  width: 88px;
   height: 24px;
+  margin-left: 4px;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--surface-inset);
@@ -826,17 +802,7 @@ function requestClose(): void {
   font-size: 11px;
 }
 
-.viewport-select {
-  width: 88px;
-  margin-left: 4px;
-}
-
-.scale-select {
-  width: 54px;
-}
-
-.viewport-select:focus-visible,
-.scale-select:focus-visible {
+.viewport-select:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
@@ -1045,10 +1011,6 @@ function requestClose(): void {
 @container (max-width: 320px) {
   .viewport-select {
     width: 78px;
-  }
-
-  .scale-select {
-    width: 46px;
   }
 }
 </style>

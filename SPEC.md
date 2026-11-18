@@ -410,9 +410,8 @@ Each pane can have independent:
 - Viewport height.
 - Device scale factor.
 - Optional user-agent override.
-- Display scale mode:
-  - `fit`: scale the emulated viewport to fit the available pane content area.
-  - `actual`: render at actual CSS-pixel scale, allowing overflow/scrolling as necessary.
+
+Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
 ### 10.3 Implementation and validation
 
@@ -420,7 +419,7 @@ Each pane can have independent:
 - Verify all parameters against current official Electron documentation during implementation.
 - Confirm actual page values using a local fixture page that displays `window.innerWidth`, `window.innerHeight`, and `window.devicePixelRatio`.
 - Confirm that different panes can use different viewport configurations simultaneously.
-- Confirm that the visual scale mode changes presentation without accidentally changing the intended emulated CSS viewport.
+- Confirm that the visual fit scale is recalculated after pane and window resizing without changing the intended emulated CSS viewport.
 
 Do not claim a preset reproduces physical hardware, touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Do not spoof user agents to bypass identity-provider restrictions.
 

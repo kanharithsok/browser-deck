@@ -799,7 +799,6 @@ export class BrowserManager {
       record.viewport.width,
       record.viewport.height,
       record.viewport.deviceScaleFactor,
-      record.viewport.displayScale,
       scale
     ].join(':')
     if (record.lastEmulationSignature === signature) {

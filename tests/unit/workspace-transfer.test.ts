@@ -29,7 +29,7 @@ function workspace(): WorkspaceData {
         id: PANE_A,
         profileId: PROFILE_A,
         url: 'https://example.com/one',
-        viewport: viewportFromPreset('mobile', 'fit'),
+        viewport: viewportFromPreset('mobile'),
         title: 'Alice QA'
       },
       {
@@ -147,8 +147,7 @@ describe('workspace transfer validation', () => {
       preset: 'custom',
       width: 10,
       height: 700,
-      deviceScaleFactor: 2,
-      displayScale: 'fit'
+      deviceScaleFactor: 2
     }
     expect(parseWorkspaceTransfer(badViewport).ok).toBe(false)
 
