@@ -2,7 +2,7 @@
 
 Use local fixture pages and test accounts only. Never record real credentials or private page content.
 
-Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1, Apple M4, Retina display, Electron 45.3.4. Unchecked items belong to later phases or still need a separate check.
+Legend: checked items were verified in the phase recorded in `docs/PHASE_REPORTS.md`; the original Phase 0 environment was macOS 27.2.1, Apple M4, Retina display, Electron 45.3.4. Unchecked items still need a separate check.
 
 ## Native views and interaction
 
@@ -110,18 +110,21 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] `npm run package:mac` builds an arm64 DMG, ZIP, and `.app`. (Artifacts produced under `dist/`.)
 - [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.paneflow`, `0.1.0`, `icon.icns`, developer tools.)
 - [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
+- [x] Electron fuses are applied to the packaged app. (`npx electron-fuses read --app dist/mac-arm64/PaneFlow.app`; RunAsNode/Node-options/inspector/file-protocol privileges disabled, ASAR integrity and only-load-from-ASAR enabled.)
 - [ ] Developer ID signing and notarization. (Blocked on Apple Developer credentials; current build is unsigned/ad-hoc.)
 - [ ] Intel/universal packaging. (Current build is arm64-only by owner decision.)
 - [ ] Auto-update and release publishing. (Not implemented.)
 
 ## Security and failure handling
 
-- [x] Dangerous URL schemes are rejected. (Main-process navigation test rejects `javascript:`; unit tests cover `data:`, `file:`, `chrome:`.)
+- [x] Dangerous URL schemes are rejected. (Main-process navigation test rejects `javascript:`; unit tests cover `data:`, `file:`, `chrome:`, embedded credentials, and oversized URLs.)
 - [x] Remote pages cannot access the app preload bridge or Node APIs. (E2e checks `window.paneflow`, `require`, and `process` are undefined.)
+- [x] Unsupported top-level navigation from a remote page is blocked. (E2e attempts `file:` and `data:` locations and verifies the pane URL is unchanged.)
 - [x] IPC rejects malformed payloads. (Unknown pane IDs and malformed bounds rejected in e2e/unit tests.)
-- [ ] IPC rejects an invalid sender. (Sender identity and shell-main-frame checks are implemented; a dedicated cross-webContents test is still pending.)
-- [x] Popups and permissions follow the documented policy. (Popup and notification request denied in e2e.)
+- [x] IPC rejects an invalid sender. (E2e creates a separate node-enabled `BrowserWindow` and verifies empty state plus `Unauthorized sender.`.)
+- [x] The shell loads from the secure internal protocol with an enforced CSP. (E2e observes `paneflow://shell/index.html`, inline script blocked, and cross-origin fixture fetch blocked.)
+- [x] Popups and permissions follow the documented policy. (Popup and notification request denied in e2e; display/device/Bluetooth handlers deny by default.)
 - [x] A page that destroys its own `webContents` removes the pane cleanly. (E2e invokes `window.close()` in a pane; the other pane remains.)
 - [ ] Renderer crash/navigation failure does not crash the app shell. (Failure UI exists; crash recovery needs a dedicated check.)
-- [x] No secrets appear in logs, exports, fixtures, or repository files. (Repository review; fixtures contain only synthetic identities.)
+- [x] No secrets appear in logs, exports, fixtures, or repository files. (Repository review; fixtures contain only synthetic identities; credential-bearing URLs are rejected and export profiles are stripped.)
 - [ ] Window shutdown leaves no orphaned views/processes. (Teardown implemented and e2e closes panes/windows; repeat after Phase 2.)

@@ -27,14 +27,22 @@ export function isValidProfileId(value: unknown): value is string {
 }
 
 /**
+ * Directory names below Electron's `Partitions` folder are derived only from
+ * validated internal profile IDs, never from user-entered labels or URLs.
+ */
+export function profilePartitionDirectoryName(profileId: string): string {
+  if (!isValidProfileId(profileId)) {
+    throw new Error('Invalid profile ID')
+  }
+  return `paneflow-profile-${profileId}`
+}
+
+/**
  * Partition names are derived only from validated internal profile IDs, never
  * from user-entered labels or URLs.
  */
 export function partitionForProfile(profileId: string): string {
-  if (!isValidProfileId(profileId)) {
-    throw new Error('Invalid profile ID')
-  }
-  return `persist:paneflow-profile-${profileId}`
+  return `persist:${profilePartitionDirectoryName(profileId)}`
 }
 
 export function normalizeProfileLabel(label: string): string | null {

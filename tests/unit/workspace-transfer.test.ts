@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_URL_LENGTH } from '../../src/shared/url'
 import { viewportFromPreset } from '../../src/shared/viewports'
 import {
   WORKSPACE_TRANSFER_FORMAT,
@@ -125,6 +126,16 @@ describe('workspace transfer validation', () => {
     ;(unsafeUrl.panes as Array<Record<string, unknown>>)[0]!.url = 'javascript:alert(1)'
     expect(parseWorkspaceTransfer(unsafeUrl).ok).toBe(false)
 
+    const credentialUrl = valid()
+    ;(credentialUrl.panes as Array<Record<string, unknown>>)[0]!.url =
+      'https://alice:secret@example.com/'
+    expect(parseWorkspaceTransfer(credentialUrl).ok).toBe(false)
+
+    const oversizedUrl = valid()
+    ;(oversizedUrl.panes as Array<Record<string, unknown>>)[0]!.url =
+      `https://example.com/${'a'.repeat(MAX_URL_LENGTH)}`
+    expect(parseWorkspaceTransfer(oversizedUrl).ok).toBe(false)
+
     const badViewport = valid()
     ;(badViewport.panes as Array<Record<string, unknown>>)[0]!.viewport = {
       preset: 'custom',
@@ -162,6 +173,13 @@ describe('workspace transfer validation', () => {
       height: 0.2
     }
     expect(parseWorkspaceTransfer(badKey).ok).toBe(false)
+
+    const polluted = valid()
+    ;(polluted.layout as Record<string, unknown>).freeform = JSON.parse(
+      '{"__proto__":{"x":0.1,"y":0.1,"width":0.2,"height":0.2}}'
+    ) as unknown
+    expect(parseWorkspaceTransfer(polluted).ok).toBe(false)
+    expect(({} as Record<string, unknown>).x).toBeUndefined()
   })
 
   it('rejects mismatched materialization mappings', () => {

@@ -10,6 +10,8 @@ files:
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
+  # Local unsigned/ad-hoc builds only. Signed distribution requires a
+  # Developer ID Application certificate, hardened runtime, and notarization.
   identity: null
   hardenedRuntime: false
   gatekeeperAssess: false
@@ -23,3 +25,11 @@ mac:
 dmg:
   title: PaneFlow ${version}
 artifactName: PaneFlow-${version}-${arch}.${ext}
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+  resetAdHocDarwinSignature: true

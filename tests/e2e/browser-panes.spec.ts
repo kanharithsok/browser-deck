@@ -11,7 +11,8 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
-import type { PaneViewRect, ShellState } from '../../src/shared/ipc'
+import { IPC_CHANNELS, type PaneViewRect, type ShellState } from '../../src/shared/ipc'
+import { SHELL_ENTRY_URL } from '../../src/shared/shell'
 import type { PaneViewport } from '../../src/shared/viewports'
 import type { WorkspaceData } from '../../src/shared/workspace'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
@@ -41,10 +42,15 @@ function testEnv(userDataDir: string, startUrls: string): Record<string, string>
       env[key] = value
     }
   }
+  delete env.ELECTRON_RENDERER_URL
   env.PANEFLOW_TEST = '1'
   env.PANEFLOW_USER_DATA_DIR = userDataDir
   env.PANEFLOW_START_URLS = startUrls
   return env
+}
+
+function isShellPage(url: string): boolean {
+  return url.startsWith(SHELL_ENTRY_URL)
 }
 
 async function launchApp(userDataDir: string, startUrls: string): Promise<ElectronApplication> {
@@ -342,6 +348,51 @@ async function shellEvaluate<T>(app: ElectronApplication, script: string): Promi
   }, script) as Promise<T>
 }
 
+async function attemptUntrustedIpc(
+  app: ElectronApplication,
+  pageUrl: string,
+  paneId: string
+): Promise<{
+  state: ShellState
+  close: { ok: boolean; error?: string }
+}> {
+  return app.evaluate(
+    async ({ BrowserWindow }, args) => {
+      const untrustedWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false,
+          sandbox: false
+        }
+      })
+      try {
+        await untrustedWindow.loadURL(args.pageUrl)
+        return await untrustedWindow.webContents.executeJavaScript(`(async () => {
+          const { ipcRenderer } = require('electron')
+          return {
+            state: await ipcRenderer.invoke(${JSON.stringify(args.getStateChannel)}),
+            close: await ipcRenderer.invoke(
+              ${JSON.stringify(args.closePaneChannel)},
+              ${JSON.stringify(args.paneId)}
+            )
+          }
+        })()`)
+      } finally {
+        if (!untrustedWindow.isDestroyed()) {
+          untrustedWindow.destroy()
+        }
+      }
+    },
+    {
+      pageUrl,
+      paneId,
+      getStateChannel: IPC_CHANNELS.getState,
+      closePaneChannel: IPC_CHANNELS.closePane
+    }
+  )
+}
+
 async function readDomPaneRects(app: ElectronApplication): Promise<DomPaneRect[]> {
   return shellEvaluate<DomPaneRect[]>(
     app,
@@ -458,17 +509,43 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const pages = await waitFor(
       async () => (app as ElectronApplication).windows(),
       (windows) =>
-        windows.some((page) => page.url().startsWith('file:')) &&
+        windows.some((page) => isShellPage(page.url())) &&
         windows.some((page) => page.url().includes('/pane/one')) &&
         windows.some((page) => page.url().includes('/pane/two')),
       'shell and native pane pages'
     )
-    const shellPage = pages.find((page) => page.url().startsWith('file:'))
+    const shellPage = pages.find((page) => isShellPage(page.url()))
     const alicePage = pages.find((page) => page.url().includes('/pane/one'))
     const bobPage = pages.find((page) => page.url().includes('/pane/two'))
     if (!shellPage || !alicePage || !bobPage) {
       throw new Error('Expected the shell and both native pane pages')
     }
+    expect(shellPage.url()).toBe(SHELL_ENTRY_URL)
+
+    // The shell's production CSP blocks inline script and cross-origin fetch.
+    const cspProbe = await shellPage.evaluate(async (fixtureUrl) => {
+      const script = document.createElement('script')
+      script.textContent = 'window.__paneflowCspInline = true'
+      document.head.appendChild(script)
+      script.remove()
+
+      let externalFetchSucceeded = false
+      try {
+        await fetch(`${fixtureUrl}/pane/one`, { signal: AbortSignal.timeout(2_000) })
+        externalFetchSucceeded = true
+      } catch {
+        // A CSP-blocked fetch rejects before reaching the fixture.
+      }
+
+      return {
+        inlineExecuted: Boolean(
+          (window as unknown as { __paneflowCspInline?: boolean }).__paneflowCspInline
+        ),
+        externalFetchSucceeded
+      }
+    }, (fixture as FixtureServer).url)
+    expect(cspProbe.inlineExecuted).toBe(false)
+    expect(cspProbe.externalFetchSucceeded).toBe(false)
 
     await waitFor(
       async () => ({
@@ -493,6 +570,30 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         [typeof (window as unknown as { paneflow?: unknown }).paneflow, typeof require, typeof process].join(',')
       )
     ).toBe('undefined,undefined,undefined')
+
+    // A different WebContents in the same Electron process must not pass the
+    // IPC sender check even though it can reach ipcRenderer directly.
+    const untrustedIpc = await attemptUntrustedIpc(
+      app,
+      `${fixture.url}/pane/untrusted?user=mallory`,
+      alicePaneId as string
+    )
+    expect(untrustedIpc.state.panes).toEqual([])
+    expect(untrustedIpc.state.workspace.id).toBe('default')
+    expect(untrustedIpc.close).toEqual({ ok: false, error: 'Unauthorized sender.' })
+
+    // Top-level remote navigation is restricted to http(s)/about:blank.
+    const aliceUrlBeforeBlockedNavigation = alicePage.url()
+    await alicePage.evaluate(() => {
+      window.location.href = 'file:///etc/passwd'
+    })
+    await delay(250)
+    expect(alicePage.url()).toBe(aliceUrlBeforeBlockedNavigation)
+    await alicePage.evaluate(() => {
+      window.location.href = 'data:text/html,<h1>blocked</h1>'
+    })
+    await delay(250)
+    expect(alicePage.url()).toBe(aliceUrlBeforeBlockedNavigation)
 
     // Local storage isolation (same origin, different persistent partitions)
     // using a real click inside the native browser view.
@@ -1394,10 +1495,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     const restartedLayout = await waitFor(
       async () => restartApp.windows(),
-      (windows) => windows.some((page) => page.url().startsWith('file:')),
+      (windows) => windows.some((page) => isShellPage(page.url())),
       'restarted shell page'
     )
-    const restartShell = restartedLayout.find((page) => page.url().startsWith('file:'))
+    const restartShell = restartedLayout.find((page) => isShellPage(page.url()))
     if (!restartShell) {
       throw new Error('Restarted shell page is unavailable')
     }
@@ -1832,7 +1933,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitFor(
       async () => restartApp.windows(),
       (windows) =>
-        windows.some((page) => page.url().startsWith('file:')) &&
+        windows.some((page) => isShellPage(page.url())) &&
         windows.filter((page) => page.url().includes('/account')).length === 1,
       'restarted shell and account pages'
     )

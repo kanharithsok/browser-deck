@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, and active-pane accessibility polish. Remaining Phase 4 work covers broader accessibility/profiling and signed/notarized distribution.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility polish, and a security-hardened shell/IPC/session boundary. Remaining Phase 4 work covers broader accessibility/profiling and signed/notarized distribution. See [`SECURITY.md`](./SECURITY.md).
 
 ## Current capabilities
 
@@ -14,7 +14,8 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Independent navigation, back, forward, reload, loading, and load-error states.
 - Per-pane native menu for back/forward/reload/DevTools/close.
 - Retina-correct bounds synchronization verified at `devicePixelRatio: 2`.
-- Denied popups, permissions, and downloads for remote content; sandboxed browser views with no app bridge or Node access.
+- Denied popups, permissions, downloads, display capture, and device access for remote content; sandboxed browser views with no app bridge or Node access.
+- Trusted shell served over a secure internal `paneflow://shell/` protocol with a production CSP that has no development network allowance, plus IPC sender document validation.
 - Independent authenticated sessions on one local origin, with HttpOnly persistent cookies, localStorage, and IndexedDB isolated per profile and restored after restart.
 - Pure TypeScript layout engine for grid placement/reflow, normalized freeform geometry, clamping, snapping, ordering, and maximize/restore, with 33 unit tests.
 - Engine-driven grid mode with a compact 1–5 column selector, equal-width reflow, native bounds alignment, and add/remove reflow.
@@ -76,6 +77,8 @@ npm run dev
 
 `npm run package:mac` produces `dist/PaneFlow-0.1.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/PaneFlow.app`. The bundle uses `com.kanharithsok.paneflow`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
 
+Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node options and inspector arguments, and `file://` extra privileges, while enabling ASAR integrity validation and load-only-from-ASAR. These controls reduce accidental local privilege paths; they do not replace code signing. See [`SECURITY.md`](./SECURITY.md) for the threat model and the full packaging checklist.
+
 ## Shortcuts
 
 | Shortcut | Action |
@@ -104,7 +107,8 @@ The e2e test launches the built app against local fixtures and verifies:
 - two panes with distinct persistent profiles and isolated cookies/localStorage/IndexedDB;
 - two independent fixture accounts signed in on the same origin, HttpOnly session cookies, and logout isolation;
 - no `window.paneflow`, `require`, or `process` in remote pages;
-- denied popups and notifications;
+- shell CSP blocking inline script and cross-origin fetch, the internal shell protocol, and rejection of IPC from a separate node-enabled webContents;
+- blocked remote `file:`/`data:` navigation, denied popups and notifications;
 - native view bounds matching shell content rectangles before and after window resize;
 - 2/5/1-column grid reflow with native bounds alignment at every step;
 - drag reordering with native views hidden during drag and alignment restored afterward;
@@ -151,6 +155,7 @@ OpenCode discovers `AGENTS.md`, `.opencode/agents/`, `.opencode/skills/`, and `.
 .github/              GitHub Actions CI
 .opencode/            Project agents, skills, and slash commands
 docs/                 Architecture, decisions, manual checks, phase reports
+SECURITY.md           Threat boundaries and local-distribution checklist
 scripts/              Development launcher
 src/main/             Electron lifecycle, native views, IPC, profiles
 src/preload/          Minimal typed shell bridge
@@ -184,8 +189,9 @@ opencode.jsonc        Project-level OpenCode configuration
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
 - Some identity providers and sites may block Electron user agents or behave differently from Chrome/Safari.
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.
-- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, automatic updates, extensions, DRM, and cloud sync remain outside the MVP.
-- `npm audit` currently reports high-severity advisories in the development toolchain (`picomatch` via Vite/Vitest/ESLint). No fixed release was available at the time of the Phase 0 report.
+- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, automatic updates, extensions, DRM, and cloud sync remain outside the MVP.
+- Workspace exports include pane URLs and therefore any query strings in them. Do not sign in through or store secret-bearing URLs when sharing an export.
+- `npm audit --omit=dev` reports 0 runtime vulnerabilities. `npm audit` reports 6 moderate development-toolchain advisories in `minimatch` via `electron-builder`/`@electron/universal`; the offered fix is a breaking downgrade, so it is tracked rather than applied.
 
 See section 21 of [`SPEC.md`](./SPEC.md) and [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md) for details.
 

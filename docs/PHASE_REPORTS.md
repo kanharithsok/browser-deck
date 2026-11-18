@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, and active-pane accessibility polish are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, and shell/IPC/session security hardening are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -403,22 +403,54 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - darkened light-theme `--text-faint` from `#73726c` to `#6f6e68` so its weakest background ratio rises from 4.42 to 4.69;
   - all checked pairs now meet 4.5:1 for text or 3:1 for UI/focus;
   - `npm run check:contrast` runs in CI.
+- Security hardening:
+  - replaced the packaged `file://` shell load with a privileged, standard, secure `paneflow://shell/index.html` custom protocol; the handler serves only the built renderer root, rejects traversal/backslash/null/ambiguous paths and malformed encodings, sets explicit MIME types, `nosniff`, no-referrer, no-store, and CSP headers;
+  - moved CSP construction into pure `src/shared/shell.ts`; production is `connect-src 'self'` with no localhost/WebSocket allowance, while development adds only the exact loopback `ELECTRON_RENDERER_URL` origin and matching `ws:`/`wss:` source; inline script/eval stay blocked and inline styles remain for Vue geometry;
+  - removed the static CSP meta tag so headers are authoritative in both modes;
+  - IPC sender validation now checks the shell `WebContents`, shell main frame, and trusted document URL (`paneflow://shell/index.html` or the validated dev origin); unauthorized state reads return an empty default state instead of workspace metadata;
+  - remote and shell sessions deny permission requests/checks, display capture, HID/serial/USB device access, Bluetooth pairing, and downloads; shell navigation still denies redirects outside the dev origin;
+  - remote and shell views declare `webviewTag: false`, no subframe/worker Node integration, and no drag-drop navigation; a global `web-contents-created` handler denies popups and webview attachment;
+  - URLs with embedded credentials or more than 2,048 characters are rejected before they can enter workspace state or exports;
+  - partition directory removal uses the validated UUID-only `paneflow-profile-<uuid>` helper; profile clearing uses the hardened session accessor;
+  - workspace import verifies the selected path is a regular file and read failures return a safe error; transfer validation rejects credential-bearing and oversized URLs and prototype-pollution-style freeform keys;
+  - added Electron fuses to `electron-builder.yml`: RunAsNode and Node options/inspector arguments disabled, file-protocol extra privileges disabled, embedded ASAR integrity and only-load-from-ASAR enabled, ad-hoc Darwin signature reset;
+  - added 10 unit tests for CSP, trusted shell documents, shell asset path/MIME handling, partition directory validation, credential/length URL rejection, and import hardening (114 tests total);
+  - extended e2e to verify the `paneflow://shell/index.html` shell URL, inline-script and cross-origin-fetch CSP blocking, invalid-sender rejection from a separate node-enabled `BrowserWindow`, and blocked remote `file:`/`data:` navigation;
+  - added `SECURITY.md` covering threat boundaries, secret handling, unsigned/local distribution, and the packaging checklist, and updated README, architecture, decisions, and manual checks.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 9 files, 104 tests. |
+| `npm run test:unit` | Passed: 11 files, 114 tests. Includes CSP/trusted-shell-url/asset-path tests, partition-directory validation, credential/oversized URL rejection, and import validation. |
+| `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run check:contrast` | Passed earlier in Phase 4: 13 light and 13 dark token pairs meet WCAG thresholds. Not rerun in this security slice; token CSS is unchanged. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.4 s. Existing browser/workspace coverage plus `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection from a separate node-enabled webContents, and blocked remote `file:`/`data:` navigation. |
+| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. Not rerun in this security slice. |
+| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. Not rerun in this security slice. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (107.79 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
+| `npm run package:dir` | Passed. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
+| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; ASAR integrity validation and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
+| `npm run package:mac` | Passed earlier in Phase 4: produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt in this security slice; `package:dir` exercised the new fuse configuration. |
+| Packaged bundle inspection | Passed earlier: binary arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`; unsigned/ad-hoc. |
+| Packaged launch | Passed earlier. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
+
+### Security hardening verification (2026-11-19)
+
+| Check | Result |
+| --- | --- |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.0 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
-| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
-| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
-| `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
-| Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
-| Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
+| `npm run test:unit` | Passed: 11 files, 114 tests. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.4 s, with the new security assertions. |
+| `npm run build` | Passed: main 107.79 kB, preload 5.27 kB, renderer JS 266.69 kB, CSS 22.03 kB. |
+| `npm run package:dir` | Passed; fuses applied before signing was skipped (`identity: null`). |
+| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. `RunAsNode` disabled; `EnableNodeOptionsEnvironmentVariable` disabled; `EnableNodeCliArguments` disabled; `EnableEmbeddedAsarIntegrityValidation` enabled; `OnlyLoadAppFromAsar` enabled; `GrantFileProtocolExtraPrivileges` disabled. The bundled `@electron/fuses` 1.8.0 CLI labels Electron 45's unconfigured `WasmTrapHandlers` fuse as `undefined`; all configured security fuses read correctly. |
+| Packaged shell smoke | Passed. Fresh `dist/mac-arm64/PaneFlow.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "PaneFlow"`, `url: "paneflow://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
+| Packaged app log | No startup or protocol errors were emitted; only Chromium's DevTools listening line appeared. |
+| Development shell smoke | Passed. `npx electron-vite dev --remoteDebuggingPort 9335` served the shell at `http://localhost:5173/`; CDP evaluation reported `title: "PaneFlow"`, `.toolbar` present, one `#app` child, and no static CSP meta tag. The development process was terminated after inspection. |
+| `npm audit --omit=dev` | Passed: 0 runtime vulnerabilities. Full `npm audit` reports 6 moderate advisories in the development toolchain (`minimatch` via `electron-builder`); the offered fix requires a breaking downgrade and was not applied. |
 
 ### Known issues / risks
 
@@ -434,10 +466,16 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Imported workspaces are created inactive and contain fresh profiles; authentication state is intentionally not imported.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
+- Electron cookie encryption at rest is not enabled for the unsigned build; local profile data relies on OS account permissions. This needs verification before enabling in a signed release.
+- The shell CSP deliberately keeps `style-src 'unsafe-inline'` for Vue's inline pane geometry, while inline script and eval are blocked.
+- Development CSP adds the exact loopback Vite origin and WebSocket; production has no such allowance. The automated e2e suite runs the production shell path. A dev shell smoke check rendered Vue under the development CSP, but HMR live-reload behavior is not automated.
+- Workspace exports include pane URLs verbatim, including query strings. Credential-bearing URL userinfo is rejected, but users must still avoid secret query parameters.
+- Fuses and ASAR integrity were verified through `npm run package:dir` and a packaged launch; the DMG/ZIP were not rebuilt in this security slice.
+- The packaged launch smoke check fetched the shell URL over Chromium remote debugging, then terminated the process rather than exercising a full interactive packaged session.
 - Leak stress covers four panes with two loaded fixture pages; the longest soak is 25 cycles (≈14.5 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
 - Working-set sampling is informational, not a pass/fail memory threshold; the 25-cycle run grew by ~70 MB.
 - Duplicate pane copies only URL/viewport; custom titles are not copied, sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 
 ### Next smallest slice
 
-Finish accessibility, keyboard, minimum-window, and visual polish; then add long-duration memory/CPU profiling with loaded pages.
+Finish accessibility, keyboard, minimum-window, and visual polish; then add long-duration memory/CPU profiling with loaded pages. Security hardening is complete for the unsigned/local build; Developer ID signing and notarization remain credential-gated.

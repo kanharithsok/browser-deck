@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, close-and-delete profile lifecycle, workspace import/export, and active-pane accessibility are implemented and verified. Remaining Phase 4 work covers polish, import/export, and signed/notarized distribution.
+> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, and shell/IPC/session security hardening are implemented and verified. Remaining Phase 4 work covers broader accessibility/profiling and signed/notarized distribution.
 
 ## Technology baseline
 
@@ -27,17 +27,19 @@ The Electron main and preload bundles are CommonJS output from electron-vite. Th
 ```text
 src/
   main/
-    index.ts            app lifecycle, BaseWindow, shell view, CSP, menu
+    index.ts            app lifecycle, BaseWindow, shell view, menu
     browser-manager.ts  native pane views, navigation, bounds, teardown
     ipc.ts              typed IPC handlers and sender validation
-    profile-store.ts    provisional persistent profile registry
-    session-policy.ts   partition sessions, permission/download policy
+    profile-store.ts    persistent profile registry
+    session-policy.ts   hardened partition sessions, permission/device policy
+    shell-assets.ts     custom-protocol path and MIME validation
+    shell-protocol.ts   secure `paneflow://shell/` asset handler
     test-hook.ts        test-only inspection hook (gated)
   preload/
     index.ts            minimal typed bridge for the trusted shell
     index.d.ts          `window.paneflow` declaration
   renderer/
-    index.html          shell entry and CSP meta
+    index.html          shell entry
     src/App.vue         toolbar, workspace grid, bounds measurement
     src/components/PaneCard.vue
     src/assets/app.css  design tokens and base styles
@@ -46,6 +48,7 @@ src/
     geometry.ts         bounds validation and clamping
     layout.ts           pure grid/freeform layout engine
     profiles.ts         profile IDs, labels, partition names, validation
+    shell.ts            shell URL constants, CSP builder, trusted document check
     url.ts              address normalization and scheme policy
 tests/
   unit/                 Vitest tests for pure modules and profile storage
@@ -207,7 +210,7 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:state-changed` | Main → shell state snapshots |
 | `paneflow:request-measurement` | Main → shell re-measure request |
 
-Every `ipcMain.handle` validates that the sender is the shell `webContents` and that the sender frame is the shell's main frame. Payload types and lengths are checked again in main. The renderer's validation is only a UX convenience.
+Every `ipcMain.handle` validates that the sender is the shell `webContents`, that the sender frame is the shell's main frame, and that the frame document is the built `paneflow://shell/index.html` entry or the validated loopback development origin. Payload types and lengths are checked again in main. The renderer's validation is only a UX convenience. Unauthorized state reads receive an empty default state rather than workspace metadata.
 
 ## Sessions and profiles
 
@@ -221,19 +224,23 @@ Every remote session applies:
 
 - `setPermissionRequestHandler` → deny;
 - `setPermissionCheckHandler` → deny;
+- `setDisplayMediaRequestHandler` → deny (null stream);
+- `setDevicePermissionHandler` → deny HID/serial/USB;
+- `setBluetoothPairingHandler` → reject pairing;
 - `will-download` → prevent;
 - pane `setWindowOpenHandler` → deny;
 - `will-attach-webview` → prevent.
 
-Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `webSecurity: true`, no application preload, and their profile partition. `will-navigate` and `will-redirect` enforce the `http:` / `https:` / `about:blank` policy. TLS errors are not ignored.
+The trusted shell's default session receives the same deny-by-default policy. Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `nodeIntegrationInSubFrames: false`, `nodeIntegrationInWorker: false`, `webviewTag: false`, `webSecurity: true`, `allowRunningInsecureContent: false`, no application preload, and their profile partition. `will-navigate` and `will-redirect` enforce the `http:` / `https:` / `about:blank` policy. URLs with embedded credentials or more than 2,048 characters are rejected so they cannot enter workspace state. TLS errors are not ignored.
 
 ## Shell security
 
-- The shell loads the Vite dev server in development and the built `index.html` in production. `ELECTRON_RENDERER_URL` is honored only in unpackaged runs and only for a loopback `http(s)` origin; the loaded origin is verified, and cross-origin shell redirects are blocked.
-- A restrictive CSP is sent as a response header for the default session and is also present as a meta tag. The current policy allows Vite's local WebSocket in development; production tightening is a Phase 4 item.
+- The shell loads the Vite dev server in development and `paneflow://shell/index.html` in production. `ELECTRON_RENDERER_URL` is honored only in unpackaged runs and only for a loopback `http(s)` origin; the loaded origin is verified, and cross-origin shell redirects are blocked.
+- The production shell uses a privileged, standard, secure custom protocol instead of broad `file://`. Its handler serves only files under the built renderer root, rejects parent/backslash/null-byte traversal and malformed encodings, sets explicit MIME types, and adds `nosniff`, no-referrer, and no-store headers.
+- CSP is enforced as a response header in both modes; there is no static meta-tag fallback. `buildShellCsp` emits `connect-src 'self'` in production and adds only the exact development origin plus its WebSocket in development. Inline script and eval are not allowed. Inline styles remain allowed because Vue writes pane geometry through inline style attributes.
 - The shell preload is sandboxed, context-isolated, and exposes only the typed pane API.
-- Shell navigation and window creation are denied; webview attachment is prevented.
-- The shell has no Node integration.
+- Shell navigation and window creation are denied; webview attachment is prevented. A global `web-contents-created` handler also denies window creation and webview attachment for future views.
+- The shell has no Node integration, no subframe/worker Node integration, and no `webviewTag`.
 
 ## Persistence
 
@@ -255,14 +262,14 @@ Multiple workspace files can coexist under `workspaces/`. The active workspace I
 
 Duplicating a workspace creates new pane IDs and fresh profiles, then remaps grid/freeform order and geometry to the new IDs. Deleting a workspace leaves its profiles and partition data intact for independent profile-manager cleanup. Workspace switching reloads pages rather than keeping background panes warm.
 
-Workspace transfer files use a separate versioned `paneflow-workspace` schema containing only workspace name, pane URLs/viewports, and index-based layout. Profile IDs and browser data are stripped. Import enforces a 1 MB file limit and validates the full schema, URLs, viewports, pane-index order, and freeform geometry before generating fresh profiles, pane IDs, a unique imported name, and a mapped workspace. Imported workspaces are inactive and never carry authentication. Native Save/Open dialogs stay in main; transfer/materialization logic is pure and unit-tested.
+Workspace transfer files use a separate versioned `paneflow-workspace` schema containing only workspace name, pane URLs/viewports, and index-based layout. Profile IDs and browser data are stripped. Export includes pane URLs, including query strings, so users must not store secret-bearing URLs in panes they export. Import verifies the selected path is a regular file, enforces a 1 MB limit, and validates the full schema, URLs (including credential and length rejection), viewports, pane-index order, and freeform geometry before generating fresh profiles, pane IDs, a unique imported name, and a mapped workspace. Imported workspaces are inactive and never carry authentication. Native Save/Open dialogs stay in main; transfer/materialization logic is pure and unit-tested.
 
 Shutdown flushes queued writes through `will-quit`.
 
 ## Testing
 
-- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, workspace export/import serialization/profile stripping/fresh-ID materialization, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, duplicate pane with fresh profile/URL/viewport, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns, window bounds, theme), retained closed-profile cookies, profile-manager usage/rename/clear/delete and explicit close-panes flows, shared-profile panes with shared localStorage and profile deletion, workspace create/switch/rename/duplicate/delete with active-state persistence, repeated workspace switching with loaded fixture pages, configurable soak cycles, baseline webContents/native-view counts and working-set sampling, window resize alignment, address/back controls, focus handoff, active-pane border/`aria-current`, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation plus create/rename/switch/delete lifecycle, workspace export/import serialization/profile stripping/fresh-ID materialization, CSP construction and trusted shell-document matching, shell asset path/MIME validation, URL normalization/scheme/credential/length policy, profile ID/partition/directory/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies the internal shell protocol, CSP inline-script/cross-origin-fetch blocking, invalid-sender IPC rejection from a separate node-enabled webContents, blocked remote `file:`/`data:` navigation, two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, duplicate pane with fresh profile/URL/viewport, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns, window bounds, theme), retained closed-profile cookies, profile-manager usage/rename/clear/delete and explicit close-panes flows, shared-profile panes with shared localStorage and profile deletion, workspace create/switch/rename/duplicate/delete with active-state persistence, repeated workspace switching with loaded fixture pages, configurable soak cycles, baseline webContents/native-view counts and working-set sampling, window resize alignment, address/back controls, focus handoff, active-pane border/`aria-current`, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Contrast:** `npm run check:contrast` computes WCAG ratios for text, muted/faint, accent, focus, and danger token pairs in explicit light/dark themes.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace/profile dialog review, theme menu/token review, workspace restore smoke check, packaged unsigned app launch, and alignment on macOS.
 
@@ -272,7 +279,9 @@ The Playwright test inspects the main process through a test hook that is only i
 
 `electron-builder.yml` packages the built `out/` tree with asar enabled. Product metadata is PaneFlow 0.1.0, app ID `com.kanharithsok.paneflow`, developer-tools category, MIT license, and the `build/icon.icns` icon generated from the checked-in SVG source. `npm run package:mac` builds arm64 DMG and ZIP artifacts into `dist/`; `npm run package:dir` produces the unpacked app for faster checks. `dist/` is ignored by Git.
 
-Code signing is intentionally disabled with `identity: null` for the current unsigned local builds. The local machine has only an Apple Development certificate, not a Developer ID Application certificate or notarization credentials. Signed distribution requires installing the Developer ID certificate, configuring notarytool credentials outside the repository, enabling hardened runtime/signing in builder config, and notarizing/stapling both the app and disk image.
+Electron fuses are applied after packing and before the (skipped) signing step: `RunAsNode` disabled, Node options and inspector arguments disabled, embedded ASAR integrity validation enabled, only-load-from-ASAR enabled, `file://` extra privileges disabled, and the ad-hoc Darwin signature reset. The shell custom protocol plus these fuses avoid the former broad `file://` shell transport. Fuse state is read back with `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app`.
+
+Code signing is intentionally disabled with `identity: null` for the current unsigned local builds. The local machine has only an Apple Development certificate, not a Developer ID Application certificate or notarization credentials. Signed distribution requires installing the Developer ID certificate, configuring notarytool credentials outside the repository, enabling hardened runtime/signing in builder config, and notarizing/stapling both the app and disk image. Cookie encryption at rest is not enabled for these ad-hoc builds; see `SECURITY.md`.
 
 ## Known architectural gaps
 
@@ -303,5 +312,7 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
 - Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.
-- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, and release automation remain.
-- The shell CSP still permits inline styles and local development connections; revisit in the packaging/hardening phase.
+- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, and release automation remain.
+- The shell CSP permits inline styles for Vue geometry bindings. Inline script and eval remain blocked.
+- Local profile data is protected by OS account permissions, not application-level encryption in this unsigned build.
+- Development CSP intentionally adds the loopback Vite origin/WebSocket; production has no such allowance.
