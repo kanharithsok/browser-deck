@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management, profile sharing/close-and-delete, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; import/export, accessibility polish, and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management, duplicate pane, profile sharing/close-and-delete, theme persistence, unsigned arm64 packaging, and repeated-switch leak stress are implemented and verified; import/export, accessibility polish, and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -372,6 +372,11 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - Main validates the explicit `closePanes` flag, destroys all panes using that profile, verifies usage is empty, then clears the session and optionally removes profile metadata/partition.
   - The profile manager reports that panes were closed and refreshes usage.
   - E2e deletes the two-pane shared profile through this flow, verifies both panes close, the profile row disappears, Alice remains, and native alignment restores.
+- Duplicate pane:
+  - native **Pane → Duplicate Pane** (`CmdOrCtrl+D`) and pane context-menu action duplicate the active/source pane;
+  - the duplicate always receives a fresh profile and copies the source URL and viewport settings;
+  - added a validated `duplicate-pane` IPC path and renderer command handler;
+  - e2e duplicates Alice, verifies the new pane has a fresh profile and matching URL/viewport, then closes it.
 
 ### Verification commands and results
 
@@ -380,8 +385,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 8 files, 99 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.2 s, including window-bounds persistence, workspace lifecycle/switching, profile management/sharing/close-and-delete, theme restore, and repeated-switch leak stress. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (89.43 kB), preload (4.85 kB), renderer bundle (263.84 kB), and CSS (21.41 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.1 s, including duplicate pane, window-bounds persistence, workspace lifecycle/switching, profile management/sharing/close-and-delete, theme restore, and repeated-switch leak stress. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (90.64 kB), preload (4.99 kB), renderer bundle (264.19 kB), and CSS (21.41 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |
 | Packaged launch | Passed. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
@@ -399,6 +404,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, auto-update, and release automation are not implemented.
 - Unsigned builds require local Gatekeeper handling on other machines and must not be presented as notarized releases.
 - Leak stress covers four about:blank panes and four switch cycles; it does not include long-duration memory profiling or loaded-page churn.
+- Duplicate pane copies only URL/viewport; custom titles are not copied, sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
 
 ### Next smallest slice
 

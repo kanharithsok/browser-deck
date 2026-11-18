@@ -15,6 +15,7 @@ const api: PaneFlowApi = {
   addPane: (url) => ipcRenderer.invoke(IPC_CHANNELS.addPane, url),
   addPaneWithProfile: (profileId: string, url?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.addPaneWithProfile, profileId, url),
+  duplicatePane: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.duplicatePane, paneId),
   closePane: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.closePane, paneId),
   navigate: (paneId, address) => ipcRenderer.invoke(IPC_CHANNELS.navigate, paneId, address),
   back: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.back, paneId),

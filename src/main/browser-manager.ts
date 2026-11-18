@@ -104,6 +104,19 @@ export class BrowserManager {
     return this.addPaneForProfile(profile, address)
   }
 
+  async duplicatePane(paneId: string): Promise<ScriptResult> {
+    const source = this.requirePane(paneId)
+    if (!source) {
+      return { ok: false, error: 'Pane not found.' }
+    }
+    const profile = await this.profileStore.create()
+    if (this.destroyed || this.window.isDestroyed()) {
+      return { ok: false, error: 'PaneFlow window is not available.' }
+    }
+    this.createPane(profile, source.url, { viewport: { ...source.viewport } })
+    return { ok: true }
+  }
+
   private addPaneForProfile(profile: BrowserProfile, address?: string): ScriptResult {
     let url = 'about:blank'
     if (address !== undefined && address.trim() !== '') {
@@ -353,6 +366,12 @@ export class BrowserManager {
         label: 'Reload',
         click: () => {
           this.reload(record.id)
+        }
+      },
+      {
+        label: 'Duplicate Pane',
+        click: () => {
+          void this.duplicatePane(record.id)
         }
       },
       { type: 'separator' },

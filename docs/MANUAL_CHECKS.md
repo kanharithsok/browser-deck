@@ -26,7 +26,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Persistent cookie, localStorage, and authenticated session data survive app restart. (E2e relaunches with the same user data; profile IDs, cookies, localStorage, and both account sessions persisted.)
 - [x] Closing one pane does not sign out or navigate another. (Remaining pane's session and account stay active; e2e.)
 - [x] New panes receive a fresh profile by default. (New-pane profile ID checked.)
-- [ ] Duplicated panes receive a fresh profile by default. (Pane duplication is not implemented yet.)
+- [x] Duplicated panes receive a fresh profile by default. (E2e duplicates Alice, verifies a fresh profile and matching URL/viewport, then closes the duplicate.)
 - [x] Explicitly shared profiles share expected cookie/storage state. (E2e opens two panes from one profile, verifies shared localStorage, shared-count labels, and close-and-delete lifecycle.)
 - [x] Profile manager lists usage, renames, clears, and deletes profiles safely. (E2e verifies rename persistence, cookie clearing, metadata deletion, and native-view hiding while the dialog is open.)
 - [x] Clear/delete a profile while its panes are open via a close-and-delete flow. (E2e confirms Close panes & delete, verifies both panes close, the profile is removed, and the remaining pane aligns.)

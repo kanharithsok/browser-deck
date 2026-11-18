@@ -435,6 +435,12 @@ function buildApplicationMenu(): void {
           click: () => sendCommand('add-pane')
         },
         {
+          id: 'pane-duplicate',
+          label: 'Duplicate Pane',
+          accelerator: 'CmdOrCtrl+D',
+          click: () => sendCommand('duplicate-pane')
+        },
+        {
           id: 'pane-close',
           label: 'Close Pane',
           accelerator: 'CmdOrCtrl+Shift+W',

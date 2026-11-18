@@ -10,6 +10,7 @@ export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
   addPane: 'paneflow:add-pane',
   addPaneWithProfile: 'paneflow:add-pane-with-profile',
+  duplicatePane: 'paneflow:duplicate-pane',
   closePane: 'paneflow:close-pane',
   navigate: 'paneflow:navigate',
   back: 'paneflow:back',
@@ -40,6 +41,7 @@ export const IPC_CHANNELS = {
 
 export type PaneCommand =
   | 'add-pane'
+  | 'duplicate-pane'
   | 'close-pane'
   | 'reload-pane'
   | 'reload-all'
@@ -107,6 +109,7 @@ export interface PaneFlowApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
   addPaneWithProfile(profileId: string, url?: string): Promise<ScriptResult>
+  duplicatePane(paneId: string): Promise<ScriptResult>
   closePane(paneId: string): Promise<ScriptResult>
   navigate(paneId: string, address: string): Promise<ScriptResult>
   back(paneId: string): Promise<ScriptResult>
