@@ -235,7 +235,7 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
 
 ## Phase 3 — Viewport emulation and persistence
 
-- **Status:** Complete for the Phase 3 exit criteria. Per-pane viewport emulation, workspace persistence/restore, and the profile manager are implemented and verified. Workspace create/switch UI and explicit profile assignment remain future work.
+- **Status:** Complete for the Phase 3 exit criteria. Per-pane viewport emulation, workspace persistence/restore, and the profile manager are implemented and verified. Workspace management and window bounds continued in Phase 4.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered so far
@@ -306,7 +306,7 @@ Met in the automated macOS run. Different panes used independent viewport config
 - Actual mode clips an emulated viewport that is taller or wider than the pane; there is no pane-level pan/scroll for the oversized emulated surface yet.
 - Fit mode scales the emulated page inside the native view but does not center it; the unused area is page background.
 - Optional user-agent overrides from `SPEC.md` §10.2 are not implemented; no UA spoofing is performed.
-- Only the default workspace exists; there is no create/rename/duplicate/switch/delete workspace UI yet. `app-state.json` carries an active workspace ID for future switching.
+- At Phase 3 completion only the default workspace existed; Phase 4 added create/rename/duplicate/switch/delete management on top of the active-ID pointer.
 - Theme preference and multiple workspace files are not part of restored state yet; normal window bounds are now handled in Phase 4.
 - Maximized/focused state is intentionally not persisted.
 - Profile clear/delete require all panes using the profile to be closed first; there is no close-and-delete flow.
@@ -318,11 +318,11 @@ Met in the automated macOS run. Different panes used independent viewport config
 
 ### Next smallest slice
 
-Phase 4: workspace creation/switching UI, explicit profile assignment/sharing, window/theme restoration, accessibility and visual polish, performance stress, and macOS packaging. Do not treat the current build output as a distributable app.
+Phase 4: explicit profile assignment/sharing, theme restoration, accessibility and visual polish, performance stress, and macOS packaging. Workspace management and safe window bounds are complete. Do not treat the current build output as a distributable app.
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Safe window-bounds persistence is implemented and verified; remaining polish, performance, workspace management, and macOS packaging are open.
+- **Status:** In progress. Safe window-bounds persistence and workspace management are implemented and verified; explicit profile assignment, performance work, and macOS packaging remain.
 
 ### Delivered so far
 
@@ -332,24 +332,36 @@ Phase 4: workspace creation/switching UI, explicit profile assignment/sharing, w
 - Normal bounds are persisted after debounced move/resize/maximize/fullscreen changes and flushed on close. Maximized/fullscreen state itself is not persisted.
 - App-state writes capture the workspace path at enqueue time, preventing a queued save from writing into a different active workspace.
 - 2 new unit tests cover window-bounds validation and store persistence; the restart e2e sets a distinctive 1120 × 760 window, verifies the bounds in `app-state.json`, and checks restoration after relaunch.
+- Workspace management:
+  - `WorkspaceStore` now lists, creates, renames, duplicates, switches, and deletes validated workspace files with unique case-insensitive names.
+  - The active workspace ID is persisted in `app-state.json`; deleting the active or last workspace is blocked.
+  - Switching persists the current pane definitions and layout, destroys the current native manager/views, creates the target panes and profiles, restores its persisted layout, and sends a full state refresh.
+  - Duplicating a workspace copies pane URLs/viewports and maps layout order/freeform geometry to new pane IDs while generating fresh profiles for every pane.
+  - A toolbar workspace switcher opens a trusted dialog with active-state badges, pane counts, create, rename, duplicate, switch, and confirmed delete actions. Native views hide while the dialog is open.
+  - The renderer resets pane/order/layout state when the workspace ID changes and applies the target workspace's saved layout.
+  - Main-process test hooks now read the current manager/store rather than a captured initial manager, so switching works under e2e inspection.
+  - Unit coverage verifies workspace store lifecycle and name validation; e2e creates a second workspace, switches to it, adds a pane, renames it, duplicates it with fresh profiles, switches back to the authenticated original workspace, verifies app-state, and deletes the extra workspaces.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 8 files, 96 tests. |
+| `npm run test:unit` | Passed: 8 files, 97 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 8.9 s, including window-bounds persistence and restore. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (71.69 kB), preload (3.71 kB), and the renderer bundle (244.72 kB). |
+| `npm run test:e2e` | Passed: 1 Playwright test, 9.4 s, including window-bounds persistence, workspace lifecycle/switching, and profile management. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (84.85 kB), preload (4.61 kB), and the renderer bundle (261.53 kB). |
 
 ### Known issues / risks
 
 - Theme preference and maximized/fullscreen state are not persisted.
 - Window restoration checks visibility against current displays but does not clamp oversized windows to the work area.
-- Workspace create/rename/duplicate/switch/delete UI and explicit profile assignment remain.
+- Workspace switching tears down and recreates native pane views; pages reload rather than staying warm in the background.
+- Duplicated workspaces immediately create fresh profiles even before the duplicate is opened; unused profiles remain in the profile manager.
+- Deleting a workspace does not delete profiles that were referenced only by that workspace.
+- Explicit profile assignment/sharing, close-and-delete flows, import/export, and workspace-specific window bounds remain.
 - Packaging, signing, notarization, and release automation are not implemented.
 
 ### Next smallest slice
 
-Add workspace creation and switching UI on top of the versioned store, including safe pane teardown/recreation and active workspace updates.
+Add explicit profile selection for new panes and visible shared-profile usage, then tackle performance/leak stress and macOS packaging.

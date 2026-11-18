@@ -4,7 +4,7 @@ import PaneCard from './components/PaneCard.vue'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
 import type { PaneViewport } from '../../shared/viewports'
-import type { WorkspaceLayout } from '../../shared/workspace'
+import type { WorkspaceLayout, WorkspaceSummary } from '../../shared/workspace'
 import {
   DEFAULT_GRID_COLUMNS,
   DEFAULT_MIN_PANE_HEIGHT,
@@ -64,6 +64,21 @@ const renameDraft = ref('')
 const profilesDialogEl = ref<HTMLElement | null>(null)
 const profilesButtonEl = ref<HTMLButtonElement | null>(null)
 const profileDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
+
+const workspacesOpen = ref(false)
+const workspaces = ref<WorkspaceSummary[]>([])
+const workspacesLoading = ref(false)
+const workspaceError = ref<string | null>(null)
+const workspaceNotice = ref<string | null>(null)
+const workspaceBusy = ref(false)
+const workspaceDeleteId = ref<string | null>(null)
+const renamingWorkspaceId = ref<string | null>(null)
+const workspaceRenameDraft = ref('')
+const newWorkspaceName = ref('')
+const workspacesDialogEl = ref<HTMLElement | null>(null)
+const workspacesButtonEl = ref<HTMLButtonElement | null>(null)
+const workspaceName = ref('Workspace')
+const currentWorkspaceId = ref<string | null>(null)
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -516,12 +531,29 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
 }
 
 function applyState(state: ShellState): void {
+  const workspaceChanged = currentWorkspaceId.value !== state.workspace.id
+  if (workspaceChanged) {
+    currentWorkspaceId.value = state.workspace.id
+    paneOrder.value = []
+    freeformGeometries.value = {}
+    freeformOrder.value = []
+    layoutMode.value = 'grid'
+    gridColumns.value = DEFAULT_GRID_COLUMNS
+    maximizedPaneId.value = null
+    activePaneId.value = null
+    layoutRestored = false
+    layoutPersistenceReady = false
+    suspendedPaneIds.value = new Set()
+  }
+  workspaceName.value = state.workspace.name
+
   const previousIds = new Set(panes.value.map((pane) => pane.id))
   const addedPane =
-    focusManagementEnabled && state.panes.length > panes.value.length
+    !workspaceChanged && focusManagementEnabled && state.panes.length > panes.value.length
       ? state.panes.find((pane) => !previousIds.has(pane.id))
       : undefined
-  const removedPane = focusManagementEnabled && state.panes.length < panes.value.length
+  const removedPane =
+    !workspaceChanged && focusManagementEnabled && state.panes.length < panes.value.length
 
   const nextIds = new Set(state.panes.map((pane) => pane.id))
   const retained = paneOrder.value.filter((paneId) => nextIds.has(paneId))
@@ -559,14 +591,14 @@ function applyState(state: ShellState): void {
     applyPersistedLayout(state.layout)
     layoutRestored = true
   }
-  if (!layoutPersistenceReady && state.panes.length > 0) {
-    layoutPersistenceReady = true
-    void saveWorkspaceLayout()
-  }
-
   void nextTick(() => {
     if (layoutMode.value === 'freeform') {
       ensureFreeformGeometry()
+    }
+    if (workspaceChanged) {
+      // The target workspace already has persisted layout state. Re-enable
+      // saves without writing it back during the switch.
+      layoutPersistenceReady = true
     }
     if (addedPane) {
       focusPaneAddress(addedPane.id)
@@ -812,6 +844,256 @@ function onProfilesKeydown(event: KeyboardEvent): void {
   }
 }
 
+async function refreshWorkspaces(): Promise<void> {
+  workspacesLoading.value = true
+  workspaceError.value = null
+  try {
+    const result = await window.paneflow.listWorkspaces()
+    if (result.ok) {
+      workspaces.value = result.workspaces
+    } else {
+      workspaceError.value = result.error
+    }
+  } catch {
+    workspaceError.value = 'Could not read workspaces.'
+  } finally {
+    workspacesLoading.value = false
+  }
+}
+
+function openWorkspaces(): void {
+  if (workspacesOpen.value) {
+    return
+  }
+  workspacesOpen.value = true
+  workspaceError.value = null
+  workspaceNotice.value = null
+  workspaceDeleteId.value = null
+  renamingWorkspaceId.value = null
+  newWorkspaceName.value = ''
+  void refreshWorkspaces()
+  void nextTick(() => {
+    scheduleMeasure()
+    workspacesDialogEl.value?.focus()
+  })
+}
+
+function closeWorkspaces(): void {
+  workspacesOpen.value = false
+  workspaces.value = []
+  workspacesLoading.value = false
+  workspaceError.value = null
+  workspaceNotice.value = null
+  workspaceDeleteId.value = null
+  renamingWorkspaceId.value = null
+  newWorkspaceName.value = ''
+  void nextTick(() => {
+    scheduleMeasure()
+    workspacesButtonEl.value?.focus()
+  })
+}
+
+async function createWorkspace(): Promise<void> {
+  if (workspaceBusy.value) {
+    return
+  }
+  const name = newWorkspaceName.value.trim()
+  if (!name) {
+    workspaceError.value = 'Enter a workspace name.'
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  try {
+    const result = await window.paneflow.createWorkspace(name)
+    if (!result.ok) {
+      workspaceError.value = result.error
+      return
+    }
+    newWorkspaceName.value = ''
+    workspaceNotice.value = `Created workspace “${name}”.`
+    await refreshWorkspaces()
+  } catch {
+    workspaceError.value = 'Could not create the workspace.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+function startWorkspaceRename(workspace: WorkspaceSummary): void {
+  if (workspaceBusy.value) {
+    return
+  }
+  workspaceError.value = null
+  workspaceNotice.value = null
+  workspaceDeleteId.value = null
+  renamingWorkspaceId.value = workspace.id
+  workspaceRenameDraft.value = workspace.name
+  void nextTick(() => {
+    const input = workspacesDialogEl.value?.querySelector<HTMLInputElement>(
+      '.workspace-rename-input'
+    )
+    input?.focus()
+    input?.select()
+  })
+}
+
+function cancelWorkspaceRename(): void {
+  renamingWorkspaceId.value = null
+  workspaceRenameDraft.value = ''
+  workspaceError.value = null
+}
+
+async function submitWorkspaceRename(workspace: WorkspaceSummary): Promise<void> {
+  if (workspaceBusy.value) {
+    return
+  }
+  const name = workspaceRenameDraft.value.trim()
+  if (!name) {
+    workspaceError.value = 'Enter a workspace name.'
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  try {
+    const result = await window.paneflow.renameWorkspace(workspace.id, name)
+    if (!result.ok) {
+      workspaceError.value = result.error
+      return
+    }
+    renamingWorkspaceId.value = null
+    workspaceRenameDraft.value = ''
+    workspaceNotice.value = `Renamed workspace to “${name}”.`
+    await refreshWorkspaces()
+  } catch {
+    workspaceError.value = 'Could not rename the workspace.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+function requestWorkspaceDelete(workspace: WorkspaceSummary): void {
+  if (workspaceBusy.value || workspace.active || workspaces.value.length <= 1) {
+    return
+  }
+  workspaceError.value = null
+  workspaceNotice.value = null
+  renamingWorkspaceId.value = null
+  workspaceDeleteId.value = workspace.id
+}
+
+function cancelWorkspaceDelete(): void {
+  workspaceDeleteId.value = null
+  workspaceError.value = null
+}
+
+async function confirmWorkspaceDelete(workspace: WorkspaceSummary): Promise<void> {
+  if (workspaceBusy.value || workspaceDeleteId.value !== workspace.id || workspace.active) {
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  try {
+    const result = await window.paneflow.deleteWorkspace(workspace.id)
+    if (!result.ok) {
+      workspaceError.value = result.error
+      await refreshWorkspaces()
+      return
+    }
+    workspaceDeleteId.value = null
+    workspaceNotice.value = `Deleted workspace “${workspace.name}”.`
+    await refreshWorkspaces()
+  } catch {
+    workspaceError.value = 'Could not delete the workspace.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+async function duplicateWorkspace(workspace: WorkspaceSummary): Promise<void> {
+  if (workspaceBusy.value) {
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  try {
+    const result = await window.paneflow.duplicateWorkspace(workspace.id)
+    if (!result.ok) {
+      workspaceError.value = result.error
+      return
+    }
+    workspaceNotice.value = `Duplicated “${workspace.name}” with fresh profiles.`
+    await refreshWorkspaces()
+  } catch {
+    workspaceError.value = 'Could not duplicate the workspace.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+async function switchToWorkspace(workspace: WorkspaceSummary): Promise<void> {
+  if (workspaceBusy.value || workspace.active) {
+    return
+  }
+  workspaceBusy.value = true
+  workspaceError.value = null
+  try {
+    await saveWorkspaceLayout()
+    const result = await window.paneflow.switchWorkspace(workspace.id)
+    if (!result.ok) {
+      workspaceError.value = result.error
+      return
+    }
+    closeWorkspaces()
+    const state = await window.paneflow.getState()
+    applyState(state)
+    await nextTick()
+    scheduleMeasure()
+  } catch {
+    workspaceError.value = 'Could not switch workspaces.'
+  } finally {
+    workspaceBusy.value = false
+  }
+}
+
+function onWorkspacesKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    if (renamingWorkspaceId.value) {
+      cancelWorkspaceRename()
+    } else if (workspaceDeleteId.value) {
+      cancelWorkspaceDelete()
+    } else {
+      closeWorkspaces()
+    }
+    return
+  }
+  if (event.key !== 'Tab') {
+    return
+  }
+  const dialog = workspacesDialogEl.value
+  if (!dialog) {
+    return
+  }
+  const focusable = Array.from(
+    dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
+  ).filter((element) => element.getClientRects().length > 0)
+  if (focusable.length === 0) {
+    event.preventDefault()
+    dialog.focus()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
+  }
+}
+
 async function reloadAll(): Promise<void> {
   actionError.value = null
   try {
@@ -884,7 +1166,7 @@ async function reloadActivePane(): Promise<void> {
 }
 
 function handlePaneCommand(command: PaneCommand): void {
-  if (profilesOpen.value) {
+  if (profilesOpen.value || workspacesOpen.value) {
     return
   }
   const pane = currentPane()
@@ -1109,7 +1391,7 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
-    const nativeViewsHidden = isDragging.value || profilesOpen.value
+    const nativeViewsHidden = isDragging.value || profilesOpen.value || workspacesOpen.value
     const visible =
       !nativeViewsHidden &&
       (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
@@ -1196,6 +1478,10 @@ watch(profilesOpen, () => {
   void nextTick(scheduleMeasure)
 })
 
+watch(workspacesOpen, () => {
+  void nextTick(scheduleMeasure)
+})
+
 watch([paneOrder, gridColumns, layoutMode, freeformGeometries, freeformOrder], () => {
   if (!layoutPersistenceReady || isDragging.value) {
     return
@@ -1259,6 +1545,19 @@ onBeforeUnmount(() => {
   <div class="app-shell" :class="{ 'is-dragging': isDragging }">
     <header class="toolbar">
       <span class="brand">PaneFlow</span>
+
+      <button
+        ref="workspacesButtonEl"
+        class="workspace-switcher"
+        type="button"
+        title="Switch workspace"
+        @click="openWorkspaces"
+      >
+        <span class="workspace-switcher-name">{{ workspaceName }}</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m4 6 4 4 4-4" />
+        </svg>
+      </button>
 
       <span class="toolbar-spacer"></span>
 
@@ -1573,6 +1872,182 @@ onBeforeUnmount(() => {
             {{ profiles.length }} profile{{ profiles.length === 1 ? '' : 's' }}
           </span>
           <button class="text-button" type="button" @click="closeProfiles">Close</button>
+        </footer>
+      </section>
+    </div>
+
+    <div v-if="workspacesOpen" class="modal-backdrop" @click.self="closeWorkspaces">
+      <section
+        ref="workspacesDialogEl"
+        class="profiles-dialog workspace-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workspaces-title"
+        aria-describedby="workspaces-description"
+        tabindex="-1"
+        @keydown="onWorkspacesKeydown"
+      >
+        <header class="profiles-header">
+          <div>
+            <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
+            <p id="workspaces-description" class="profiles-description">
+              Each workspace keeps its own panes, layout, URLs, and viewport settings. Switching
+              closes the current pane views and opens the selected workspace.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            title="Close workspaces"
+            aria-label="Close workspaces"
+            @click="closeWorkspaces"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </header>
+
+        <div v-if="workspaceError" class="profiles-message profiles-error" role="alert">
+          {{ workspaceError }}
+        </div>
+        <div v-else-if="workspaceNotice" class="profiles-message profiles-notice" role="status">
+          {{ workspaceNotice }}
+        </div>
+
+        <form class="workspace-create" @submit.prevent="createWorkspace">
+          <input
+            v-model="newWorkspaceName"
+            class="workspace-name-input"
+            type="text"
+            maxlength="80"
+            autocomplete="off"
+            aria-label="New workspace name"
+            placeholder="New workspace name"
+            :disabled="workspaceBusy"
+            @input="workspaceError = null"
+          />
+          <button class="text-button" type="submit" :disabled="workspaceBusy">Create</button>
+        </form>
+
+        <div v-if="workspacesLoading" class="profiles-empty" role="status">
+          Loading workspaces…
+        </div>
+        <div v-else-if="workspaces.length === 0" class="profiles-empty">
+          No workspaces yet.
+        </div>
+        <ul v-else class="profile-list">
+          <li
+            v-for="workspace in workspaces"
+            :key="workspace.id"
+            class="profile-row workspace-row"
+            :data-workspace-id="workspace.id"
+          >
+            <div class="profile-info">
+              <div v-if="renamingWorkspaceId === workspace.id" class="profile-rename-form">
+                <input
+                  v-model="workspaceRenameDraft"
+                  class="profile-rename-input workspace-rename-input"
+                  type="text"
+                  maxlength="80"
+                  autocomplete="off"
+                  aria-label="Workspace name"
+                  @input="workspaceError = null"
+                />
+                <button
+                  class="text-button"
+                  type="button"
+                  :disabled="workspaceBusy"
+                  @click="submitWorkspaceRename(workspace)"
+                >
+                  Save
+                </button>
+                <button
+                  class="text-button"
+                  type="button"
+                  :disabled="workspaceBusy"
+                  @click="cancelWorkspaceRename"
+                >
+                  Cancel
+                </button>
+              </div>
+              <span v-else class="profile-label">
+                <span class="workspace-label-text">{{ workspace.name }}</span>
+                <span v-if="workspace.active" class="workspace-badge">Active</span>
+              </span>
+              <span class="profile-meta">
+                {{ workspace.paneCount }} {{ workspace.paneCount === 1 ? 'pane' : 'panes' }} ·
+                Updated {{ formatProfileDate(workspace.updatedAt) }}
+              </span>
+            </div>
+
+            <div v-if="renamingWorkspaceId !== workspace.id" class="profile-controls">
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy || workspace.active"
+                @click="switchToWorkspace(workspace)"
+              >
+                Switch
+              </button>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy"
+                @click="startWorkspaceRename(workspace)"
+              >
+                Rename
+              </button>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy"
+                @click="duplicateWorkspace(workspace)"
+              >
+                Duplicate
+              </button>
+              <button
+                class="text-button text-button-danger"
+                type="button"
+                :disabled="workspaceBusy || workspace.active || workspaces.length <= 1"
+                @click="requestWorkspaceDelete(workspace)"
+              >
+                Delete
+              </button>
+            </div>
+
+            <div
+              v-if="workspaceDeleteId === workspace.id"
+              class="profile-confirm"
+              role="group"
+              :aria-label="`Confirm delete workspace ${workspace.name}`"
+            >
+              <span>Delete “{{ workspace.name }}” and its saved layout? This cannot be undone.</span>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy"
+                @click="confirmWorkspaceDelete(workspace)"
+              >
+                Delete workspace
+              </button>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy"
+                @click="cancelWorkspaceDelete"
+              >
+                Cancel
+              </button>
+            </div>
+          </li>
+        </ul>
+
+        <footer class="profiles-footer">
+          <span class="profiles-count">
+            {{ workspaces.length }} workspace{{ workspaces.length === 1 ? '' : 's' }}
+          </span>
+          <button class="text-button" type="button" @click="closeWorkspaces">Close</button>
         </footer>
       </section>
     </div>
@@ -2060,5 +2535,93 @@ onBeforeUnmount(() => {
 .profiles-count {
   color: var(--text-faint);
   font-size: 11.5px;
+}
+
+.workspace-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 210px;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.workspace-switcher:hover {
+  border-color: var(--border);
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
+.workspace-switcher-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-switcher svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workspace-create {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.workspace-name-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.workspace-create .text-button {
+  margin-top: 0;
+  padding: 3px 10px;
+  font-size: 11.5px;
+}
+
+.workspace-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.workspace-rename-input {
+  width: min(300px, 100%);
 }
 </style>

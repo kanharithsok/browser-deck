@@ -330,7 +330,7 @@ Record material technical decisions here. Keep entries short but include context
   3. The renderer sends normalized layout state through typed `save-workspace-layout` IPC. The main process validates/normalizes it against current pane IDs, appends missing references, drops unknown panes, and writes atomically. Renderer saves are skipped during active drags and committed after the interaction.
   4. On startup, main loads the workspace and creates panes before loading the shell, so the renderer's first `getState` sees restored panes and layout. Missing profile records are reconstructed with the same profile ID so existing partitions retain their sessions.
   5. Invalid workspace/app-state files are preserved with `.corrupt-<timestamp>` and the app starts from safe defaults. Invalid pane URLs/viewports are rejected before writing.
-  6. Maximized/focused state is intentionally not persisted. Only the default workspace and active workspace pointer exist in this slice; workspace creation/switching UI is deferred.
+  6. Maximized/focused state is intentionally not persisted. That slice only had the default workspace and active workspace pointer; workspace management arrived in ADR-014.
   7. Device emulation is deferred until `did-stop-loading`; enabling emulation on an empty view before first navigation caused an Electron SIGSEGV.
 
 - **Alternatives considered:**
@@ -416,6 +416,38 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - Unit tests validate accepted/rejected bounds and app-state reload persistence.
   - E2e sets a 1120 × 760 window, waits for `app-state.json`, relaunches, and asserts the restored normal bounds.
+
+## ADR-014 — Workspace switching rebuilds native panes from the versioned store
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` §11.1 requires creating, renaming, duplicating, switching, and deleting workspaces. Pane views are native and owned by `BrowserManager`; each workspace has independent pane definitions, profiles, layout, and saved URLs. Keeping multiple workspaces' native views alive would consume memory and complicate focus/z-order.
+
+- **Decision:**
+  1. One JSON file per workspace under `workspaces/`; `app-state.json` stores the active workspace ID. Names are validated and unique case-insensitively.
+  2. The shell workspace switcher uses typed IPC for list/create/rename/duplicate/switch/delete. Native views are hidden while the dialog is open.
+  3. Switching persists current pane definitions/layout, flushes writes, activates the target file, destroys the current `BrowserManager` and its `webContents`, creates a new manager, restores target panes/profiles/layout, then sends a full state refresh.
+  4. Duplicating clones URLs/viewports and maps grid/freeform IDs while generating new pane IDs and fresh profiles. Deleting a workspace leaves profiles/partitions for independent profile-manager cleanup.
+  5. The active and final workspace cannot be deleted. Creation and rename reject empty/duplicate names.
+  6. Renderer layout state resets when `ShellState.workspace.id` changes and reapplies the target layout. Layout saves are rejected while main is switching.
+  7. Test hooks resolve the current global manager/store so e2e can inspect a switched workspace.
+
+- **Alternatives considered:**
+  - **Keep all workspace views warm.** Rejected for memory/complexity; switching reloads pages.
+  - **One combined workspace file.** Rejected; per-workspace files match the spec and isolate corruption.
+  - **Renderer-only switching.** Rejected; native view teardown/creation belongs in main.
+  - **Delete workspace profiles automatically.** Rejected; profile lifecycle is separate and explicit.
+  - **Duplicate using the same profiles.** Rejected by the spec; duplicates receive fresh profiles.
+
+- **Consequences:**
+  - Workspace switching has a short teardown/recreation cost and reloads pages.
+  - Duplicated workspaces eagerly create fresh profiles, which appear unused until opened.
+  - Window bounds remain application-wide rather than per workspace.
+  - Workspace imports/exports and close-and-delete profile flows remain future work.
+
+- **Evidence / verification:**
+  - Unit tests cover workspace create/list/switch/rename/delete, unique names, active/final deletion protection, and reload persistence.
+  - E2e creates a second workspace, switches to it, adds a pane, renames it, duplicates it with fresh profiles, switches back to the authenticated original workspace, verifies active-state persistence, deletes the extras, and checks native alignment.
 
 ## ADR template
 

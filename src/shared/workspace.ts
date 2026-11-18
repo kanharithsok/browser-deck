@@ -46,6 +46,14 @@ export interface WorkspaceData {
   updatedAt: string
 }
 
+export interface WorkspaceSummary {
+  id: string
+  name: string
+  paneCount: number
+  updatedAt: string
+  active: boolean
+}
+
 export interface WindowBounds {
   x: number
   y: number

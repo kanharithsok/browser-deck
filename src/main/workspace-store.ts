@@ -1,4 +1,5 @@
-import { mkdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isValidProfileId } from '../shared/profiles'
 import { isAllowedNavigationUrl } from '../shared/url'
@@ -11,15 +12,19 @@ import {
   WORKSPACE_STORE_VERSION,
   defaultWorkspaceLayout,
   isValidPaneId,
+  isValidWorkspaceId,
   normalizeWindowBounds,
   normalizeWorkspaceLayout,
   parseAppStateData,
   parseWorkspaceData,
+  createEmptyWorkspace,
+  normalizeWorkspaceName,
   type AppStateData,
   type WindowBounds,
   type WorkspaceData,
   type WorkspaceLayout,
-  type WorkspacePaneDefinition
+  type WorkspacePaneDefinition,
+  type WorkspaceSummary
 } from '../shared/workspace'
 import {
   preserveCorruptFile,
@@ -65,6 +70,14 @@ function copyPane(pane: WorkspacePaneDefinition): WorkspacePaneDefinition {
     profileId: pane.profileId,
     url: pane.url,
     viewport: { ...pane.viewport }
+  }
+}
+
+function copyWorkspace(workspace: WorkspaceData): WorkspaceData {
+  return {
+    ...workspace,
+    panes: workspace.panes.map(copyPane),
+    layout: copyLayout(workspace.layout)
   }
 }
 
@@ -186,6 +199,145 @@ export class WorkspaceStore {
     await this.save(false)
   }
 
+  activeWorkspaceId(): string {
+    return this.appState.activeWorkspaceId
+  }
+
+  activeWorkspaceName(): string {
+    return this.workspace?.name ?? DEFAULT_WORKSPACE_NAME
+  }
+
+  async listWorkspaces(): Promise<WorkspaceSummary[]> {
+    await this.flush()
+    const activeId = this.appState.activeWorkspaceId
+    const byId = new Map<string, WorkspaceData>()
+
+    let entries: string[]
+    try {
+      entries = await readdir(join(this.directory, WORKSPACES_DIRECTORY))
+    } catch {
+      entries = []
+    }
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.json')) {
+        continue
+      }
+      const id = entry.slice(0, -'.json'.length)
+      if (!isValidWorkspaceId(id)) {
+        continue
+      }
+      try {
+        const data = await this.readWorkspaceData(id)
+        byId.set(id, data)
+      } catch {
+        // Invalid workspace files are skipped in the picker; activation reports
+        // a concrete error if the user selects one that later becomes invalid.
+      }
+    }
+
+    if (this.workspace) {
+      byId.set(this.workspace.id, copyWorkspace(this.workspace))
+    }
+
+    return [...byId.values()]
+      .map((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        paneCount: workspace.panes.length,
+        updatedAt: workspace.updatedAt,
+        active: workspace.id === activeId
+      }))
+      .sort((left, right) => {
+        if (left.active !== right.active) {
+          return left.active ? -1 : 1
+        }
+        return left.name.localeCompare(right.name)
+      })
+  }
+
+  async getWorkspaceData(id: string): Promise<WorkspaceData> {
+    await this.flush()
+    return this.readWorkspaceData(id)
+  }
+
+  async createWorkspace(name: string): Promise<WorkspaceSummary> {
+    const normalized = normalizeWorkspaceName(name)
+    if (!normalized) {
+      throw new Error('Enter a workspace name of 80 characters or fewer.')
+    }
+    const data = createEmptyWorkspace(randomUUID(), normalized)
+    await this.writeWorkspaceData(data)
+    return this.summarize(data)
+  }
+
+  async renameWorkspace(id: string, name: string): Promise<WorkspaceSummary> {
+    const normalized = normalizeWorkspaceName(name)
+    if (!normalized) {
+      throw new Error('Enter a workspace name of 80 characters or fewer.')
+    }
+    const data = await this.readWorkspaceData(id)
+    await this.assertUniqueWorkspaceName(normalized, id)
+
+    const updated: WorkspaceData = {
+      ...data,
+      name: normalized,
+      updatedAt: new Date().toISOString()
+    }
+    if (id === this.appState.activeWorkspaceId) {
+      this.workspace = updated
+      await this.save()
+    } else {
+      await this.queueWorkspaceWrite(updated)
+    }
+    return this.summarize(updated)
+  }
+
+  async writeWorkspaceData(input: WorkspaceData): Promise<void> {
+    const parsed = parseWorkspaceData(input)
+    if (!parsed.ok) {
+      throw new Error(parsed.error)
+    }
+    if (parsed.data.id === this.appState.activeWorkspaceId) {
+      throw new Error('Use the active workspace store for the current workspace.')
+    }
+    await this.assertUniqueWorkspaceName(parsed.data.name, parsed.data.id)
+    await this.queueWorkspaceWrite(parsed.data)
+  }
+
+  async switchWorkspace(id: string): Promise<WorkspaceData> {
+    if (!isValidWorkspaceId(id)) {
+      throw new Error('Invalid workspace ID.')
+    }
+    if (id === this.appState.activeWorkspaceId && this.workspace) {
+      return copyWorkspace(this.workspace)
+    }
+    await this.flush()
+    const data = await this.readWorkspaceData(id)
+    this.workspace = copyWorkspace(data)
+    this.appState = { ...this.appState, activeWorkspaceId: id }
+    await this.save()
+    return copyWorkspace(data)
+  }
+
+  async deleteWorkspace(id: string): Promise<void> {
+    if (!isValidWorkspaceId(id)) {
+      throw new Error('Invalid workspace ID.')
+    }
+    if (id === this.appState.activeWorkspaceId) {
+      throw new Error('Switch to another workspace before deleting this one.')
+    }
+    await this.flush()
+    const workspaces = await this.listWorkspaces()
+    if (workspaces.length <= 1) {
+      throw new Error('At least one workspace must remain.')
+    }
+    if (!workspaces.some((workspace) => workspace.id === id)) {
+      throw new Error('Workspace not found.')
+    }
+    await unlink(this.workspacePathFor(id))
+  }
+
   async initialize(panes: WorkspacePaneDefinition[]): Promise<void> {
     this.ensureLoaded()
     const validated = validatePanes(panes)
@@ -238,6 +390,68 @@ export class WorkspaceStore {
     if (!this.loaded) {
       throw new Error('Workspace store has not been loaded.')
     }
+  }
+
+  private workspacePathFor(id: string): string {
+    if (!isValidWorkspaceId(id)) {
+      throw new Error('Invalid workspace ID.')
+    }
+    return join(this.directory, WORKSPACES_DIRECTORY, `${id}.json`)
+  }
+
+  private summarize(workspace: WorkspaceData): WorkspaceSummary {
+    return {
+      id: workspace.id,
+      name: workspace.name,
+      paneCount: workspace.panes.length,
+      updatedAt: workspace.updatedAt,
+      active: workspace.id === this.appState.activeWorkspaceId
+    }
+  }
+
+  private async assertUniqueWorkspaceName(name: string, exceptId?: string): Promise<void> {
+    const workspaces = await this.listWorkspaces()
+    const duplicate = workspaces.some(
+      (workspace) =>
+        workspace.id !== exceptId && workspace.name.toLowerCase() === name.toLowerCase()
+    )
+    if (duplicate) {
+      throw new Error('A workspace with that name already exists.')
+    }
+  }
+
+  private async readWorkspaceData(id: string): Promise<WorkspaceData> {
+    if (!isValidWorkspaceId(id)) {
+      throw new Error('Invalid workspace ID.')
+    }
+    if (id === this.appState.activeWorkspaceId && this.workspace) {
+      return copyWorkspace(this.workspace)
+    }
+
+    const path = this.workspacePathFor(id)
+    const read = await readJsonFile(path)
+    if (read.status === 'missing') {
+      throw new Error('Workspace not found.')
+    }
+    if (read.status === 'invalid') {
+      await preserveCorruptFile(path)
+      throw new Error('Workspace file is invalid.')
+    }
+    const parsed = parseWorkspaceData(read.value)
+    if (!parsed.ok) {
+      await preserveCorruptFile(path)
+      throw new Error('Workspace file is invalid.')
+    }
+    return parsed.data
+  }
+
+  private queueWorkspaceWrite(workspace: WorkspaceData): Promise<void> {
+    const path = this.workspacePathFor(workspace.id)
+    const next = this.saveQueue.then(async () => {
+      await writeJsonAtomically(path, workspace)
+    })
+    this.saveQueue = next.catch(() => undefined)
+    return next
   }
 
   private save(includeWorkspace = true): Promise<void> {

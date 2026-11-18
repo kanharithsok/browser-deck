@@ -21,6 +21,8 @@ import {
   type ProfileSummary
 } from '../shared/profiles'
 import {
+  DEFAULT_WORKSPACE_ID,
+  DEFAULT_WORKSPACE_NAME,
   MIN_APP_WINDOW_HEIGHT,
   MIN_APP_WINDOW_WIDTH,
   defaultWorkspaceLayout,
@@ -55,6 +57,7 @@ let workspaceStore: WorkspaceStore | null = null
 let panePersistenceEnabled = false
 let lastPersistedPaneKey = ''
 let quitFlushed = false
+let workspaceSwitching = false
 
 app.setName('PaneFlow')
 
@@ -87,10 +90,16 @@ function readInitialUrls(): string[] {
   return [urls[0] ?? 'about:blank', urls[1] ?? urls[0] ?? 'about:blank']
 }
 
-function currentShellState(manager: BrowserManager): ShellState {
+function currentShellState(): ShellState {
+  const manager = browserManager
+  const store = workspaceStore
   return {
-    ...manager.snapshot(),
-    layout: workspaceStore?.layout() ?? defaultWorkspaceLayout([])
+    ...(manager?.snapshot() ?? { panes: [] }),
+    layout: store?.layout() ?? defaultWorkspaceLayout([]),
+    workspace: {
+      id: store?.activeWorkspaceId() ?? DEFAULT_WORKSPACE_ID,
+      name: store?.activeWorkspaceName() ?? DEFAULT_WORKSPACE_NAME
+    }
   }
 }
 
@@ -165,6 +174,135 @@ async function createInitialPanes(
     console.error('Could not save the initial workspace.', error)
   }
   return initial
+}
+
+function createBrowserManager(window: BaseWindow, profiles: ProfileStore): BrowserManager {
+  return new BrowserManager(window, profiles, {
+    onStateChanged: () => {
+      if (workspaceSwitching) {
+        return
+      }
+      const shell = shellView
+      if (shell && !shell.webContents.isDestroyed()) {
+        shell.webContents.send(IPC_CHANNELS.stateChanged, currentShellState())
+      }
+      if (browserManager) {
+        persistPanes(browserManager)
+      }
+    },
+    onPaneFocused: (paneId) => {
+      if (shellView && !shellView.webContents.isDestroyed()) {
+        shellView.webContents.send(IPC_CHANNELS.paneFocused, paneId)
+      }
+    }
+  })
+}
+
+function sendShellState(): void {
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.webContents.send(IPC_CHANNELS.stateChanged, currentShellState())
+  }
+}
+
+async function switchWorkspaceTo(workspaceId: string): Promise<void> {
+  const store = workspaceStore
+  const profiles = profileStore
+  const current = browserManager
+  const window = mainWindow
+  if (!store || !profiles || !current || !window) {
+    throw new Error('Workspace is not ready.')
+  }
+  if (workspaceId === store.activeWorkspaceId()) {
+    return
+  }
+
+  await store.setPanes(current.workspacePanes())
+  await store.flush()
+
+  const previousWorkspaceId = store.activeWorkspaceId()
+  workspaceSwitching = true
+  panePersistenceEnabled = false
+  let nextManager: BrowserManager | null = null
+  try {
+    await store.switchWorkspace(workspaceId)
+    nextManager = createBrowserManager(window, profiles)
+    const initialPanes = await createInitialPanes(profiles, store)
+    await nextManager.initialize(initialPanes)
+
+    current.destroyAll()
+    browserManager = nextManager
+    lastPersistedPaneKey = JSON.stringify(nextManager.workspacePanes())
+    panePersistenceEnabled = true
+    sendShellState()
+  } catch (error) {
+    nextManager?.destroyAll()
+    try {
+      await store.switchWorkspace(previousWorkspaceId)
+    } catch (rollbackError) {
+      console.error('Could not restore the previous workspace.', rollbackError)
+    }
+    panePersistenceEnabled = true
+    throw error
+  } finally {
+    workspaceSwitching = false
+  }
+}
+
+async function duplicateWorkspace(sourceId: string): Promise<void> {
+  const store = workspaceStore
+  const profiles = profileStore
+  if (!store || !profiles) {
+    throw new Error('Workspace is not ready.')
+  }
+
+  const source = await store.getWorkspaceData(sourceId)
+  const idMap = new Map<string, string>()
+  const panes: WorkspacePaneDefinition[] = []
+  for (const pane of source.panes) {
+    const profile = await profiles.create()
+    const paneId = randomUUID()
+    idMap.set(pane.id, paneId)
+    panes.push({
+      id: paneId,
+      profileId: profile.id,
+      url: pane.url,
+      viewport: { ...pane.viewport }
+    })
+  }
+
+  const existingNames = new Set(
+    (await store.listWorkspaces()).map((workspace) => workspace.name.toLowerCase())
+  )
+  let name = `${source.name} copy`
+  let suffix = 2
+  while (existingNames.has(name.toLowerCase())) {
+    name = `${source.name} copy ${suffix}`
+    suffix += 1
+  }
+
+  await store.writeWorkspaceData({
+    ...source,
+    id: randomUUID(),
+    name,
+    panes,
+    layout: {
+      mode: source.layout.mode,
+      columns: source.layout.columns,
+      gridOrder: source.layout.gridOrder
+        .map((paneId) => idMap.get(paneId))
+        .filter((id): id is string => Boolean(id)),
+      freeform: Object.fromEntries(
+        Object.entries(source.layout.freeform).flatMap(([paneId, rect]) => {
+          const mappedId = idMap.get(paneId)
+          return mappedId ? [[mappedId, { ...rect }]] : []
+        })
+      ),
+      freeformOrder: source.layout.freeformOrder
+        .map((paneId) => idMap.get(paneId))
+        .filter((id): id is string => Boolean(id))
+    },
+    updatedAt: new Date().toISOString()
+  })
 }
 
 function messageFromError(error: unknown, fallback: string): string {
@@ -496,33 +634,17 @@ async function createWindow(): Promise<void> {
 
   const initialPanes = await createInitialPanes(profiles, store)
 
-  const manager = new BrowserManager(window, profiles, {
-    onStateChanged: () => {
-      const current = browserManager
-      if (!current) {
-        return
-      }
-      if (!shell.webContents.isDestroyed()) {
-        shell.webContents.send(IPC_CHANNELS.stateChanged, currentShellState(current))
-      }
-      persistPanes(current)
-    },
-    onPaneFocused: (paneId) => {
-      if (!shell.webContents.isDestroyed()) {
-        shell.webContents.send(IPC_CHANNELS.paneFocused, paneId)
-      }
-    }
-  })
+  const manager = createBrowserManager(window, profiles)
   browserManager = manager
 
   installTestHook({
-    snapshot: () => currentShellState(manager),
-    viewBounds: () => manager.viewBounds(),
-    viewStates: () => manager.viewStates(),
-    emulationState: (paneId) => manager.emulationState(paneId),
-    viewOrder: () => manager.viewOrder(),
-    readCookie: (paneId) => manager.readCookie(paneId),
-    webContentsId: (paneId) => manager.getWebContentsId(paneId),
+    snapshot: () => currentShellState(),
+    viewBounds: () => browserManager?.viewBounds() ?? [],
+    viewStates: () => browserManager?.viewStates() ?? [],
+    emulationState: (paneId) => browserManager?.emulationState(paneId) ?? null,
+    viewOrder: () => browserManager?.viewOrder() ?? [],
+    readCookie: (paneId) => browserManager?.readCookie(paneId) ?? Promise.resolve(null),
+    webContentsId: (paneId) => browserManager?.getWebContentsId(paneId) ?? null,
     shellWebContentsId: () => (shell.webContents.isDestroyed() ? null : shell.webContents.id),
     contentBounds: () => {
       if (window.isDestroyed()) {
@@ -559,9 +681,16 @@ app.whenReady().then(async () => {
     getShellWebContents: () => shellView?.webContents ?? null,
     getCanvasSize: canvasSize,
     getWorkspaceLayout: () => workspaceStore?.layout() ?? defaultWorkspaceLayout([]),
+    getWorkspaceIdentity: () => ({
+      id: workspaceStore?.activeWorkspaceId() ?? DEFAULT_WORKSPACE_ID,
+      name: workspaceStore?.activeWorkspaceName() ?? DEFAULT_WORKSPACE_NAME
+    }),
     saveWorkspaceLayout: async (input) => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }
+      }
+      if (workspaceSwitching) {
+        return { ok: false, error: 'Workspace is switching.' }
       }
       await workspaceStore.setLayout(input)
       return { ok: true }
@@ -620,6 +749,69 @@ app.whenReady().then(async () => {
         return { ok: true }
       } catch (error) {
         return { ok: false, error: messageFromError(error, 'Could not delete the profile.') }
+      }
+    },
+    listWorkspaces: async () => {
+      if (!workspaceStore) {
+        return { ok: false, error: 'Workspace is not ready.' }
+      }
+      try {
+        return { ok: true, workspaces: await workspaceStore.listWorkspaces() }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not read workspaces.') }
+      }
+    },
+    createWorkspace: async (name) => {
+      if (!workspaceStore) {
+        return { ok: false, error: 'Workspace is not ready.' }
+      }
+      try {
+        await workspaceStore.createWorkspace(name)
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not create the workspace.') }
+      }
+    },
+    renameWorkspace: async (workspaceId, name) => {
+      if (!workspaceStore) {
+        return { ok: false, error: 'Workspace is not ready.' }
+      }
+      try {
+        const active = workspaceId === workspaceStore.activeWorkspaceId()
+        await workspaceStore.renameWorkspace(workspaceId, name)
+        if (active) {
+          sendShellState()
+        }
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not rename the workspace.') }
+      }
+    },
+    duplicateWorkspace: async (workspaceId) => {
+      try {
+        await duplicateWorkspace(workspaceId)
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not duplicate the workspace.') }
+      }
+    },
+    switchWorkspace: async (workspaceId) => {
+      try {
+        await switchWorkspaceTo(workspaceId)
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not switch workspaces.') }
+      }
+    },
+    deleteWorkspace: async (workspaceId) => {
+      if (!workspaceStore) {
+        return { ok: false, error: 'Workspace is not ready.' }
+      }
+      try {
+        await workspaceStore.deleteWorkspace(workspaceId)
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not delete the workspace.') }
       }
     }
   })
