@@ -145,7 +145,8 @@ function toWorkspacePane(pane: PaneInitialization): WorkspacePaneDefinition {
     id: pane.id,
     profileId: pane.profile.id,
     url: pane.url,
-    viewport: { ...(pane.viewport ?? RESPONSIVE_VIEWPORT) }
+    viewport: { ...(pane.viewport ?? RESPONSIVE_VIEWPORT) },
+    ...(pane.customTitle ? { title: pane.customTitle } : {})
   }
 }
 
@@ -166,7 +167,8 @@ async function createInitialPanes(
         id: pane.id,
         profile,
         url: pane.url,
-        viewport: pane.viewport
+        viewport: pane.viewport,
+        customTitle: pane.title
       })
     }
     return initial
@@ -212,6 +214,11 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
     onPaneFocused: (paneId) => {
       if (shellView && !shellView.webContents.isDestroyed()) {
         shellView.webContents.send(IPC_CHANNELS.paneFocused, paneId)
+      }
+    },
+    onPaneRenameRequested: (paneId) => {
+      if (shellView && !shellView.webContents.isDestroyed()) {
+        shellView.webContents.send(IPC_CHANNELS.paneRenameRequested, paneId)
       }
     }
   })
@@ -390,7 +397,8 @@ async function duplicateWorkspace(sourceId: string): Promise<void> {
       id: paneId,
       profileId: profile.id,
       url: pane.url,
-      viewport: { ...pane.viewport }
+      viewport: { ...pane.viewport },
+      ...(pane.title ? { title: pane.title } : {})
     })
   }
 

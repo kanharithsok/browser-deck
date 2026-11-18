@@ -148,6 +148,25 @@ export function registerIpcHandlers(context: IpcContext): void {
   })
 
   ipcMain.handle(
+    IPC_CHANNELS.renamePane,
+    (event, paneIdInput: unknown, titleInput: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const paneId = readString(paneIdInput, 100)
+      const title = readString(titleInput, 400)
+      if (!paneId || title === null) {
+        return { ok: false, error: 'Invalid pane title.' }
+      }
+      return manager.renamePane(paneId, title)
+    }
+  )
+
+  ipcMain.handle(
     IPC_CHANNELS.navigate,
     (event, paneIdInput: unknown, addressInput: unknown): ScriptResult => {
       if (!isTrustedSender(event, context)) {

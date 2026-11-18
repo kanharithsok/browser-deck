@@ -1000,6 +1000,42 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'duplicate pane close'
     )
 
+    // Custom pane titles are edited inline. Invalid or unknown-pane renames
+    // are rejected in main, and whitespace around a valid name is normalized.
+    const rejectedTitle = await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.paneflow.renamePane(${JSON.stringify(alicePaneId)}, ${JSON.stringify('x'.repeat(81))})`
+    )
+    expect(rejectedTitle.ok).toBe(false)
+    const rejectedUnknownRename = await shellEvaluate<{ ok: boolean }>(
+      app,
+      "window.paneflow.renamePane('unknown-pane', 'Nope')"
+    )
+    expect(rejectedUnknownRename.ok).toBe(false)
+
+    const namedAliceCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+    await namedAliceCard.locator('.pane-title').dblclick()
+    const paneTitleInput = namedAliceCard.locator('.pane-title-input')
+    await expect(paneTitleInput).toBeVisible()
+    await paneTitleInput.fill('  Alice QA  ')
+    await paneTitleInput.press('Enter')
+    await expect(namedAliceCard.locator('.pane-title')).toHaveText('Alice QA')
+    const titledSnapshot = await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => {
+        const pane = state.panes.find((entry) => entry.id === alicePaneId)
+        return pane?.customTitle === 'Alice QA' && pane.title === 'Alice QA'
+      },
+      'custom pane title'
+    )
+    expect(titledSnapshot.panes.find((pane) => pane.id === alicePaneId)?.title).toBe('Alice QA')
+    await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) =>
+        workspace?.panes.find((pane) => pane.id === alicePaneId)?.title === 'Alice QA',
+      'custom pane title to persist'
+    )
+
     await clickAppMenuCommand(app, 'pane-add')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1345,6 +1381,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         state.panes[0]?.profileId === aliceProfileId &&
         (state.panes[0]?.url.includes('/account') ?? false) &&
         !state.panes[0]?.isLoading &&
+        state.panes[0]?.customTitle === 'Alice QA' &&
+        state.panes[0]?.title === 'Alice QA' &&
         state.panes[0]?.viewport.preset === 'mobile' &&
         state.layout.mode === 'freeform' &&
         state.layout.columns === 1 &&
@@ -1413,6 +1451,29 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!restartShell) {
       throw new Error('Restarted shell page is unavailable')
     }
+
+    const restartedAliceCard = restartShell.locator(
+      `.pane-card[data-pane-id="${alicePaneId}"]`
+    )
+    await expect(restartedAliceCard.locator('.pane-title')).toHaveText('Alice QA')
+    await restartedAliceCard.locator('.pane-title').dblclick()
+    const restartedTitleInput = restartedAliceCard.locator('.pane-title-input')
+    await expect(restartedTitleInput).toBeVisible()
+    await restartedTitleInput.fill('')
+    await restartedTitleInput.press('Enter')
+    await expect(restartedAliceCard.locator('.pane-title')).toHaveText('Signed in as Alice')
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.panes[0]?.customTitle === null && state.panes[0]?.title === 'Signed in as Alice',
+      'pane title reset to the page title'
+    )
+    await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) =>
+        workspace?.panes.find((pane) => pane.id === alicePaneId)?.title === undefined,
+      'custom pane title to clear from persistence'
+    )
 
     await expect
       .poll(() => restartShell.getByRole('button', { name: 'Freeform' }).getAttribute('aria-pressed'))

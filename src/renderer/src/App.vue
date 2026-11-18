@@ -44,6 +44,7 @@ interface ProfileActionState {
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
+const paneRenameRequests = ref<Record<string, number>>({})
 const layoutMode = ref<LayoutMode>('grid')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
@@ -102,6 +103,7 @@ let disposeStateListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
+let disposeRenameListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
 let focusManagementEnabled = false
@@ -215,6 +217,17 @@ function focusPaneAddress(paneId: string): void {
   )
   input?.focus()
   input?.select()
+}
+
+function requestPaneRename(paneId: string): void {
+  if (!panes.value.some((pane) => pane.id === paneId)) {
+    return
+  }
+  activePaneId.value = paneId
+  paneRenameRequests.value = {
+    ...paneRenameRequests.value,
+    [paneId]: (paneRenameRequests.value[paneId] ?? 0) + 1
+  }
 }
 
 function recoverFocus(): void {
@@ -1605,6 +1618,7 @@ onMounted(async () => {
       activePaneId.value = paneId
     }
   })
+  disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -1636,6 +1650,7 @@ onBeforeUnmount(() => {
   disposeMeasureListener?.()
   disposeCommandListener?.()
   disposeFocusListener?.()
+  disposeRenameListener?.()
   resizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('pointermove', onPointerMove)
@@ -1790,6 +1805,7 @@ onBeforeUnmount(() => {
             :suspended="suspendedPaneIds.has(pane.id)"
             :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
+            :rename-request="paneRenameRequests[pane.id] ?? 0"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
             @toggle-maximize="toggleMaximize(pane.id)"

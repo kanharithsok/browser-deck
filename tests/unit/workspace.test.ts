@@ -3,12 +3,14 @@ import { viewportFromPreset } from '../../src/shared/viewports'
 import {
   APP_STATE_VERSION,
   DEFAULT_WORKSPACE_ID,
+  MAX_PANE_TITLE_LENGTH,
   WORKSPACE_STORE_VERSION,
   adjacentWorkspaceId,
   createEmptyWorkspace,
   defaultWorkspaceLayout,
   normalizeWorkspaceLayout,
   parseAppStateData,
+  parsePaneTitle,
   parseWorkspaceData
 } from '../../src/shared/workspace'
 
@@ -109,6 +111,46 @@ describe('workspace data validation', () => {
     ;(duplicate.panes as Array<Record<string, unknown>>)[1]!.id = PANE_A
     expect(parseWorkspaceData(duplicate).ok).toBe(false)
     expect(parseWorkspaceData(workspaceInput({ updatedAt: 'never' })).ok).toBe(false)
+  })
+
+  it('preserves optional custom pane titles and ignores blank ones', () => {
+    const input = workspaceInput()
+    ;(input.panes as Array<Record<string, unknown>>)[0]!.title = '  Alice QA  '
+    ;(input.panes as Array<Record<string, unknown>>)[1]!.title = '   '
+
+    const parsed = parseWorkspaceData(input)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) {
+      return
+    }
+    expect(parsed.data.panes[0]).toMatchObject({ title: 'Alice QA' })
+    expect(parsed.data.panes[1]).not.toHaveProperty('title')
+  })
+
+  it('rejects unsafe custom pane titles', () => {
+    const tooLong = workspaceInput()
+    ;(tooLong.panes as Array<Record<string, unknown>>)[0]!.title = 'x'.repeat(
+      MAX_PANE_TITLE_LENGTH + 1
+    )
+    expect(parseWorkspaceData(tooLong).ok).toBe(false)
+
+    const controlCharacter = workspaceInput()
+    ;(controlCharacter.panes as Array<Record<string, unknown>>)[0]!.title = 'Alice\u0007QA'
+    expect(parseWorkspaceData(controlCharacter).ok).toBe(false)
+
+    const wrongType = workspaceInput()
+    ;(wrongType.panes as Array<Record<string, unknown>>)[0]!.title = 42
+    expect(parseWorkspaceData(wrongType).ok).toBe(false)
+  })
+})
+
+describe('pane title validation', () => {
+  it('trims valid titles, treats blank input as a reset, and rejects unsafe text', () => {
+    expect(parsePaneTitle('  Alice QA  ')).toEqual({ ok: true, title: 'Alice QA' })
+    expect(parsePaneTitle('   ')).toEqual({ ok: true, title: null })
+    expect(parsePaneTitle(42).ok).toBe(false)
+    expect(parsePaneTitle('Alice\u0007QA').ok).toBe(false)
+    expect(parsePaneTitle('x'.repeat(MAX_PANE_TITLE_LENGTH + 1)).ok).toBe(false)
   })
 })
 

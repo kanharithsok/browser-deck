@@ -68,6 +68,33 @@ describe('WorkspaceStore', () => {
     })
   })
 
+  it('persists custom pane titles and clears them when omitted', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+
+    const namedPane: WorkspacePaneDefinition = {
+      ...pane(PANE_A, PROFILE_A),
+      title: 'Alice QA'
+    }
+    await store.initialize([namedPane])
+
+    const reloaded = new WorkspaceStore(directory)
+    await reloaded.load()
+    expect(reloaded.paneDefinitions()).toEqual([namedPane])
+
+    await reloaded.setPanes([
+      { ...pane(PANE_A, PROFILE_A), title: 'Renamed again' },
+      { ...pane(PANE_B, PROFILE_B), title: '  ' }
+    ])
+    await reloaded.flush()
+
+    const cleared = new WorkspaceStore(directory)
+    await cleared.load()
+    expect(cleared.paneDefinitions()[0]).toMatchObject({ title: 'Renamed again' })
+    expect(cleared.paneDefinitions()[1]).not.toHaveProperty('title')
+  })
+
   it('persists safe window bounds in app state without rewriting pane layout', async () => {
     const directory = await makeDirectory()
     const store = new WorkspaceStore(directory)

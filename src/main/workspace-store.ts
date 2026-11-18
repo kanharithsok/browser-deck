@@ -16,6 +16,7 @@ import {
   normalizeWindowBounds,
   normalizeWorkspaceLayout,
   parseAppStateData,
+  parsePaneTitle,
   parseWorkspaceData,
   createEmptyWorkspace,
   isThemePreference,
@@ -56,12 +57,23 @@ function validatePanes(panes: WorkspacePaneDefinition[]): WorkspacePaneDefinitio
     if (!viewport.ok) {
       throw new Error(viewport.error)
     }
+    let title: string | undefined
+    if (pane.title !== undefined && pane.title !== null) {
+      const parsedTitle = parsePaneTitle(pane.title)
+      if (!parsedTitle.ok) {
+        throw new Error(parsedTitle.error)
+      }
+      if (parsedTitle.title) {
+        title = parsedTitle.title
+      }
+    }
     seen.add(pane.id)
     return {
       id: pane.id,
       profileId: pane.profileId,
       url: pane.url,
-      viewport: viewport.viewport
+      viewport: viewport.viewport,
+      ...(title ? { title } : {})
     }
   })
 }
@@ -71,7 +83,8 @@ function copyPane(pane: WorkspacePaneDefinition): WorkspacePaneDefinition {
     id: pane.id,
     profileId: pane.profileId,
     url: pane.url,
-    viewport: { ...pane.viewport }
+    viewport: { ...pane.viewport },
+    ...(pane.title ? { title: pane.title } : {})
   }
 }
 
