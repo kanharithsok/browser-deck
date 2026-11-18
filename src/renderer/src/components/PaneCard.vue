@@ -2,9 +2,15 @@
 import { ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
 
-const props = defineProps<{
-  pane: PaneState
-}>()
+const props = withDefaults(
+  defineProps<{
+    pane: PaneState
+    suspended?: boolean
+  }>(),
+  {
+    suspended: false
+  }
+)
 
 const emit = defineEmits<{
   close: []
@@ -226,6 +232,10 @@ function requestClose(): void {
         <div v-else-if="pane.url === 'about:blank' && !pane.isLoading" class="pane-message">
           <p class="message-title">No page loaded</p>
           <p class="message-detail">Enter an address above to open a site in this pane.</p>
+        </div>
+        <div v-else-if="suspended && !pane.isLoading" class="pane-message">
+          <p class="message-title">Pane hidden while off-screen</p>
+          <p class="message-detail">Scroll this pane fully into view to interact with the site.</p>
         </div>
         <div v-else-if="pane.isLoading" class="pane-message" aria-hidden="true">
           <span class="spinner"></span>

@@ -43,8 +43,8 @@ describe('parsePaneBounds', () => {
   it('accepts valid updates for known panes', () => {
     const result = parsePaneBounds(
       [
-        { paneId: 'pane-a', rect: { x: 10, y: 20, width: 300, height: 200 } },
-        { paneId: 'pane-b', rect: { x: 320, y: 20, width: 300, height: 200 } }
+        { paneId: 'pane-a', rect: { x: 10, y: 20, width: 300, height: 200 }, visible: true },
+        { paneId: 'pane-b', rect: { x: 320, y: 20, width: 300, height: 200 }, visible: true }
       ],
       knownPanes,
       canvas
@@ -53,15 +53,15 @@ describe('parsePaneBounds', () => {
     expect(result).toEqual({
       ok: true,
       updates: [
-        { paneId: 'pane-a', rect: { x: 10, y: 20, width: 300, height: 200 } },
-        { paneId: 'pane-b', rect: { x: 320, y: 20, width: 300, height: 200 } }
+        { paneId: 'pane-a', rect: { x: 10, y: 20, width: 300, height: 200 }, visible: true },
+        { paneId: 'pane-b', rect: { x: 320, y: 20, width: 300, height: 200 }, visible: true }
       ]
     })
   })
 
   it('rejects unknown and duplicate pane IDs', () => {
     const unknown = parsePaneBounds(
-      [{ paneId: 'pane-c', rect: { x: 0, y: 0, width: 200, height: 200 } }],
+      [{ paneId: 'pane-c', rect: { x: 0, y: 0, width: 200, height: 200 }, visible: true }],
       knownPanes,
       canvas
     )
@@ -69,8 +69,8 @@ describe('parsePaneBounds', () => {
 
     const duplicate = parsePaneBounds(
       [
-        { paneId: 'pane-a', rect: { x: 0, y: 0, width: 200, height: 200 } },
-        { paneId: 'pane-a', rect: { x: 10, y: 0, width: 200, height: 200 } }
+        { paneId: 'pane-a', rect: { x: 0, y: 0, width: 200, height: 200 }, visible: true },
+        { paneId: 'pane-a', rect: { x: 10, y: 0, width: 200, height: 200 }, visible: true }
       ],
       knownPanes,
       canvas
@@ -83,7 +83,48 @@ describe('parsePaneBounds', () => {
     expect(parsePaneBounds({}, knownPanes, canvas).ok).toBe(false)
     expect(
       parsePaneBounds(
-        [{ paneId: 'pane-a', rect: { x: Infinity, y: 0, width: 200, height: 200 } }],
+        [{ paneId: 'pane-a', rect: { x: Infinity, y: 0, width: 200, height: 200 }, visible: true }],
+        knownPanes,
+        canvas
+      ).ok
+    ).toBe(false)
+  })
+
+  it('rejects missing or non-boolean visibility', () => {
+    expect(
+      parsePaneBounds(
+        [{ paneId: 'pane-a', rect: { x: 0, y: 0, width: 200, height: 200 } }],
+        knownPanes,
+        canvas
+      ).ok
+    ).toBe(false)
+    expect(
+      parsePaneBounds(
+        [{ paneId: 'pane-a', rect: { x: 0, y: 0, width: 200, height: 200 }, visible: 'yes' }],
+        knownPanes,
+        canvas
+      ).ok
+    ).toBe(false)
+  })
+
+  it('accepts off-canvas geometry only while a pane is hidden', () => {
+    const hidden = parsePaneBounds(
+      [{ paneId: 'pane-a', rect: { x: 10, y: 900, width: 200, height: 200 }, visible: false }],
+      knownPanes,
+      canvas
+    )
+    expect(hidden.ok).toBe(true)
+    if (hidden.ok) {
+      expect(hidden.updates[0]).toEqual({
+        paneId: 'pane-a',
+        rect: { x: 10, y: 900, width: 200, height: 200 },
+        visible: false
+      })
+    }
+
+    expect(
+      parsePaneBounds(
+        [{ paneId: 'pane-a', rect: { x: 10, y: 900, width: 200, height: 200 }, visible: true }],
         knownPanes,
         canvas
       ).ok
@@ -95,7 +136,8 @@ describe('parsePaneBounds', () => {
       [
         {
           paneId: 'pane-a',
-          rect: { x: 0, y: 0, width: MIN_PANE_VIEW_WIDTH - 1, height: MIN_PANE_VIEW_HEIGHT }
+          rect: { x: 0, y: 0, width: MIN_PANE_VIEW_WIDTH - 1, height: MIN_PANE_VIEW_HEIGHT },
+          visible: true
         }
       ],
       knownPanes,
@@ -110,7 +152,7 @@ describe('parsePaneBounds', () => {
       parsePaneBounds(
         Array.from({ length: 201 }, (_, index) => ({
           paneId: `pane-${index}`,
-          rect: { x: 0, y: 0, width: 100, height: 100 }
+          rect: { x: 0, y: 0, width: 100, height: 100 }, visible: true
         })),
         knownPanes,
         canvas

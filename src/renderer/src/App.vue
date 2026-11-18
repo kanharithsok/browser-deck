@@ -4,6 +4,7 @@ import PaneCard from './components/PaneCard.vue'
 import type { PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import {
   DEFAULT_GRID_COLUMNS,
+  isRectFullyVisible,
   layoutGrid,
   type GridLayout,
   type Size
@@ -13,6 +14,7 @@ const panes = ref<PaneState[]>([])
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
 const gridColumns = ref(DEFAULT_GRID_COLUMNS)
+const suspendedPaneIds = ref<ReadonlySet<string>>(new Set())
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
@@ -53,13 +55,12 @@ const placementByPane = computed(() => {
   return placements
 })
 
+const gridContentHeight = computed(() => gridLayout.value?.contentHeight ?? 0)
+
 const gridNotice = computed(() => {
   const layout = gridLayout.value
   if (!layout) {
     return null
-  }
-  if (layout.needsVerticalScroll) {
-    return 'This window is too short for all panes. Enlarge it or use more columns.'
   }
   if (layout.columnTooNarrow) {
     return 'Columns are narrower than the recommended pane width. Widen the window or use fewer columns.'
@@ -112,6 +113,14 @@ function paneSlotStyle(paneId: string): Record<string, string> {
 function handleWindowResize(): void {
   readWorkspaceSize()
   scheduleMeasure()
+}
+
+function updateSuspendedPanes(next: ReadonlySet<string>): void {
+  const current = suspendedPaneIds.value
+  if (current.size === next.size && [...next].every((paneId) => current.has(paneId))) {
+    return
+  }
+  suspendedPaneIds.value = next
 }
 
 function applyState(state: ShellState): void {
@@ -207,10 +216,17 @@ async function measurePanes(): Promise<void> {
     return
   }
 
+  const workspaceRect = workspace.getBoundingClientRect()
+  if (workspaceRect.width < 1 || workspaceRect.height < 1) {
+    return
+  }
+
   const updates: Array<{
     paneId: string
     rect: { x: number; y: number; width: number; height: number }
+    visible: boolean
   }> = []
+  const suspended = new Set<string>()
 
   for (const element of workspace.querySelectorAll<HTMLElement>('[data-pane-content]')) {
     const paneId = element.dataset.paneContent
@@ -221,13 +237,19 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
+    const visible = isRectFullyVisible(rect, workspaceRect)
+    if (!visible) {
+      suspended.add(paneId)
+    }
     updates.push({
       paneId,
-      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      visible
     })
   }
 
   if (updates.length === 0) {
+    updateSuspendedPanes(new Set())
     return
   }
 
@@ -238,6 +260,8 @@ async function measurePanes(): Promise<void> {
     layoutError.value = 'Could not synchronize pane layout.'
     return
   }
+
+  updateSuspendedPanes(suspended)
 
   if (!result.ok) {
     layoutError.value = result.error
@@ -344,8 +368,17 @@ onBeforeUnmount(() => {
       {{ gridNotice }}
     </div>
 
-    <main ref="workspaceEl" class="workspace" aria-label="Browser workspace">
-      <div v-if="panes.length > 0" class="pane-grid">
+    <main
+      ref="workspaceEl"
+      class="workspace"
+      aria-label="Browser workspace"
+      @scroll.passive="scheduleMeasure"
+    >
+      <div
+        v-if="panes.length > 0"
+        class="pane-grid"
+        :style="{ height: `${gridContentHeight}px` }"
+      >
         <div
           v-for="pane in panes"
           :key="pane.id"
@@ -354,6 +387,7 @@ onBeforeUnmount(() => {
         >
           <PaneCard
             :pane="pane"
+            :suspended="suspendedPaneIds.has(pane.id)"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
           />
@@ -565,12 +599,13 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .pane-grid {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  min-height: 100%;
 }
 
 .pane-slot {

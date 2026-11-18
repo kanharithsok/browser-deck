@@ -92,7 +92,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - Grid mode does not yet solve scrolling or native-view clipping; the engine exposes the overflow condition so the renderer can handle it explicitly.
   - Normalized geometry can collide when the window becomes too small to honor minimum sizes; the conversion clamps, and the UI must surface/reorganize collisions later.
-  - The 160 × 120 CSS-pixel card minimum is a layout-engine default, distinct from the existing 80 × 60 native-view minimum. The wiring slice must reconcile them.
+  - The 160 × 140 CSS-pixel card minimum is a layout-engine default, distinct from the existing 80 × 60 native-view minimum. Rendering is verified at tested sizes, but the two contracts should be unified.
   - Snap distances are CSS-pixel/DIP values; shell zoom remains disabled to avoid coordinate drift.
 
 - **Evidence / verification:**
@@ -119,7 +119,7 @@ Record material technical decisions here. Keep entries short but include context
   - **Hide excess panes.** Rejected; panes must never be silently dropped from the workspace.
 
 - **Consequences:**
-  - A window too short for all rows shows a warning and leaves lower panes inaccessible until the next scroll/clipping slice.
+  - A window too short for all rows now scrolls; the native-aware visibility behavior is defined in ADR-005.
   - Narrow columns produce a warning but remain usable in tested sizes; the engine and native minimums still need unification.
   - Columns reset to the default on restart until workspace persistence arrives in Phase 3.
   - Absolute pane placement makes later freeform and z-order integration possible without changing the native bounds path.
@@ -128,6 +128,37 @@ Record material technical decisions here. Keep entries short but include context
   - E2e switches 2 → 5 → 1 → 2 columns, verifies card geometry, compares DOM content rectangles with native `view.getBounds()` after each reflow, and repeats alignment after pane add/close.
   - Manual macOS run showed the two-column grid, column control, 623 × 696 native pane viewports, and aligned chrome.
   - Existing authentication, lifecycle, teardown, popup/permission, and restart-persistence checks still pass.
+
+## ADR-005 — Native-aware scrolling shows only fully visible panes
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** Grid rows can exceed the workspace height. DOM scrolling clips pane cards, but native `WebContentsView`s are outside the DOM and cannot be clipped by the shell's overflow. Leaving off-screen views visible could cover chrome, overlap toolbar content, or appear over the wrong pane.
+
+- **Decision:**
+  1. The workspace scrolls to the layout engine's full `contentHeight`.
+  2. After every scroll/layout pass, the renderer computes each pane content rectangle against the visible workspace rectangle.
+  3. A pane is marked visible only when its entire content rectangle is inside the workspace viewport. Partially visible and off-screen panes report `visible: false`.
+  4. Main validates the visibility boolean. Visible panes receive validated bounds; hidden panes have no new native bounds applied and are hidden via `View.setVisible(false)`.
+  5. Hidden panes render a shell message while off-screen, so the blank card has an explanation.
+  6. On scrolling back, the newly visible pane receives fresh bounds and is shown again.
+
+- **Alternatives considered:**
+  - **Let native views scroll with the DOM.** Not possible; native views are composed outside the renderer DOM.
+  - **Clip native views with a native container.** Not implemented in this slice; `WebContentsView` does not inherit DOM clipping.
+  - **Show partial views and accept overlap.** Rejected because native views could cover chrome or the wrong pane.
+  - **Shrink panes to fit.** Rejected because it silently changes pane geometry and makes minimum-size controls unusable.
+
+- **Consequences:**
+  - Partially visible panes are hidden and not interactive until fully scrolled into view.
+  - Pointer scrolling can show a one-frame shell/native update lag; measurement is rAF-coalesced.
+  - The shell continues to own native visibility policy; main remains the validation boundary.
+  - More stress testing is needed for large pane counts and rapid scrolling.
+
+- **Evidence / verification:**
+  - E2e adds two panes, forces four single-column rows into a short window, confirms the grid scroll height exceeds the workspace, and verifies some native views are hidden.
+  - It scrolls to the bottom, confirms the hidden set changes, and checks every visible native view stays within the workspace's top/bottom bounds.
+  - Existing column reflow, native alignment, authentication, lifecycle, and restart checks still pass.
 
 ## ADR template
 

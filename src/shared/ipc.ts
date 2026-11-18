@@ -25,6 +25,7 @@ export interface PaneViewRect {
 export interface PaneBoundsUpdate {
   paneId: string
   rect: PaneViewRect
+  visible: boolean
 }
 
 export interface PaneState {

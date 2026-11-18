@@ -71,6 +71,9 @@ export function parsePaneBounds(
     if (!isRecord(item) || typeof item.paneId !== 'string' || !isRecord(item.rect)) {
       return { ok: false, error: 'Invalid pane bounds entry.' }
     }
+    if (typeof item.visible !== 'boolean') {
+      return { ok: false, error: 'Invalid pane visibility.' }
+    }
 
     const paneId = item.paneId
     if (!knownPaneIds.has(paneId) || seen.has(paneId)) {
@@ -78,25 +81,46 @@ export function parsePaneBounds(
     }
     seen.add(paneId)
 
-    const rect = sanitizeRect(
-      {
-        x: item.rect.x as number,
-        y: item.rect.y as number,
-        width: item.rect.width as number,
-        height: item.rect.height as number
-      },
-      canvas
-    )
+    const rawRect = {
+      x: item.rect.x as number,
+      y: item.rect.y as number,
+      width: item.rect.width as number,
+      height: item.rect.height as number
+    }
 
-    if (!rect) {
+    if (item.visible) {
+      const rect = sanitizeRect(rawRect, canvas)
+      if (!rect) {
+        return { ok: false, error: 'Invalid pane bounds rectangle.' }
+      }
+      if (rect.width < MIN_PANE_VIEW_WIDTH || rect.height < MIN_PANE_VIEW_HEIGHT) {
+        return { ok: false, error: 'Pane view is below the minimum size.' }
+      }
+      updates.push({ paneId, rect, visible: true })
+      continue
+    }
+
+    if (
+      !finiteNumber(rawRect.x) ||
+      !finiteNumber(rawRect.y) ||
+      !finiteNumber(rawRect.width) ||
+      !finiteNumber(rawRect.height) ||
+      rawRect.width <= 0 ||
+      rawRect.height <= 0
+    ) {
       return { ok: false, error: 'Invalid pane bounds rectangle.' }
     }
 
-    if (rect.width < MIN_PANE_VIEW_WIDTH || rect.height < MIN_PANE_VIEW_HEIGHT) {
+    const hiddenRect = {
+      x: Math.round(rawRect.x),
+      y: Math.round(rawRect.y),
+      width: Math.round(rawRect.width),
+      height: Math.round(rawRect.height)
+    }
+    if (hiddenRect.width < MIN_PANE_VIEW_WIDTH || hiddenRect.height < MIN_PANE_VIEW_HEIGHT) {
       return { ok: false, error: 'Pane view is below the minimum size.' }
     }
-
-    updates.push({ paneId, rect })
+    updates.push({ paneId, rect: hiddenRect, visible: false })
   }
 
   return { ok: true, updates }
