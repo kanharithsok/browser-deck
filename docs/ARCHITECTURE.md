@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0–2 complete; Phase 3 not started. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, and keyboard/menu actions are implemented and verified. Phase 3 adds viewport emulation, persistence, and profile management.
+> Status: Phases 0–2 complete; Phase 3 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, and per-pane viewport emulation are implemented and verified. Workspace/profile persistence and the profile manager remain.
 
 ## Technology baseline
 
@@ -90,6 +90,21 @@ A native **Pane** menu defines accelerators and sends typed commands to the trus
 
 Menu command routing is tested by invoking menu items from the Electron main process; raw key-chord automation remains a follow-up.
 
+## Viewport emulation
+
+`src/shared/viewports.ts` is the pure viewport contract: responsive plus mobile (390 × 844, DPR 3), tablet (820 × 1180, DPR 2), laptop (1280 × 800, DPR 1), and desktop (1440 × 900, DPR 1) presets, custom dimensions/DPR validation, and fit-scale math. Pane state carries the selected viewport. The main process validates every incoming viewport again before applying it.
+
+`BrowserManager.applyEmulation` uses `webContents.enableDeviceEmulation` with:
+
+- `screenPosition: 'desktop'` so the requested `viewSize` remains the exact CSS layout viewport. Mobile positioning caused Chromium's classic 980 px fallback layout on pages without a viewport meta tag, making fixture metrics disagree with the preset.
+- `viewSize` equal to the requested width and height, and the requested `deviceScaleFactor`.
+- `scale` equal to `min(availableWidth / width, availableHeight / height)` in fit mode, clamped to a safe range, or `1` in actual mode.
+- `disableDeviceEmulation()` for responsive panes.
+
+The emulated surface remains inside the native pane bounds; only its CSS layout and rendering scale are emulated. Fit scales a fixed viewport down (or up) to fit, and actual renders at 1:1. In actual mode, a viewport larger than the pane is clipped at the pane edge; a pane-level pan/scroll mechanism is not implemented yet. Optional user-agent overrides are intentionally not added in this slice, and no UA spoofing is performed.
+
+The renderer exposes presets, fit/actual, and custom width/height/DPR controls in each pane header. Invalid custom values are rejected in the shell and never reach IPC. At narrow container widths the header wraps instead of clipping the address or viewport controls; the five-column e2e layout asserts no horizontal overflow and a usable address width.
+
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 
 The main process re-validates every rectangle in `parsePaneBounds`:
@@ -101,7 +116,7 @@ The main process re-validates every rectangle in `parsePaneBounds`:
 
 The canvas comes from the shell view's actual bounds, not from a renderer-supplied size. A view is made visible only after valid bounds exist, when the shell reports it fully visible, and when it is not showing `about:blank` or an error panel. Load failures hide the native view so the shell can render a retry panel in place.
 
-Focus stays in the trusted shell: adding a pane moves focus to its address input, and closing a pane recovers focus to an adjacent address control (or the empty-state action). Native pane focus handoff is not implemented yet.
+Focus stays in the trusted shell: adding a pane moves focus to its address input, and closing a pane recovers focus to an adjacent address control (or the empty-state action). Native pane focus notifications update the renderer's active pane for menu commands, and shell pointer/focus interactions set it back.
 
 ## Layout engine
 
@@ -116,7 +131,7 @@ Contract:
 - Move and edge-resize helpers clamp to canvas bounds. Snapping produces candidate-aligned rectangles and guide coordinates for canvas edges/centers, neighboring pane edges/centers, and optional grid lines within a configurable threshold.
 - Ordering helpers treat the end of the list as the topmost/front pane. Maximize returns both the maximized rectangle and the previous rectangle for restore.
 
-The renderer uses grid placements from the engine and a compact 1–5 column selector. The workspace scrolls to the engine's content height; native views are shown only when fully inside the viewport. Freeform mode uses normalized geometry, title-row dragging, eight resize handles, snapping guides, z-order raising, and a Tidy action. Maximize temporarily fills the workspace while hiding other native views; explicit z-order controls and keyboard actions are still pending.
+The renderer uses grid placements from the engine and a compact 1–5 column selector. The workspace scrolls to the engine's content height; native views are shown only when fully inside the viewport. Freeform mode uses normalized geometry, title-row dragging, eight resize handles, snapping guides, explicit z-order controls, and a Tidy action. Maximize temporarily fills the workspace while hiding other native views. Native menu/keyboard commands cover add, close, reload, maximize, and layout mode.
 
 ## Browser pane lifecycle
 
@@ -156,6 +171,7 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:back` / `forward` | Pane-specific navigation history |
 | `paneflow:reload` / `reload-all` | Reload one or all panes |
 | `paneflow:set-pane-bounds` | Validated native view rectangles and visible/hidden state |
+| `paneflow:set-pane-viewport` | Validated per-pane viewport preset, custom size, DPR, and display scale |
 | `paneflow:bring-pane-to-front` | Reorder a native pane view to the top of the stack |
 | `paneflow:send-pane-to-back` | Reorder a native pane view to the bottom above the shell |
 | `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
@@ -194,13 +210,13 @@ Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: fa
 
 ## Persistence
 
-Only profile metadata and Electron-managed partition data exist so far. Workspace files, active workspace, pane URLs, layout, and viewport settings are not yet persisted; Phase 3 adds those with a versioned schema and migrations. No cookies, tokens, page contents, or credentials are written to PaneFlow JSON.
+Only profile metadata and Electron-managed partition data exist so far. Workspace files, active workspace, pane URLs, layout, and viewport settings are not yet persisted; the next Phase 3 slice adds those with a versioned schema and migrations. No cookies, tokens, page contents, or credentials are written to PaneFlow JSON.
 
 ## Testing
 
-- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
-- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, and visual alignment on macOS.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding, corruption recovery, and atomic persistence.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, and alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
 
@@ -208,6 +224,8 @@ The Playwright test inspects the main process through a test hook that is only i
 
 - DOM content cannot be drawn over native browser views. Future contextual UI must use native menus, hide/shift the view, or introduce a separately proven overlay view.
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
+- An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
+- Viewport settings, pane URLs, and layout state are not persisted yet.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
 - Grid drag reordering is pointer-only and not persisted; keyboard reordering and Phase 3 persistence remain.
 - Freeform mode is pointer-only; menu accelerators are configured but raw keystrokes are not automated.

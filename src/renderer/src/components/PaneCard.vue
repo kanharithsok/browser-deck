@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
+import {
+  VIEWPORT_PRESETS,
+  parsePaneViewport,
+  viewportFromPreset,
+  type PaneViewport,
+  type ViewportDisplayScale,
+  type ViewportPresetId
+} from '../../../shared/viewports'
 
 const props = withDefaults(
   defineProps<{
@@ -22,6 +30,8 @@ const emit = defineEmits<{
   'toggle-maximize': []
   'raise-pane': []
   'lower-pane': []
+  'set-viewport': [viewport: PaneViewport]
+  'layout-changed': []
 }>()
 
 const addressInput = ref<HTMLInputElement | null>(null)
@@ -30,8 +40,96 @@ const addressError = ref<string | null>(null)
 const editing = ref(false)
 const statusId = `pane-status-${props.pane.id}`
 
+const selectedPreset = ref<ViewportPresetId>(props.pane.viewport.preset)
+const displayScale = ref<ViewportDisplayScale>(props.pane.viewport.displayScale)
+const customOpen = ref(props.pane.viewport.preset === 'custom')
+const customWidth = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.width : 800)
+const customHeight = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.height : 600)
+const customDeviceScaleFactor = ref(
+  props.pane.viewport.preset === 'custom' ? props.pane.viewport.deviceScaleFactor : 1
+)
+const viewportError = ref<string | null>(null)
+
 function displayAddress(url: string): string {
   return url === 'about:blank' ? '' : url
+}
+
+function onPresetChange(event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLSelectElement)) {
+    return
+  }
+
+  const preset = target.value as ViewportPresetId
+  const wasOpen = customOpen.value
+  selectedPreset.value = preset
+  viewportError.value = null
+
+  if (preset === 'custom') {
+    customOpen.value = true
+    if (!wasOpen) {
+      // Start from the current fixed preset so the user can adjust a known
+      // size instead of resetting to arbitrary defaults.
+      const viewport = props.pane.viewport
+      if (viewport.preset !== 'responsive' && viewport.preset !== 'custom') {
+        customWidth.value = viewport.width
+        customHeight.value = viewport.height
+        customDeviceScaleFactor.value = viewport.deviceScaleFactor
+      }
+      emit('layout-changed')
+    }
+    return
+  }
+
+  customOpen.value = false
+  if (wasOpen) {
+    emit('layout-changed')
+  }
+  emit('set-viewport', viewportFromPreset(preset, displayScale.value))
+}
+
+function applyCustomViewport(): void {
+  const parsed = parsePaneViewport({
+    preset: 'custom',
+    width: Number(customWidth.value),
+    height: Number(customHeight.value),
+    deviceScaleFactor: Number(customDeviceScaleFactor.value),
+    displayScale: displayScale.value
+  })
+
+  if (!parsed.ok) {
+    viewportError.value = parsed.error
+    return
+  }
+
+  viewportError.value = null
+  emit('set-viewport', parsed.viewport)
+}
+
+function onDisplayScaleChange(): void {
+  viewportError.value = null
+  if (selectedPreset.value === 'custom') {
+    if (customOpen.value) {
+      applyCustomViewport()
+    }
+    return
+  }
+  emit('set-viewport', viewportFromPreset(selectedPreset.value, displayScale.value))
+}
+
+function cancelCustomViewport(): void {
+  const viewport = props.pane.viewport
+  selectedPreset.value = viewport.preset
+  displayScale.value = viewport.displayScale
+  customWidth.value = viewport.preset === 'custom' ? viewport.width : 800
+  customHeight.value = viewport.preset === 'custom' ? viewport.height : 600
+  customDeviceScaleFactor.value = viewport.preset === 'custom' ? viewport.deviceScaleFactor : 1
+  viewportError.value = null
+  const wasOpen = customOpen.value
+  customOpen.value = viewport.preset === 'custom'
+  if (wasOpen !== customOpen.value) {
+    emit('layout-changed')
+  }
 }
 
 watch(
@@ -269,6 +367,71 @@ function requestClose(): void {
             @keydown.esc.prevent="resetAddress"
           />
         </form>
+
+        <select
+          class="viewport-select"
+          :value="selectedPreset"
+          :aria-label="`Viewport preset for ${pane.title}`"
+          @change="onPresetChange"
+        >
+          <option value="responsive">Responsive</option>
+          <option v-for="preset in VIEWPORT_PRESETS" :key="preset.id" :value="preset.id">
+            {{ preset.label }}
+          </option>
+          <option value="custom">Custom…</option>
+        </select>
+
+        <select
+          v-model="displayScale"
+          class="scale-select"
+          :aria-label="`Display scale for ${pane.title}`"
+          @change="onDisplayScaleChange"
+        >
+          <option value="fit">Fit</option>
+          <option value="actual">Actual</option>
+        </select>
+      </div>
+
+      <div v-if="customOpen" class="viewport-custom">
+        <label class="custom-field">
+          <span>W</span>
+          <input
+            v-model.number="customWidth"
+            type="number"
+            min="200"
+            max="7680"
+            step="1"
+            aria-label="Custom viewport width"
+            @input="viewportError = null"
+          />
+        </label>
+        <label class="custom-field">
+          <span>H</span>
+          <input
+            v-model.number="customHeight"
+            type="number"
+            min="200"
+            max="7680"
+            step="1"
+            aria-label="Custom viewport height"
+            @input="viewportError = null"
+          />
+        </label>
+        <label class="custom-field">
+          <span>DPR</span>
+          <input
+            v-model.number="customDeviceScaleFactor"
+            type="number"
+            min="0.5"
+            max="4"
+            step="0.1"
+            aria-label="Custom device scale factor"
+            @input="viewportError = null"
+          />
+        </label>
+        <button class="custom-apply" type="button" @click="applyCustomViewport">Apply</button>
+        <button class="custom-cancel" type="button" @click="cancelCustomViewport">Cancel</button>
+        <span v-if="viewportError" class="viewport-error" role="alert">{{ viewportError }}</span>
       </div>
     </header>
 
@@ -451,8 +614,10 @@ function requestClose(): void {
 
 .pane-nav-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
+  row-gap: 4px;
   min-width: 0;
 }
 
@@ -462,8 +627,8 @@ function requestClose(): void {
 }
 
 .address-form {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 120px;
+  min-width: 80px;
   margin-left: 4px;
 }
 
@@ -494,6 +659,88 @@ function requestClose(): void {
 .address-input-invalid:focus {
   border-color: var(--danger);
   outline-color: var(--danger);
+}
+
+.viewport-select,
+.scale-select {
+  flex: none;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.viewport-select {
+  width: 88px;
+  margin-left: 4px;
+}
+
+.scale-select {
+  width: 54px;
+}
+
+.viewport-select:focus-visible,
+.scale-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.viewport-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 1px;
+  border-top: 1px solid var(--border);
+}
+
+.custom-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.custom-field input {
+  width: 54px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.custom-field input[aria-label='Custom device scale factor'] {
+  width: 46px;
+}
+
+.custom-apply,
+.custom-cancel {
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 10.5px;
+}
+
+.custom-apply:hover,
+.custom-cancel:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.viewport-error {
+  flex-basis: 100%;
+  color: var(--danger);
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
 .pane-body {
@@ -638,6 +885,16 @@ function requestClose(): void {
 @container (max-width: 470px) {
   .pane-profile {
     display: none;
+  }
+}
+
+@container (max-width: 320px) {
+  .viewport-select {
+    width: 78px;
+  }
+
+  .scale-select {
+    width: 46px;
   }
 }
 </style>

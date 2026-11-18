@@ -135,7 +135,7 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** Complete; PR #11 open (stacked on PR #10), CI passed. Phase 3 not started.
+- **Status:** Complete; PR #11 open (stacked on PR #10), CI passed. Phase 3 is in progress.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -234,6 +234,59 @@ Met in the automated macOS run: eight panes were arranged in grid and freeform, 
 Phase 3: implement per-pane viewport presets and custom dimensions with Electron device emulation, verify `window.innerWidth`, `window.innerHeight`, and `devicePixelRatio` from the local fixture, and add fit/actual display scale handling without changing native bounds validation.
 
 ## Phase 3 — Viewport emulation and persistence
+
+- **Status:** In progress. Per-pane viewport emulation is implemented and verified; workspace/profile persistence and the profile manager remain.
+- **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
+
+### Delivered so far
+
+- Added `src/shared/viewports.ts`, a pure TypeScript viewport module with no Vue or Electron imports:
+  - responsive plus mobile, tablet, laptop, and desktop viewport classes;
+  - custom width, height, and device scale factor validation (200–7680 px, DPR 0.5–4);
+  - fit-scale calculation with safe handling of empty or invalid pane space.
+- Added per-pane viewport state to `PaneState` and a validated `set-pane-viewport` IPC path.
+- Pane header controls provide a preset selector, a fit/actual selector, and a custom row with width, height, DPR, Apply, and Cancel.
+- Invalid custom values stay in the shell with a visible alert and do not reach the native emulation layer.
+- Emulation uses Electron `webContents.enableDeviceEmulation` with matching CSS viewport, device scale factor, and display scale:
+  - `screenPosition: 'desktop'` keeps the requested CSS viewport exact;
+  - fit mode scales the emulated view to the available pane content;
+  - actual mode renders at 1:1 CSS-pixel scale;
+  - responsive mode disables emulation.
+- Different panes can hold different presets at the same time.
+- Pane headers wrap their address and viewport controls at narrow grid widths; five-column panes keep a usable address field with no horizontal overflow.
+- 8 new unit tests cover preset lookup, custom parsing/rejection, and fit-scale calculation.
+- E2e verifies mobile/tablet/custom metrics (`window.innerWidth`, `window.innerHeight`, `devicePixelRatio`) from inside the fixture pages, concurrent per-pane presets, invalid custom recovery, fit/actual emulation scale, return to responsive sizing, and five-column header wrapping.
+
+### Verification commands and results
+
+| Command | Result |
+| --- | --- |
+| `npx vitest run tests/unit/viewports.test.ts` | Passed: 8 viewport tests. |
+| `npm run test:unit` | Passed: 6 files, 80 tests. |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 6.9 s. Existing Phase 2 coverage plus viewport emulation, concurrent pane presets, validation, fit/actual state, and five-column header wrapping. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (46.27 kB), preload (2.99 kB), and the renderer bundle. |
+| Manual viewport check | Passed. The fixture reported 390 × 844 at DPR 3 in fit and actual modes. Fit rendered the page scaled down inside the pane; actual rendered at 1:1 and clipped the 844 px viewport at the pane's 696 px content height while the reported CSS viewport stayed 390 × 844. |
+
+### Exit criteria
+
+Not yet met. Viewport emulation is verified, but the Phase 3 exit condition still requires workspace/profile state (pane URLs, order, grid/freeform arrangement, viewport settings, and active workspace) to restore reliably after restart, plus the profile manager.
+
+### Known issues / risks
+
+- Actual mode clips an emulated viewport that is taller or wider than the pane; there is no pane-level pan/scroll for the oversized emulated surface yet.
+- Fit mode scales the emulated page inside the native view but does not center it; the unused area is page background.
+- Optional user-agent overrides from `SPEC.md` §10.2 are not implemented; no UA spoofing is performed.
+- Viewport settings are not persisted across restarts until workspace persistence lands.
+- The display scale selector is hidden only by wrapping, not collapsed into the pane menu; very narrow freeform panes produce a taller three-row chrome block.
+- The fixture verifies layout/dpr values, not touch, GPS, or device-specific APIs.
+
+### Next smallest slice
+
+Add a versioned workspace store in the main process and persist/restore pane order, URLs, per-pane viewport settings, selected grid columns, grid/freeform arrangement, and layout mode. Keep profile identity and session data separate from workspace JSON, validate every restored value, and extend the restart e2e to prove the restored workspace.
+
+## Phase 4 — Polish and macOS packaging
 
 - **Status:** Not started
 - **Delivered:** —

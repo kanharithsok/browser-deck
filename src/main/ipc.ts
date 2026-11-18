@@ -130,6 +130,24 @@ export function registerIpcHandlers(context: IpcContext): void {
     return manager.setBounds(payload, context.getCanvasSize())
   })
 
+  ipcMain.handle(
+    IPC_CHANNELS.setPaneViewport,
+    (event, paneIdInput: unknown, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const paneId = readString(paneIdInput, 100)
+      if (!paneId) {
+        return { ok: false, error: 'Invalid pane ID.' }
+      }
+      return manager.setViewport(paneId, payload)
+    }
+  )
+
   ipcMain.handle(IPC_CHANNELS.bringPaneToFront, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {
       return unauthorized

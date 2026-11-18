@@ -283,6 +283,41 @@ Record material technical decisions here. Keep entries short but include context
   - E2e invokes menu items for add, close, maximize toggle, and layout toggle; verifies pane counts, one-visible maximize state, and mode changes.
   - The eight-pane stress run adds four panes through the menu and verifies native bounds across four grid rows, then freeform drag/resize, z-order, maximize, and grid restore.
 
+## ADR-010 — Viewport emulation uses desktop positioning and a display-only scale
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** `SPEC.md` §10 requires per-pane viewport presets, custom dimensions, a device scale factor, and fit/actual display scale modes. The emulated CSS viewport must match the configured values even when visual fit changes the rendered size. Electron 45 exposes `webContents.enableDeviceEmulation` with `screenPosition`, `screenSize`, `viewPosition`, `deviceScaleFactor`, `viewSize`, and `scale`.
+
+- **Decision:**
+  1. Keep preset definitions, validation, custom parsing, and fit-scale math in the pure TypeScript `src/shared/viewports.ts` module.
+  2. Apply emulation with `screenPosition: 'desktop'` and `viewSize` equal to the requested CSS width and height. Desktop positioning keeps `window.innerWidth`, `window.innerHeight`, and media queries at the configured dimensions. Mobile positioning produced Chromium's 980 px fallback layout for fixture pages without a viewport meta tag.
+  3. Set `deviceScaleFactor` to the preset or custom value. Set `scale` to the fit ratio in fit mode and `1` in actual mode. Disable emulation for responsive panes.
+  4. Keep the native view inside its validated pane bounds. Only the CSS layout and render scale are emulated; no user agent, touch, GPS, or device API behavior is spoofed.
+  5. Store viewport state in the main-process pane record and expose it in `PaneState`; the renderer owns the controls and sends validated settings through typed IPC.
+  6. Reject invalid custom values in both the renderer and main process. Do not silently clamp input.
+
+- **Alternatives considered:**
+  - **`screenPosition: 'mobile'`.** Rejected for this slice because pages without a viewport meta tag fall back to a 980 px layout, so the fixture cannot prove that presets set the intended CSS viewport.
+  - **Resize the native view to the emulated dimensions.** Rejected because native views cannot extend or clip within the pane safely, and changing the view size changes the CSS viewport.
+  - **Renderer CSS transforms or iframes.** Rejected; native `WebContentsView` is the required pane renderer and cannot be transformed or clipped by DOM.
+  - **User-agent strings named after devices.** Rejected as dishonest and outside the viewport-only scope; optional UA overrides remain deferred.
+  - **Persist viewport state immediately.** Deferred to the workspace persistence slice so all pane state is restored through one versioned store.
+
+- **Consequences:**
+  - Preset and custom dimensions are exact inside the page, and two panes can hold different viewports simultaneously.
+  - Fit mode can leave unused space because the emulated view is scaled and left-aligned inside the pane.
+  - Actual mode renders at 1:1 and clips a viewport that is larger than the pane; pane-level panning/scroll for the emulated surface is not implemented.
+  - Viewport settings are not persisted yet; they reset on restart until the workspace store lands.
+  - Narrow pane headers wrap their controls rather than hiding them.
+
+- **Evidence / verification:**
+  - E2e reads `window.innerWidth`, `window.innerHeight`, and `window.devicePixelRatio` from fixture pages: mobile 390 × 844 at DPR 3, tablet 820 × 1180 at DPR 2 in a second pane at the same time, and custom 500 × 700 at DPR 2.
+  - E2e verifies fit mode reports a scale below 1, actual mode reports scale 1, and the CSS viewport remains unchanged. Responsive mode disables emulation.
+  - E2e submits a 100 px custom width and confirms the visible alert plus unchanged mobile preset.
+  - Manual macOS capture shows mobile fit scaled inside the pane and actual at 1:1 with the lower content clipped at the pane edge while the page still reports 390 × 844.
+  - Five-column layout e2e asserts no header overflow and a usable address width.
+
 ## ADR template
 
 ### ADR-NNN — Title

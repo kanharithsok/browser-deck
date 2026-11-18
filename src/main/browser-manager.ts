@@ -4,6 +4,12 @@ import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
 import type { PaneState, PaneViewRect, ScriptResult, ShellState } from '../shared/ipc'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
 import { isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
+import {
+  RESPONSIVE_VIEWPORT,
+  parsePaneViewport,
+  viewportDisplayScale,
+  type PaneViewport
+} from '../shared/viewports'
 import type { ProfileStore } from './profile-store'
 import { getProfileSession } from './session-policy'
 
@@ -18,6 +24,10 @@ interface PaneRecord {
   error: string | null
   hasBounds: boolean
   shellVisible: boolean
+  viewport: PaneViewport
+  lastEmulationSignature: string
+  emulationEnabled: boolean
+  appliedScale: number
   destroyed: boolean
 }
 
@@ -241,12 +251,31 @@ export class BrowserManager {
       const firstBounds = !record.hasBounds && update.visible
       record.hasBounds = record.hasBounds || update.visible
       this.syncVisibility(record)
+      this.applyEmulation(record)
 
       if (firstBounds && record.pendingUrl) {
         this.load(record, record.pendingUrl)
       }
     }
 
+    return { ok: true }
+  }
+
+  setViewport(paneId: string, input: unknown): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Pane not found.' }
+    }
+
+    const parsed = parsePaneViewport(input)
+    if (!parsed.ok) {
+      return { ok: false, error: parsed.error }
+    }
+
+    record.viewport = parsed.viewport
+    record.lastEmulationSignature = ''
+    this.applyEmulation(record)
+    this.emitState()
     return { ok: true }
   }
 
@@ -336,7 +365,8 @@ export class BrowserManager {
         isLoading: record.isLoading,
         canGoBack,
         canGoForward,
-        error: record.error
+        error: record.error,
+        viewport: { ...record.viewport }
       })
     }
 
@@ -365,6 +395,22 @@ export class BrowserManager {
       }
     }
     return states
+  }
+
+  emulationState(paneId: string): {
+    enabled: boolean
+    scale: number
+    viewport: PaneViewport
+  } | null {
+    const record = this.panes.get(paneId)
+    if (!record || record.destroyed) {
+      return null
+    }
+    return {
+      enabled: record.emulationEnabled,
+      scale: record.appliedScale,
+      viewport: { ...record.viewport }
+    }
   }
 
   async readCookie(paneId: string): Promise<string | null> {
@@ -424,6 +470,10 @@ export class BrowserManager {
       error: null,
       hasBounds: false,
       shellVisible: true,
+      viewport: { ...RESPONSIVE_VIEWPORT },
+      lastEmulationSignature: '',
+      emulationEnabled: false,
+      appliedScale: 0,
       destroyed: false
     }
 
@@ -461,6 +511,7 @@ export class BrowserManager {
 
     webContents.on('did-stop-loading', () => {
       record.isLoading = false
+      this.applyEmulation(record)
       this.emitState()
     })
 
@@ -556,6 +607,54 @@ export class BrowserManager {
       record.error === null &&
       record.url !== 'about:blank'
     record.view.setVisible(visible)
+  }
+
+  private applyEmulation(record: PaneRecord): void {
+    const webContents = record.view.webContents
+    if (record.destroyed || webContents.isDestroyed()) {
+      return
+    }
+
+    if (record.viewport.preset === 'responsive') {
+      if (!record.emulationEnabled) {
+        record.lastEmulationSignature = 'responsive'
+        return
+      }
+      webContents.disableDeviceEmulation()
+      record.emulationEnabled = false
+      record.appliedScale = 0
+      record.lastEmulationSignature = 'responsive'
+      return
+    }
+
+    const available = record.view.getBounds()
+    const scale = viewportDisplayScale(record.viewport, available)
+    const signature = [
+      record.viewport.preset,
+      record.viewport.width,
+      record.viewport.height,
+      record.viewport.deviceScaleFactor,
+      record.viewport.displayScale,
+      scale
+    ].join(':')
+    if (record.lastEmulationSignature === signature) {
+      return
+    }
+
+    // Desktop screen positioning keeps the requested CSS viewport exact.
+    // Mobile positioning makes Chromium apply a 980px fallback layout to pages
+    // without a viewport meta tag, which would make the preset dimensions a lie.
+    webContents.enableDeviceEmulation({
+      screenPosition: 'desktop',
+      screenSize: { width: record.viewport.width, height: record.viewport.height },
+      viewPosition: { x: 0, y: 0 },
+      deviceScaleFactor: record.viewport.deviceScaleFactor,
+      viewSize: { width: record.viewport.width, height: record.viewport.height },
+      scale
+    })
+    record.emulationEnabled = true
+    record.appliedScale = scale
+    record.lastEmulationSignature = signature
   }
 
   private load(record: PaneRecord, url: string): void {
