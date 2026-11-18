@@ -1658,6 +1658,9 @@ onBeforeUnmount(() => {
         class="workspace-switcher"
         type="button"
         title="Switch workspace"
+        aria-haspopup="dialog"
+        :aria-expanded="workspacesOpen"
+        :aria-label="`Switch workspace, current ${workspaceName}`"
         @click="openWorkspaces"
       >
         <span class="workspace-switcher-name">{{ workspaceName }}</span>
@@ -1709,6 +1712,8 @@ onBeforeUnmount(() => {
         class="toolbar-button"
         type="button"
         title="Manage browser profiles"
+        aria-haspopup="dialog"
+        :aria-expanded="profilesOpen"
         @click="openProfiles"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -2786,5 +2791,25 @@ onBeforeUnmount(() => {
   margin-top: 0;
   padding: 3px 8px;
   font-size: 11.5px;
+}
+
+@media (max-width: 820px) {
+  .toolbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .grid-label {
+    display: none;
+  }
+
+  .pane-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 </style>
