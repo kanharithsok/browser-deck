@@ -90,7 +90,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Keyboard focus can enter native browser content and return to chrome. (Native pane focus handoff is Phase 2.)
 - [ ] Full screen-reader pass across toolbar, pane chrome, and status announcements. (Not run.)
 - [x] System light/dark tokens resolve correctly. (E2e emulates both color schemes; dark appearance manually reviewed.)
-- [ ] Contrast audit across every control and state. (Small-text tokens were improved during review; full audit remains.)
+- [x] Contrast audit across defined light/dark token pairs. (`npm run check:contrast` verifies 13 pairs per theme; full control/state screenshot audit remains.)
 - [x] Reduced-motion behavior. (Global media rule disables animations/transitions/smooth scrolling when requested.)
 - [x] Active pane is visible and announced. (E2e verifies one accent-bordered `aria-current` card and updates it from focus.)
 - [x] Narrow-window and minimum-pane-width control usability. (E2e verifies no toolbar overflow at 760 px; pane headers wrap at five columns.)
