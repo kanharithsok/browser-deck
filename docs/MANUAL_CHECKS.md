@@ -33,8 +33,8 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 ## Workspace
 
 - [ ] Add, remove, rename, duplicate, and reorder panes. (Add/remove work; rename/duplicate/reorder pending.)
-- [ ] Grid column changes and reflow. (Automatic CSS grid only; selectable columns pending.)
-- [ ] Freeform drag, resize, overlap, z-order, and snap behavior. (Pending.)
+- [ ] Grid column changes and reflow. (Pure engine unit-tested; renderer selector and wiring pending.)
+- [ ] Freeform drag, resize, overlap, z-order, and snap behavior. (Engine helpers unit-tested; UI pending.)
 - [ ] Switching modes preserves both arrangements. (Pending.)
 - [ ] Maximize/restore returns to the prior geometry. (Pending.)
 - [ ] Layout restores after app restart. (Pending.)

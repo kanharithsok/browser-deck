@@ -25,7 +25,7 @@ The agent updates this file at the end of each phase. Record actual outcomes, no
 - System light/dark tokens exercised in the renderer; explicit theme selection remains Phase 4.
 - Deterministic local fixture server; e2e launches the built app, not a mock.
 - Restored the documented `.opencode/commands` and `.opencode/skills` assets that were missing from the checkout.
-- Added CI configuration for typecheck, lint, unit tests, and build. CI passed on PR #1; the later Phase 1 test changes have not been pushed yet.
+- Added CI configuration for typecheck, lint, unit tests, and build. CI passed on PR #1 and PR #2.
 
 ### Verification commands and results
 
@@ -77,7 +77,7 @@ ADR-001 in `docs/DECISIONS.md`: trusted shell `WebContentsView` plus inset `WebC
 - Zoom is not implemented. The application menu deliberately omits zoom roles so shell zoom cannot desynchronize CSS-pixel measurements from native DIP bounds.
 - `npm audit` has 13 high-severity dev-toolchain advisories with no fixed `picomatch` release at verification time.
 - TypeScript is pinned to 6.0.3 because current `typescript-eslint` does not support TypeScript 7.
-- CI passed on PR #1. The Phase 1 changes later in this file are uncommitted and have not run in GitHub CI.
+- CI passed on PR #1 and PR #2. Phase 2 changes are uncommitted and have not run in GitHub CI.
 
 ### Next smallest slice
 
@@ -85,7 +85,7 @@ Phase 1 (completed below): independent authentication with a deterministic local
 
 ## Phase 1 — Browser isolation foundation
 
-- **Status:** Complete; uncommitted working-tree changes await repository-owner review.
+- **Status:** Complete; merged in PR #2. CI passed for that PR.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered
@@ -135,11 +135,55 @@ Phase 2: implement the pure TypeScript layout engine first (grid placement/reflo
 
 ## Phase 2 — Workspace engine
 
-- **Status:** Not started
-- **Delivered:** —
-- **Verification commands and results:** —
-- **Known issues / risks:** —
-- **Next smallest slice:** —
+- **Status:** In progress. The pure layout engine is complete and unit-tested; renderer/freeform integration is not started.
+- **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
+
+### Delivered
+
+- Added `src/shared/layout.ts`, a pure TypeScript layout engine with no Vue or Electron imports.
+- Grid placement/reflow:
+  - row-major equal-width columns;
+  - 1–5 validated columns;
+  - configurable padding, gap, and minimum card size;
+  - required rows, content height, vertical-scroll flag, and narrow-column flag;
+  - add/remove/reorder reflow through ordered pane ID arrays.
+- Freeform geometry:
+  - pixel-to-normalized and normalized-to-pixel conversion;
+  - canvas-bound and minimum-size clamping;
+  - move and eight-direction resize helpers;
+  - snap targets for canvas edges/center, neighboring pane edges/center, and optional grid;
+  - configurable snap threshold and alignment guides.
+- Ordering and z-order helpers: move, bring to front, send to back.
+- Maximize geometry with the previous rectangle returned for restore.
+- 33 unit tests covering valid layouts, errors, reflow, resizing, normalized adaptation, snapping, ordering, and maximize/restore.
+
+### Verification commands and results
+
+| Command | Result |
+| --- | --- |
+| `npx vitest run tests/unit/layout.test.ts` | Passed: 33 layout tests. |
+| `npm run test:unit` | Passed: 5 files, 67 tests. |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 1.9 s; existing native, auth, lifecycle, and persistence behavior is unchanged. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (35.44 kB) and the existing renderer bundle. The engine is not imported by the renderer yet. |
+
+### Exit criteria
+
+Not yet met. Phase 2 still requires grid mode and dynamic pane management in the UI, freeform drag/resize/snapping/z-order/maximize integration, keyboard interactions, and the 8-pane native-view alignment test.
+
+### Known issues / risks
+
+- The renderer still uses its existing CSS auto-fit grid; the new engine is not wired in yet.
+- The engine reports vertical overflow and narrow columns, but the renderer has not implemented scroll-aware native-view clipping.
+- Freeform move/resize/snap/z-order/maximize helpers are not exposed through the renderer yet.
+- The engine's default minimum pane card is 160 × 120 CSS px, while main currently enforces a minimum native view of 80 × 60. The UI wiring slice must reconcile these boundaries.
+- Snap calculations use CSS-pixel/DIP distances; zoom is still excluded from the shell.
+- The e2e suite does not exercise the layout engine yet because it has no UI entry point.
+
+### Next smallest slice
+
+Wire the grid engine into the renderer: add a compact 1–5 column selector, position pane cards from `layoutGrid`, preserve native bounds measurement and focus behavior, and extend the Playwright test to verify column changes and native alignment after reflow. Implement vertical scrolling/clipping only after the basic grid path is proven.
 
 ## Phase 3 — Viewport emulation and persistence
 
