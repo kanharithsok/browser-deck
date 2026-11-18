@@ -254,6 +254,35 @@ Record material technical decisions here. Keep entries short but include context
   - Restoring shows both views, verifies native alignment, and checks the original grid position/width are restored within 2px.
   - Existing grid, scroll, drag, freeform, auth, lifecycle, and restart checks still pass.
 
+## ADR-009 — Keyboard commands route through the native menu to the active pane
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** Keyboard shortcuts must work when focus is inside a remote native pane or the shell. Renderer-only `keydown` handlers would miss native view focus, and common accelerators can conflict with Electron menu roles. Pane commands also need an unambiguous active pane without exposing generic IPC.
+
+- **Decision:**
+  1. A native **Pane** application menu owns accelerators for add, close, reload active/all, toggle maximize, and toggle grid/freeform.
+  2. Menu items send a typed `PaneCommand` to the trusted shell. Remote pages have no command bridge.
+  3. The renderer tracks the active pane from shell pointer/focus interactions and from main-process native `webContents` focus notifications.
+  4. Commands act on the active pane; add selects the new pane and close falls back to the first remaining pane. With no active pane, reload falls back to reload-all.
+  5. Menu item IDs are stable so e2e can invoke the menu path without OS-level key automation.
+
+- **Alternatives considered:**
+  - **Renderer-only keyboard handlers.** Rejected because key events do not reach the shell when focus is in a native website.
+  - **Global shortcuts.** Rejected; they can steal keys system-wide and conflict with normal app behavior.
+  - **Generic IPC send.** Rejected by the existing security boundary; commands remain typed and shell-only.
+  - **Track active pane in main.** Deferred; the renderer owns pane UI state and native focus notifications are enough for this slice.
+
+- **Consequences:**
+  - Accelerators are discoverable in the native menu and work with native pane focus.
+  - Active-pane inference is not yet accompanied by a focused-pane outline.
+  - Raw key-chord automation remains a follow-up; menu command routing is covered by e2e.
+  - Pane commands are intentionally limited to workspace actions, not arbitrary remote-page control.
+
+- **Evidence / verification:**
+  - E2e invokes menu items for add, close, maximize toggle, and layout toggle; verifies pane counts, one-visible maximize state, and mode changes.
+  - The eight-pane stress run adds four panes through the menu and verifies native bounds across four grid rows, then freeform drag/resize, z-order, maximize, and grid restore.
+
 ## ADR template
 
 ### ADR-NNN — Title

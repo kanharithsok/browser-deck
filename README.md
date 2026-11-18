@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0 and 1 complete; Phase 2 in progress. The repo contains a working Electron/Vue native-view spike with two isolated persistent browser panes, independent authenticated sessions, editable address chrome, and window resizing. Grid mode has a 1–5 column selector, scrolling, and drag reorder; freeform mode supports move/resize, snapping, explicit z-order, tidy, and temporary maximize/restore. Keyboard layout actions and the 8-pane exit test remain. Viewport emulation and packaging arrive in later phases.
+> **Project status:** Phases 0–2 complete. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, and native Pane-menu commands. Phase 3 adds viewport emulation, workspace/profile persistence, and the profile manager; macOS packaging follows.
 
 ## Current capabilities
 
@@ -22,9 +22,10 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Grid drag reordering from the pane title row, with native views temporarily hidden so pointer movement stays in the shell.
 - Freeform mode with normalized pane geometry, title-row dragging, eight resize handles, snapping guides, explicit bring-front/send-back controls, and a Tidy action.
 - Temporary maximize/restore with unrelated native views hidden and the prior arrangement preserved.
-- Deterministic local fixture server, unit tests, and a Playwright Electron integration test.
+- Native **Pane** menu commands for add, close, reload active/all, maximize, and grid/freeform toggle, with an active pane inferred from shell/native focus.
+- Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass.
 
-The current build does **not** include keyboard layout actions, workspace persistence, viewport presets, profile management UI, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
+The current build does **not** include viewport emulation, workspace/profile persistence, the profile manager, or macOS packaging. See the roadmap in [`SPEC.md`](./SPEC.md).
 
 ## Development prerequisites
 
@@ -61,6 +62,19 @@ npm run dev
 
 `package:mac` is not implemented yet; it is Phase 4 work. Do not treat a build as a distributable macOS app.
 
+## Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Cmd/Ctrl+T` | Add pane |
+| `Cmd/Ctrl+Shift+W` | Close active pane |
+| `Cmd/Ctrl+Alt+R` | Reload active pane |
+| `Cmd/Ctrl+Alt+Shift+R` | Reload all panes |
+| `Cmd/Ctrl+Shift+M` | Toggle maximize for active pane |
+| `Cmd/Ctrl+Shift+L` | Toggle grid/freeform |
+
+The active pane follows shell chrome focus and native pane focus. Shortcuts are registered through the native Pane menu.
+
 ## Testing
 
 ```bash
@@ -82,6 +96,8 @@ The e2e test launches the built app against local fixtures and verifies:
 - freeform move/resize with hidden native views and preserved geometry across mode switches;
 - temporary maximize/restore with unrelated native views hidden;
 - explicit freeform z-order changes reflected in native child order;
+- menu command routing for add/close/maximize/layout actions;
+- an eight-pane grid/freeform alignment stress pass;
 - overflowing grid scrolling with native views hidden when partially off-screen;
 - real address-bar navigation and history controls;
 - rejecting unsupported URLs and unknown pane IDs in main;
@@ -95,7 +111,7 @@ The Playwright suite requires a local macOS GUI session. Unit tests include the 
 
 The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. A native Pane menu routes typed commands to the active pane. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -133,11 +149,11 @@ opencode.jsonc        Project-level OpenCode configuration
 
 ## Known limitations
 
-- The workspace still lacks keyboard layout actions, viewport emulation, and a profile manager.
+- The workspace still lacks viewport emulation and a profile manager.
 - Partially visible grid panes are hidden while scrolling and only become interactive when fully in view.
-- Freeform manipulation is pointer-only; a fully covered pane may be unreachable until the covering pane moves.
-- Maximize is temporary and not persisted.
-- Freeform geometry, selected columns, grid order, and layout mode reset on restart until workspace persistence arrives.
+- A fully covered freeform pane may be unreachable until the covering pane moves.
+- Raw keyboard accelerators are configured in the native menu; menu command routing is tested, raw key chords are not yet automated.
+- Freeform geometry, selected columns, grid order, layout mode, and maximize state reset on restart until Phase 3 persistence arrives.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
 - Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.

@@ -23,6 +23,7 @@ interface PaneRecord {
 
 interface BrowserManagerOptions {
   onStateChanged: (state: ShellState) => void
+  onPaneFocused?: (paneId: string) => void
 }
 
 function fallbackTitle(url: string): string {
@@ -518,6 +519,12 @@ export class BrowserManager {
 
     webContents.on('destroyed', () => {
       this.handleUnexpectedDestruction(record)
+    })
+
+    webContents.on('focus', () => {
+      if (!record.destroyed) {
+        this.options.onPaneFocused?.(record.id)
+      }
     })
   }
 

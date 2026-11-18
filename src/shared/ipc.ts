@@ -11,9 +11,19 @@ export const IPC_CHANNELS = {
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
+  paneCommand: 'paneflow:pane-command',
+  paneFocused: 'paneflow:pane-focused',
   stateChanged: 'paneflow:state-changed',
   requestMeasurement: 'paneflow:request-measurement'
 } as const
+
+export type PaneCommand =
+  | 'add-pane'
+  | 'close-pane'
+  | 'reload-pane'
+  | 'reload-all'
+  | 'toggle-maximize'
+  | 'toggle-layout'
 
 export type ScriptResult = { ok: true } | { ok: false; error: string }
 
@@ -67,4 +77,6 @@ export interface PaneFlowApi {
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
+  onPaneCommand(listener: (command: PaneCommand) => void): () => void
+  onPaneFocused(listener: (paneId: string) => void): () => void
 }
