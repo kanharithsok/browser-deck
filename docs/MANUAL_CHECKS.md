@@ -27,10 +27,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Closing one pane does not sign out or navigate another. (Remaining pane's session and account stay active; e2e.)
 - [x] New panes receive a fresh profile by default. (New-pane profile ID checked.)
 - [ ] Duplicated panes receive a fresh profile by default. (Pane duplication is not implemented yet.)
-- [ ] Explicitly shared profiles share expected cookie/storage state. (Profile assignment/sharing UI is not implemented.)
+- [x] Explicitly shared profiles share expected cookie/storage state. (E2e opens two panes from one profile, verifies shared localStorage, shared-count labels, and clear/delete protection.)
 - [x] Profile manager lists usage, renames, clears, and deletes profiles safely. (E2e verifies in-use protection, rename persistence, cookie clearing, and metadata deletion; profile actions hide native views while the dialog is open.)
 - [ ] Clear/delete a profile while its panes are open via a close-and-delete flow. (Blocked by design; panes must be closed first.)
-- [ ] Assign an existing profile to a new pane. (Not implemented.)
+- [x] Assign an existing profile to a new pane. (Profile manager Open pane creates a shared-profile pane; the toolbar Add pane remains fresh-profile only.)
 - [x] Session-only cookie and `sessionStorage` limitations are documented. (`SPEC.md`, `README.md`, and architecture docs state the limits.)
 
 ## Workspace
@@ -65,7 +65,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Maximized/focused state restores. (Intentionally not persisted.)
 - [x] Workspace create/rename/duplicate/switch/delete. (E2e creates a second workspace, switches, adds a pane, renames, duplicates with fresh profiles, switches back to the authenticated original, verifies active-state persistence, and deletes the extras.)
 - [ ] Workspace switching keeps background pages warm. (Switching destroys and recreates native views; pages reload.)
-- [ ] Explicit profile assignment/sharing across panes. (Not implemented.)
+- [x] Explicit profile assignment/sharing across panes. (Profile manager Open pane; shared count shown in pane headers and usage.)
 
 ## Viewport emulation
 

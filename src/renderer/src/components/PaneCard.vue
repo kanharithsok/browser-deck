@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
 import {
   VIEWPORT_PRESETS,
@@ -16,11 +16,13 @@ const props = withDefaults(
     freeform?: boolean
     maximized?: boolean
     suspended?: boolean
+    profilePaneCount?: number
   }>(),
   {
     freeform: false,
     maximized: false,
-    suspended: false
+    suspended: false,
+    profilePaneCount: 1
   }
 )
 
@@ -49,6 +51,11 @@ const customDeviceScaleFactor = ref(
   props.pane.viewport.preset === 'custom' ? props.pane.viewport.deviceScaleFactor : 1
 )
 const viewportError = ref<string | null>(null)
+const profileLabelText = computed(() =>
+  props.profilePaneCount > 1
+    ? `${props.pane.profileLabel} · ${props.profilePaneCount} panes`
+    : props.pane.profileLabel
+)
 
 function displayAddress(url: string): string {
   return url === 'about:blank' ? '' : url
@@ -226,8 +233,15 @@ function requestClose(): void {
         <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
 
         <span class="pane-title" :title="pane.title">{{ pane.title }}</span>
-        <span class="pane-profile" :title="`Browser profile: ${pane.profileLabel}`">
-          {{ pane.profileLabel }}
+        <span
+          class="pane-profile"
+          :title="
+            profilePaneCount > 1
+              ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} panes)`
+              : `Browser profile: ${pane.profileLabel}`
+          "
+        >
+          {{ profileLabelText }}
         </span>
 
         <span

@@ -5,6 +5,7 @@ import type { WorkspaceLayout, WorkspaceSummary } from './workspace'
 export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
   addPane: 'paneflow:add-pane',
+  addPaneWithProfile: 'paneflow:add-pane-with-profile',
   closePane: 'paneflow:close-pane',
   navigate: 'paneflow:navigate',
   back: 'paneflow:back',
@@ -100,6 +101,7 @@ export interface PaneMenuRequest {
 export interface PaneFlowApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
+  addPaneWithProfile(profileId: string, url?: string): Promise<ScriptResult>
   closePane(paneId: string): Promise<ScriptResult>
   navigate(paneId: string, address: string): Promise<ScriptResult>
   back(paneId: string): Promise<ScriptResult>

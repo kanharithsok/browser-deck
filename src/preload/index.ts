@@ -13,6 +13,8 @@ import type { WorkspaceLayout } from '../shared/workspace'
 const api: PaneFlowApi = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<ShellState>,
   addPane: (url) => ipcRenderer.invoke(IPC_CHANNELS.addPane, url),
+  addPaneWithProfile: (profileId: string, url?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.addPaneWithProfile, profileId, url),
   closePane: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.closePane, paneId),
   navigate: (paneId, address) => ipcRenderer.invoke(IPC_CHANNELS.navigate, paneId, address),
   back: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.back, paneId),
