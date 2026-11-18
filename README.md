@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, and active-pane accessibility polish. Remaining Phase 4 work covers broader accessibility/profiling and signed/notarized distribution.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, and a 50-cycle loaded-page soak. Remaining Phase 4 work covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution.
 
 ## Current capabilities
 
@@ -31,8 +31,9 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Profile manager dialog with creation dates, live pane usage, rename, and confirmed clear/delete. In-use profiles can be closed and deleted through a single explicit confirmation.
 - Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
 - Workspace manager for create, rename, duplicate, switch, delete, and secret-free import/export. Imported/duplicated workspaces receive fresh profiles.
-- Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline.
-- Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass, viewport-emulation checks, a full workspace/session restart, profile-manager lifecycle checks, and workspace management.
+- Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline, with a configurable loaded-page soak (50 cycles observed).
+- Automated accessibility coverage for the shell toolbar, pane cards, profile dialog, and workspace dialog: accessible roles and names, focus order and visible focus, dialog focus traps and focus return, Chromium CDP accessibility-tree checks, and axe-core WCAG/best-practice audits. Axe is injected through CDP because the production CSP deliberately blocks inline scripts.
+- Deterministic local fixture server, unit tests, and two Playwright Electron tests including an eight-pane alignment/freeform stress pass, viewport-emulation checks, a full workspace/session restart, profile-manager lifecycle checks, workspace management, and the accessibility audit.
 
 The current build does **not** include optional user-agent overrides, background-warm workspace switching, or signed/notarized distribution. See the roadmap in [`SPEC.md`](./SPEC.md).
 
@@ -99,7 +100,7 @@ npm run test:unit
 npm run test:e2e
 ```
 
-The e2e test launches the built app against local fixtures and verifies:
+The e2e tests launch the built app against local fixtures and verify:
 
 - two panes with distinct persistent profiles and isolated cookies/localStorage/IndexedDB;
 - two independent fixture accounts signed in on the same origin, HttpOnly session cookies, and logout isolation;
@@ -118,9 +119,21 @@ The e2e test launches the built app against local fixtures and verifies:
 - rejecting unsupported URLs and unknown pane IDs in main;
 - pane close destroying its `webContents` without touching the other pane;
 - fresh profiles for new panes;
-- authenticated sessions, persistent cookies, localStorage, and profile IDs surviving an app restart.
+- authenticated sessions, persistent cookies, localStorage, and profile IDs surviving an app restart;
+- accessible roles, names, tooltips, dialog descriptions, and expanded states for the shell toolbar, pane cards, profile dialog, and workspace dialog;
+- keyboard tab order across toolbar and pane chrome, visible 2 px focus outlines, active-pane `aria-current`, dialog focus trapping, Escape handling, and focus return to the trigger;
+- Chromium's CDP accessibility tree and axe-core WCAG 2.0/2.1/2.2 A/AA plus best-practice audits for the shell and both dialogs.
 
-The Playwright suite requires a local macOS GUI session. Unit tests include the pure layout engine. The CI workflow is configured to run typecheck, lint, unit tests, and build; e2e remains a local check until headless Electron execution is proven.
+For a longer loaded-page soak:
+
+```bash
+npm run build
+PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts
+```
+
+The observed 50-cycle run took about 16 s, returned to 2 non-destroyed webContents after every cycle, and sampled whole-app working set at 577 MB before and 577 MB after. It is a switch soak, not a peak, per-process, multi-hour, or third-party-page profile.
+
+The Playwright tests require a local macOS GUI session. Unit tests include the pure layout engine. The CI workflow is configured to run typecheck, lint, unit tests, and build; e2e remains a local check until headless Electron execution is proven.
 
 ## Architecture
 
@@ -167,9 +180,9 @@ opencode.jsonc        Project-level OpenCode configuration
 - New panes receive fresh profiles by default; sharing requires the profile manager's Open pane action.
 - Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
-- Active-pane chrome is indicated by an accent border and `aria-current`; dialog triggers expose expanded state, and the toolbar stays overflow-free at the tested 760 px width. A full screen-reader/contrast audit remains.
+- Active-pane chrome is indicated by an accent border and `aria-current`; dialog triggers expose expanded state, and the toolbar stays overflow-free at the tested 760 px width. Automated axe/role/AX checks cover the shell and dialogs, but VoiceOver order/announcements and focus-ring usability still need a manual pass.
 - Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
-- Leak coverage includes a configurable loaded-page switch soak (up to 25 cycles observed: 2 webContents, working set 573 MB → 643 MB). Multi-hour CPU/memory and heavy third-party page profiling are not yet run.
+- Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 577 MB → 577 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
 - Maximized/focused state is not restored across restarts. Window bounds restore only when visible on a current display.
