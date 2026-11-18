@@ -330,6 +330,18 @@ async function clickAppMenuCommand(app: ElectronApplication, id: string): Promis
   }, id)
 }
 
+async function readAppMenuItem(
+  app: ElectronApplication,
+  id: string
+): Promise<{ id: string; accelerator: string | null; enabled: boolean } | null> {
+  return app.evaluate(({ Menu }, menuItemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(menuItemId)
+    return item
+      ? { id: item.id, accelerator: item.accelerator, enabled: item.enabled }
+      : null
+  }, id)
+}
+
 async function shellEvaluate<T>(app: ElectronApplication, script: string): Promise<T> {
   return app.evaluate(async ({ webContents }, source) => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -1089,6 +1101,42 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'duplicate pane close'
     )
 
+    // Custom pane titles are edited inline. Invalid or unknown-pane renames
+    // are rejected in main, and whitespace around a valid name is normalized.
+    const rejectedTitle = await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.paneflow.renamePane(${JSON.stringify(alicePaneId)}, ${JSON.stringify('x'.repeat(81))})`
+    )
+    expect(rejectedTitle.ok).toBe(false)
+    const rejectedUnknownRename = await shellEvaluate<{ ok: boolean }>(
+      app,
+      "window.paneflow.renamePane('unknown-pane', 'Nope')"
+    )
+    expect(rejectedUnknownRename.ok).toBe(false)
+
+    const namedAliceCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+    await namedAliceCard.locator('.pane-title').dblclick()
+    const paneTitleInput = namedAliceCard.locator('.pane-title-input')
+    await expect(paneTitleInput).toBeVisible()
+    await paneTitleInput.fill('  Alice QA  ')
+    await paneTitleInput.press('Enter')
+    await expect(namedAliceCard.locator('.pane-title')).toHaveText('Alice QA')
+    const titledSnapshot = await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => {
+        const pane = state.panes.find((entry) => entry.id === alicePaneId)
+        return pane?.customTitle === 'Alice QA' && pane.title === 'Alice QA'
+      },
+      'custom pane title'
+    )
+    expect(titledSnapshot.panes.find((pane) => pane.id === alicePaneId)?.title).toBe('Alice QA')
+    await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) =>
+        workspace?.panes.find((pane) => pane.id === alicePaneId)?.title === 'Alice QA',
+      'custom pane title to persist'
+    )
+
     await clickAppMenuCommand(app, 'pane-add')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1434,6 +1482,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         state.panes[0]?.profileId === aliceProfileId &&
         (state.panes[0]?.url.includes('/account') ?? false) &&
         !state.panes[0]?.isLoading &&
+        state.panes[0]?.customTitle === 'Alice QA' &&
+        state.panes[0]?.title === 'Alice QA' &&
         state.panes[0]?.viewport.preset === 'mobile' &&
         state.layout.mode === 'freeform' &&
         state.layout.columns === 1 &&
@@ -1502,6 +1552,29 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!restartShell) {
       throw new Error('Restarted shell page is unavailable')
     }
+
+    const restartedAliceCard = restartShell.locator(
+      `.pane-card[data-pane-id="${alicePaneId}"]`
+    )
+    await expect(restartedAliceCard.locator('.pane-title')).toHaveText('Alice QA')
+    await restartedAliceCard.locator('.pane-title').dblclick()
+    const restartedTitleInput = restartedAliceCard.locator('.pane-title-input')
+    await expect(restartedTitleInput).toBeVisible()
+    await restartedTitleInput.fill('')
+    await restartedTitleInput.press('Enter')
+    await expect(restartedAliceCard.locator('.pane-title')).toHaveText('Signed in as Alice')
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.panes[0]?.customTitle === null && state.panes[0]?.title === 'Signed in as Alice',
+      'pane title reset to the page title'
+    )
+    await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) =>
+        workspace?.panes.find((pane) => pane.id === alicePaneId)?.title === undefined,
+      'custom pane title to clear from persistence'
+    )
 
     await expect
       .poll(() => restartShell.getByRole('button', { name: 'Freeform' }).getAttribute('aria-pressed'))
@@ -1589,12 +1662,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       `.profile-row[data-profile-id="${bobProfileId}"]`
     )
     await expect(aliceProfileRow).toContainText('In use by')
-    await expect(aliceProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
-    await expect(aliceProfileRow.getByRole('button', { name: 'Delete' })).toBeEnabled()
+    await expect(aliceProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
+    await expect(aliceProfileRow.getByRole('button', { name: /^Delete/ })).toBeEnabled()
     await expect(bobProfileRow).toContainText('Unused')
-    await expect(bobProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
+    await expect(bobProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
 
-    await bobProfileRow.getByRole('button', { name: 'Rename' }).click()
+    await bobProfileRow.getByRole('button', { name: /^Rename/ }).click()
     const renameInput = bobProfileRow.getByLabel('Profile name')
     await expect(renameInput).toHaveValue('Profile 2')
     await renameInput.fill('Bob QA')
@@ -1604,7 +1677,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await readPersistedProfiles(userDataDir)).find((p) => p.id === bobProfileId)?.label)
       .toBe('Bob QA')
 
-    await bobProfileRow.getByRole('button', { name: 'Clear' }).click()
+    await bobProfileRow.getByRole('button', { name: /^Clear/ }).click()
     await expect(
       bobProfileRow.getByRole('group', { name: /Confirm clear/ })
     ).toContainText('Clear cookies')
@@ -1625,8 +1698,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toBe(0)
     await expect(profilesDialog.getByRole('status')).toContainText('Cleared browser data')
 
-    await bobProfileRow.getByRole('button', { name: 'Delete' }).click()
-    await bobProfileRow.getByRole('button', { name: 'Delete profile' }).click()
+    await bobProfileRow.getByRole('button', { name: /^Delete/ }).click()
+    await bobProfileRow.getByRole('button', { name: 'Delete profile', exact: true }).click()
     await expect(bobProfileRow).toHaveCount(0)
     await expect(profilesDialog.getByRole('status')).toContainText('Deleted profile')
     await expect
@@ -1641,7 +1714,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const sharedProfileRow = profilesDialog.locator(
       `.profile-row[data-profile-id="${sharedProfileId}"]`
     )
-    await sharedProfileRow.getByRole('button', { name: 'Open pane' }).click()
+    await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     await waitFor(
       () => getSnapshot(restartApp),
@@ -1650,7 +1723,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
-    await sharedProfileRow.getByRole('button', { name: 'Open pane' }).click()
+    await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     const sharedState = await waitFor(
       () => getSnapshot(restartApp),
@@ -1694,9 +1767,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
     await expect(sharedProfileRow).toContainText('2 panes:')
-    await expect(sharedProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
-    await expect(sharedProfileRow.getByRole('button', { name: 'Delete' })).toBeEnabled()
-    await sharedProfileRow.getByRole('button', { name: 'Delete' }).click()
+    await expect(sharedProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
+    await expect(sharedProfileRow.getByRole('button', { name: /^Delete/ })).toBeEnabled()
+    await sharedProfileRow.getByRole('button', { name: /^Delete/ }).click()
     await expect(
       sharedProfileRow.getByRole('group', { name: /Confirm delete/ })
     ).toContainText('Close 2 panes')
@@ -1714,6 +1787,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Workspace management: create, switch, rename, duplicate, and delete.
     const originalWorkspaceId = (await getSnapshot(restartApp)).workspace.id
+    expect(await readAppMenuItem(restartApp, 'workspace-next')).toEqual({
+      id: 'workspace-next',
+      accelerator: 'CmdOrCtrl+Shift+]',
+      enabled: false
+    })
+    expect(await readAppMenuItem(restartApp, 'workspace-previous')).toEqual({
+      id: 'workspace-previous',
+      accelerator: 'CmdOrCtrl+Shift+[',
+      enabled: false
+    })
     await restartShell.locator('.workspace-switcher').click()
     const workspacesDialog = restartShell.getByRole('dialog', { name: 'Workspaces' })
     await expect(workspacesDialog).toBeVisible()
@@ -1750,8 +1833,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const secondWorkspaceRow = workspaceRowById(secondWorkspaceId)
     await expect(secondWorkspaceRow).toHaveCount(1)
     await expect(secondWorkspaceRow).toContainText('0 panes')
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
+      .toBe(true)
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
+      .toBe(true)
 
-    await secondWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
+    await secondWorkspaceRow.getByRole('button', { name: /^Switch/ }).click()
     await expect(workspacesDialog).toHaveCount(0)
     await expect(restartShell.locator('.workspace-switcher')).toContainText('Second Workspace')
     await expect(restartShell.locator('.empty-state')).toBeVisible()
@@ -1762,16 +1851,18 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await restartShell.locator('.toolbar .toolbar-button.primary').click()
-    await waitFor(
+    const populatedSecond = await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
       'pane in the second workspace'
     )
+    const secondPane = populatedSecond.panes[0]
+    expect(secondPane).toBeTruthy()
 
     await restartShell.locator('.workspace-switcher').click()
     await expect(workspacesDialog).toBeVisible()
     const renamedWorkspaceRow = workspaceRowById(secondWorkspaceId)
-    await renamedWorkspaceRow.getByRole('button', { name: 'Rename' }).click()
+    await renamedWorkspaceRow.getByRole('button', { name: /^Rename/ }).click()
     await renamedWorkspaceRow.getByLabel('Workspace name').fill('Responsive QA')
     await renamedWorkspaceRow.getByRole('button', { name: 'Save' }).click()
     await expect(renamedWorkspaceRow.locator('.workspace-label-text')).toHaveText('Responsive QA')
@@ -1781,7 +1872,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await restartShell.locator('.workspace-switcher').click()
     await expect(workspacesDialog).toBeVisible()
     await workspaceRowById(secondWorkspaceId)
-      .getByRole('button', { name: 'Duplicate' })
+      .getByRole('button', { name: /^Duplicate/ })
       .click()
     const copyWorkspaceId = await waitFor(
       () => workspaceIdByName('Responsive QA copy').catch(() => ''),
@@ -1790,8 +1881,106 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await expect(workspaceRowById(copyWorkspaceId)).toHaveCount(1)
     await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 pane')
+    await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
+    await expect(workspacesDialog).toHaveCount(0)
 
-    await originalWorkspaceRow.getByRole('button', { name: 'Switch' }).click()
+    // Native Workspace menu shortcuts cycle in name order and restore the
+    // target workspace's panes. Both items re-enable after each switch.
+    const expectWorkspaceMenuEnabled = async (enabled: boolean): Promise<void> => {
+      await expect
+        .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
+        .toBe(enabled)
+      await expect
+        .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
+        .toBe(enabled)
+    }
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-next')
+    const copyActivated = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.id === copyWorkspaceId && state.panes.length === 1,
+      'copy workspace activation from the menu'
+    )
+    const copyPane = copyActivated.panes[0]
+    expect(copyPane).toBeTruthy()
+    expect(copyPane?.id).not.toBe(secondPane?.id)
+    expect(copyPane?.profileId).not.toBe(secondPane?.profileId)
+    expect(copyPane?.url).toBe(secondPane?.url)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-next')
+    const originalViaMenu = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === originalWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === alicePaneId &&
+        state.panes[0]?.profileId === aliceProfileId &&
+        (state.panes[0]?.url.includes('/account') ?? false),
+      'original workspace activation from the menu'
+    )
+    expect(originalViaMenu.panes[0]?.id).toBe(alicePaneId)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-previous')
+    const copyRestored = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === copyWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === copyPane?.id,
+      'copy workspace restore from the menu'
+    )
+    expect(copyRestored.panes[0]?.url).toBe(secondPane?.url)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-previous')
+    const secondRestored = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === secondWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === secondPane?.id,
+      'second workspace restore from the menu'
+    )
+    expect(secondRestored.panes[0]?.profileId).toBe(secondPane?.profileId)
+    expect(secondRestored.panes[0]?.url).toBe(secondPane?.url)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-previous')
+    const wrappedOriginal = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === originalWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === alicePaneId,
+      'workspace previous wraparound'
+    )
+    expect(wrappedOriginal.panes[0]?.profileId).toBe(aliceProfileId)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await clickAppMenuCommand(restartApp, 'workspace-next')
+    const wrappedSecond = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        state.workspace.id === secondWorkspaceId &&
+        state.panes.length === 1 &&
+        state.panes[0]?.id === secondPane?.id,
+      'workspace next wraparound'
+    )
+    expect(wrappedSecond.panes[0]?.id).toBe(secondPane?.id)
+    await waitForAlignedBounds(restartApp)
+    await expectWorkspaceMenuEnabled(true)
+
+    await restartShell.locator('.workspace-switcher').click()
+    await expect(workspacesDialog).toBeVisible()
+    await originalWorkspaceRow.getByRole('button', { name: /^Switch/ }).click()
     await expect(workspacesDialog).toHaveCount(0)
     await expect(restartShell.locator('.workspace-switcher')).toContainText('Workspace')
     const restoredOriginal = await waitFor(
@@ -1813,14 +2002,20 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(workspacesDialog).toBeVisible()
     for (const id of [copyWorkspaceId, secondWorkspaceId]) {
       const row = workspaceRowById(id)
-      await row.getByRole('button', { name: 'Delete' }).click()
-      await row.getByRole('button', { name: 'Delete workspace' }).click()
+      await row.getByRole('button', { name: /^Delete workspace/ }).click()
+      await row.getByRole('button', { name: 'Delete workspace', exact: true }).click()
       await expect(row).toHaveCount(0)
     }
     await expect(workspacesDialog.locator('.workspace-row')).toHaveCount(1)
     await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(workspacesDialog).toHaveCount(0)
     await waitForAlignedBounds(restartApp)
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
+      .toBe(false)
+    await expect
+      .poll(async () => (await readAppMenuItem(restartApp, 'workspace-previous'))?.enabled)
+      .toBe(false)
 
     // Repeated workspace switching and pane churn must not leak webContents
     // or native views.

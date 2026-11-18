@@ -37,9 +37,11 @@ import {
   DEFAULT_WORKSPACE_NAME,
   MIN_APP_WINDOW_HEIGHT,
   MIN_APP_WINDOW_WIDTH,
+  adjacentWorkspaceId,
   defaultWorkspaceLayout,
   type ThemePreference,
   type WindowBounds,
+  type WorkspaceCycleDirection,
   type WorkspacePaneDefinition
 } from '../shared/workspace'
 import {
@@ -67,6 +69,7 @@ let lastPersistedPaneKey = ''
 let quitFlushed = false
 let workspaceSwitching = false
 let devServerUrl: URL | null = null
+let workspaceMenuRefreshToken = 0
 
 app.setName('PaneFlow')
 registerShellScheme()
@@ -137,7 +140,8 @@ function toWorkspacePane(pane: PaneInitialization): WorkspacePaneDefinition {
     id: pane.id,
     profileId: pane.profile.id,
     url: pane.url,
-    viewport: { ...(pane.viewport ?? RESPONSIVE_VIEWPORT) }
+    viewport: { ...(pane.viewport ?? RESPONSIVE_VIEWPORT) },
+    ...(pane.customTitle ? { title: pane.customTitle } : {})
   }
 }
 
@@ -158,7 +162,8 @@ async function createInitialPanes(
         id: pane.id,
         profile,
         url: pane.url,
-        viewport: pane.viewport
+        viewport: pane.viewport,
+        customTitle: pane.title
       })
     }
     return initial
@@ -205,6 +210,11 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
       if (shellView && !shellView.webContents.isDestroyed()) {
         shellView.webContents.send(IPC_CHANNELS.paneFocused, paneId)
       }
+    },
+    onPaneRenameRequested: (paneId) => {
+      if (shellView && !shellView.webContents.isDestroyed()) {
+        shellView.webContents.send(IPC_CHANNELS.paneRenameRequested, paneId)
+      }
     }
   })
 }
@@ -226,16 +236,20 @@ async function switchWorkspaceTo(workspaceId: string): Promise<void> {
   if (workspaceId === store.activeWorkspaceId()) {
     return
   }
-
-  await store.setPanes(current.workspacePanes())
-  await store.flush()
+  if (workspaceSwitching) {
+    throw new Error('A workspace switch is already in progress.')
+  }
 
   const previousWorkspaceId = store.activeWorkspaceId()
   workspaceSwitching = true
   panePersistenceEnabled = false
+  disableWorkspaceMenuActions()
   let nextManager: BrowserManager | null = null
   try {
+    await store.setPanes(current.workspacePanes())
+    await store.flush()
     await store.switchWorkspace(workspaceId)
+
     nextManager = createBrowserManager(window, profiles)
     const initialPanes = await createInitialPanes(profiles, store)
     await nextManager.initialize(initialPanes)
@@ -244,19 +258,40 @@ async function switchWorkspaceTo(workspaceId: string): Promise<void> {
     browserManager = nextManager
     lastPersistedPaneKey = JSON.stringify(nextManager.workspacePanes())
     panePersistenceEnabled = true
-    sendShellState()
   } catch (error) {
     nextManager?.destroyAll()
-    try {
-      await store.switchWorkspace(previousWorkspaceId)
-    } catch (rollbackError) {
-      console.error('Could not restore the previous workspace.', rollbackError)
+    if (store.activeWorkspaceId() !== previousWorkspaceId) {
+      try {
+        await store.switchWorkspace(previousWorkspaceId)
+      } catch (rollbackError) {
+        console.error('Could not restore the previous workspace.', rollbackError)
+      }
     }
     panePersistenceEnabled = true
     throw error
   } finally {
     workspaceSwitching = false
+    await refreshWorkspaceMenu()
   }
+  sendShellState()
+}
+
+async function switchWorkspaceByOffset(direction: WorkspaceCycleDirection): Promise<void> {
+  const store = workspaceStore
+  if (!store || !browserManager || !mainWindow || workspaceSwitching) {
+    return
+  }
+  const workspaces = await store.listWorkspaces()
+  const targetId = adjacentWorkspaceId(workspaces, store.activeWorkspaceId(), direction)
+  if (targetId) {
+    await switchWorkspaceTo(targetId)
+  }
+}
+
+function cycleWorkspace(direction: WorkspaceCycleDirection): void {
+  void switchWorkspaceByOffset(direction).catch((error: unknown) => {
+    console.error('Could not switch workspaces from the menu.', error)
+  })
 }
 
 async function exportWorkspaceTransfer(workspaceId: string): Promise<WorkspaceTransferResult> {
@@ -367,7 +402,8 @@ async function duplicateWorkspace(sourceId: string): Promise<void> {
       id: paneId,
       profileId: profile.id,
       url: pane.url,
-      viewport: { ...pane.viewport }
+      viewport: { ...pane.viewport },
+      ...(pane.title ? { title: pane.title } : {})
     })
   }
 
@@ -510,6 +546,38 @@ function applyThemePreference(theme: ThemePreference, persist = true): void {
   }
 }
 
+function applyWorkspaceMenuEnabled(enabled: boolean): void {
+  const menu = Menu.getApplicationMenu()
+  for (const id of ['workspace-previous', 'workspace-next'] as const) {
+    const item = menu?.getMenuItemById(id)
+    if (item) {
+      item.enabled = enabled
+    }
+  }
+}
+
+function disableWorkspaceMenuActions(): void {
+  workspaceMenuRefreshToken += 1
+  applyWorkspaceMenuEnabled(false)
+}
+
+async function refreshWorkspaceMenu(): Promise<void> {
+  const token = ++workspaceMenuRefreshToken
+  const store = workspaceStore
+  let enabled = false
+  if (store && browserManager && !workspaceSwitching) {
+    try {
+      enabled = (await store.listWorkspaces()).length > 1
+    } catch (error) {
+      console.error('Could not read workspaces for the menu.', error)
+    }
+  }
+  if (token !== workspaceMenuRefreshToken || workspaceSwitching) {
+    return
+  }
+  applyWorkspaceMenuEnabled(enabled)
+}
+
 function buildApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
 
@@ -522,6 +590,25 @@ function buildApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
     { role: 'fileMenu' },
+    {
+      label: 'Workspace',
+      submenu: [
+        {
+          id: 'workspace-next',
+          label: 'Next Workspace',
+          accelerator: 'CmdOrCtrl+Shift+]',
+          enabled: false,
+          click: () => cycleWorkspace('next')
+        },
+        {
+          id: 'workspace-previous',
+          label: 'Previous Workspace',
+          accelerator: 'CmdOrCtrl+Shift+[',
+          enabled: false,
+          click: () => cycleWorkspace('previous')
+        }
+      ]
+    },
     { role: 'editMenu' },
     {
       label: 'Pane',
@@ -814,6 +901,7 @@ async function createWindow(): Promise<void> {
     browserManager = null
     panePersistenceEnabled = false
     lastPersistedPaneKey = ''
+    disableWorkspaceMenuActions()
 
     if (!shell.webContents.isDestroyed()) {
       shell.webContents.removeAllListeners()
@@ -858,6 +946,7 @@ async function createWindow(): Promise<void> {
     await loadShell(shell, devServer)
     applySavedWindowBounds(window, store)
     syncShellBounds(window, shell)
+    await refreshWorkspaceMenu()
     window.show()
     applyThemePreference(store.theme(), false)
     requestMeasurement()
@@ -988,13 +1077,20 @@ app.whenReady().then(async () => {
       }
     },
     exportWorkspace: (workspaceId) => exportWorkspaceTransfer(workspaceId),
-    importWorkspace: () => importWorkspaceTransfer(),
+    importWorkspace: async () => {
+      const result = await importWorkspaceTransfer()
+      if (result.ok && !result.canceled) {
+        await refreshWorkspaceMenu()
+      }
+      return result
+    },
     createWorkspace: async (name) => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }
       }
       try {
         await workspaceStore.createWorkspace(name)
+        await refreshWorkspaceMenu()
         return { ok: true }
       } catch (error) {
         return { ok: false, error: messageFromError(error, 'Could not create the workspace.') }
@@ -1018,6 +1114,7 @@ app.whenReady().then(async () => {
     duplicateWorkspace: async (workspaceId) => {
       try {
         await duplicateWorkspace(workspaceId)
+        await refreshWorkspaceMenu()
         return { ok: true }
       } catch (error) {
         return { ok: false, error: messageFromError(error, 'Could not duplicate the workspace.') }
@@ -1037,6 +1134,7 @@ app.whenReady().then(async () => {
       }
       try {
         await workspaceStore.deleteWorkspace(workspaceId)
+        await refreshWorkspaceMenu()
         return { ok: true }
       } catch (error) {
         return { ok: false, error: messageFromError(error, 'Could not delete the workspace.') }

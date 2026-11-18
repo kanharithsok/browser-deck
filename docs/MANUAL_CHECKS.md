@@ -2,7 +2,7 @@
 
 Use local fixture pages and test accounts only. Never record real credentials or private page content.
 
-Legend: checked items were verified in the phase recorded in `docs/PHASE_REPORTS.md`; the original Phase 0 environment was macOS 27.2.1, Apple M4, Retina display, Electron 45.3.4. Unchecked items still need a separate check.
+Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1, Apple M4, Retina display, Electron 45.3.4 unless a later phase is named inline. Unchecked items belong to later phases or still need a separate check. Phase 4 accessibility items state whether they are automated or still require manual review.
 
 ## Native views and interaction
 
@@ -38,6 +38,7 @@ Legend: checked items were verified in the phase recorded in `docs/PHASE_REPORTS
 - [ ] Add, remove, rename, duplicate, and reorder panes. (Add/remove and drag reorder work; rename/duplicate pending.)
 - [x] Drag a pane to change grid order. (E2e drags both directions; native views hide during drag and restore aligned.)
 - [x] Keyboard/menu pane and layout actions. (Native Pane menu commands for add, close, reload, maximize, and layout are exercised by e2e; raw key chords remain a follow-up.)
+- [x] Next/previous workspace menu shortcuts. (E2e invokes `workspace-next` and `workspace-previous`, verifies accelerator metadata, restored pane/profile identity, wrapping, and disabled state when only one workspace exists.)
 - [ ] Keyboard pane reordering. (Pending.)
 - [x] Eight-pane grid/freeform alignment stress. (E2e adds to eight panes, drags/resizes, z-orders, maximizes, and checks native alignment.)
 - [x] Grid column changes and reflow. (Selector exposes 1–5; e2e verifies 2 → 5 → 1 → 2 and native alignment.)
@@ -84,25 +85,33 @@ Legend: checked items were verified in the phase recorded in `docs/PHASE_REPORTS
 
 ## Accessibility and appearance
 
-- [x] Icon-only controls have accessible names and tooltips. (Code review and Playwright role-based clicks.)
-- [x] Keyboard focus is visible on shell controls. (Focus ring improved to use the accent color; address error is linked with `aria-describedby`.)
-- [x] Focus moves to the new pane after add and recovers to an address control after close. (E2e assertions.)
-- [ ] Keyboard focus can enter native browser content and return to chrome. (Native pane focus handoff is Phase 2.)
-- [ ] Full screen-reader pass across toolbar, pane chrome, and status announcements. (Not run.)
+Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/accessible-name checks, keyboard focus order and focus-visible assertions, dialog focus trapping and focus return, Chromium's CDP accessibility tree, and an axe-core WCAG 2.x/best-practice audit for the shell toolbar, pane cards, profile dialog, and workspace dialog. VoiceOver and other screen-reader behavior still require manual review; axe cannot verify spoken order, announcements, or whether a focus ring is meaningful to a particular user.
+
+- [x] Icon-only controls have accessible names and tooltips. (Automated role/name checks for reload-all, pane actions, maximize/restore, close, and navigation; tooltips are asserted for shell reload-all, maximize, pane actions, close, and reload pane.)
+- [x] Keyboard focus is visible on shell controls. (Automated Tab/Shift+Tab assertions verify `:focus-visible` and a 2 px accent outline; the dialog container shows the same ring when opened from the keyboard.)
+- [x] Focus moves to the new pane after add and recovers to an address control after close. (Existing e2e assertions.)
+- [x] Tab order crosses the toolbar, pane controls, address, and viewport controls in DOM order without entering native content. (Automated forward/reverse focus assertions; disabled Back/Forward are skipped.)
+- [x] The active pane is visible and announced. (Exactly one accent-bordered card with `aria-current="true"`; focus moves the active card.)
+- [x] Dialog triggers expose `aria-haspopup`/`aria-expanded` and named workspace state. (Automated before/after open assertions.)
+- [x] Profile and workspace dialogs expose names/descriptions, focus the dialog on open, trap Tab/Shift+Tab, close on Escape, and return focus to the trigger. (Automated keyboard-only test.)
+- [x] Repeated profile/workspace row actions have unique contextual accessible names. (Open pane, Rename, Clear, Delete, Switch, Duplicate now include the profile/workspace label.)
+- [x] The shell has one level-1 heading and dialogs do not create duplicate banner landmarks. (Axe best-practice/landmark audit; dialog header wrappers changed from `<header>` to `<div>`.)
+- [x] Automated axe WCAG 2.0/2.1/2.2 A/AA plus best-practice audit passes for the shell and both dialogs. (axe-core 4.11.0 injected through CDP `Runtime.evaluate`, because the shell CSP blocks inline script injection.)
+- [ ] Keyboard focus can enter native browser content and return to chrome. (Native pane focus handoff is Phase 2; not automated.)
+- [ ] Full screen-reader pass across toolbar, pane chrome, status announcements, and dialogs. (VoiceOver was not run; automated accessibility-tree checks do not replace it.)
 - [x] System light/dark tokens resolve correctly. (E2e emulates both color schemes; dark appearance manually reviewed.)
 - [x] Contrast audit across defined light/dark token pairs. (`npm run check:contrast` verifies 13 pairs per theme; full control/state screenshot audit remains.)
 - [x] Reduced-motion behavior. (Global media rule disables animations/transitions/smooth scrolling when requested.)
-- [x] Active pane is visible and announced. (E2e verifies one accent-bordered `aria-current` card and updates it from focus.)
 - [x] Narrow-window and minimum-pane-width control usability. (E2e verifies no toolbar overflow at 760 px; pane headers wrap at five columns.)
-- [x] Dialog triggers expose `aria-haspopup`/`aria-expanded` and named workspace state. (E2e assertions.)
 - [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
 
 ## Performance and lifecycle
 
-- [x] Repeated workspace switching does not leak `webContents` or native views. (E2e performs four round trips with a four-pane stress workspace, two loaded fixture pages, and compares non-destroyed webContents/view counts after every return.)
+- [x] Repeated workspace switching does not leak `webContents` or native views. (E2e creates a four-pane stress workspace with two loaded fixture pages and compares non-destroyed webContents/view counts after every return; default 3 cycles, configurable via `PANEFLOW_STRESS_CYCLES`.)
 - [x] Eight-pane grid/freeform alignment stress. (Existing e2e pass.)
-- [x] Short loaded-page soak with memory sampling. (8 cycles: 2 webContents, 575 MB → 515 MB; 25 cycles: 2 webContents, 573 MB → 643 MB.)
-- [ ] Multi-hour memory/CPU profiling with loaded third-party pages. (Not run.)
+- [x] Short loaded-page soak with memory sampling. (8 cycles: 2 webContents, 575 MB → 515 MB; 25 cycles: 2 webContents, 573 MB → 643 MB; final merged-branch 50 cycles: 2 webContents, 588 MB → 682 MB; earlier runs: 577 MB → 577 MB and 581 MB → 677 MB.)
+- [x] Accessibility suite starts and closes a separate Electron app cleanly without affecting the main integration run. (Two Playwright tests pass in one worker.)
+- [ ] Multi-hour memory/CPU profiling with loaded third-party pages. (Not run. Working set is sampled before/after, not peak, and 50 cycles take ≈19 s.)
 - [ ] CPU/frame measurement during drag, resize, and scrolling. (Not run.)
 
 ## Packaging

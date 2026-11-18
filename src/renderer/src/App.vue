@@ -44,6 +44,7 @@ interface ProfileActionState {
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
+const paneRenameRequests = ref<Record<string, number>>({})
 const layoutMode = ref<LayoutMode>('grid')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
@@ -102,6 +103,7 @@ let disposeStateListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
+let disposeRenameListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
 let focusManagementEnabled = false
@@ -215,6 +217,17 @@ function focusPaneAddress(paneId: string): void {
   )
   input?.focus()
   input?.select()
+}
+
+function requestPaneRename(paneId: string): void {
+  if (!panes.value.some((pane) => pane.id === paneId)) {
+    return
+  }
+  activePaneId.value = paneId
+  paneRenameRequests.value = {
+    ...paneRenameRequests.value,
+    [paneId]: (paneRenameRequests.value[paneId] ?? 0) + 1
+  }
 }
 
 function recoverFocus(): void {
@@ -1605,6 +1618,7 @@ onMounted(async () => {
       activePaneId.value = paneId
     }
   })
+  disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -1636,6 +1650,7 @@ onBeforeUnmount(() => {
   disposeMeasureListener?.()
   disposeCommandListener?.()
   disposeFocusListener?.()
+  disposeRenameListener?.()
   resizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('pointermove', onPointerMove)
@@ -1651,7 +1666,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="app-shell" :class="{ 'is-dragging': isDragging }">
     <header class="toolbar">
-      <span class="brand">PaneFlow</span>
+      <h1 class="brand">PaneFlow</h1>
 
       <button
         ref="workspacesButtonEl"
@@ -1790,6 +1805,7 @@ onBeforeUnmount(() => {
             :suspended="suspendedPaneIds.has(pane.id)"
             :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
+            :rename-request="paneRenameRequests[pane.id] ?? 0"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
             @toggle-maximize="toggleMaximize(pane.id)"
@@ -1840,7 +1856,7 @@ onBeforeUnmount(() => {
         tabindex="-1"
         @keydown="onProfilesKeydown"
       >
-        <header class="profiles-header">
+        <div class="profiles-header">
           <div>
             <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
             <p id="profiles-description" class="profiles-description">
@@ -1859,7 +1875,7 @@ onBeforeUnmount(() => {
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
           </button>
-        </header>
+        </div>
 
         <div v-if="profileError" class="profiles-message profiles-error" role="alert">
           {{ profileError }}
@@ -1917,6 +1933,7 @@ onBeforeUnmount(() => {
                 type="button"
                 :disabled="profileBusy"
                 title="Open a new pane using this profile and share its cookies/storage."
+                :aria-label="`Open pane with profile ${profile.label}`"
                 @click="openPaneWithProfile(profile)"
               >
                 Open pane
@@ -1925,6 +1942,7 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="profileBusy"
+                :aria-label="`Rename profile ${profile.label}`"
                 @click="startProfileRename(profile)"
               >
                 Rename
@@ -1933,6 +1951,7 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="profileBusy"
+                :aria-label="`Clear browser data for profile ${profile.label}`"
                 :title="
                   profile.inUse
                     ? 'Close its panes and clear cookies, storage, and cache.'
@@ -1946,6 +1965,7 @@ onBeforeUnmount(() => {
                 class="text-button text-button-danger"
                 type="button"
                 :disabled="profileBusy"
+                :aria-label="`Delete profile ${profile.label}`"
                 :title="
                   profile.inUse
                     ? 'Close its panes and delete this profile and its browser data.'
@@ -2024,7 +2044,7 @@ onBeforeUnmount(() => {
         tabindex="-1"
         @keydown="onWorkspacesKeydown"
       >
-        <header class="profiles-header">
+        <div class="profiles-header">
           <div>
             <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
             <p id="workspaces-description" class="profiles-description">
@@ -2043,7 +2063,7 @@ onBeforeUnmount(() => {
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
           </button>
-        </header>
+        </div>
 
         <div v-if="workspaceError" class="profiles-message profiles-error" role="alert">
           {{ workspaceError }}
@@ -2123,6 +2143,7 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="workspaceBusy || workspace.active"
+                :aria-label="`Switch to workspace ${workspace.name}`"
                 @click="switchToWorkspace(workspace)"
               >
                 Switch
@@ -2131,6 +2152,7 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="workspaceBusy"
+                :aria-label="`Rename workspace ${workspace.name}`"
                 @click="startWorkspaceRename(workspace)"
               >
                 Rename
@@ -2139,6 +2161,7 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="workspaceBusy"
+                :aria-label="`Duplicate workspace ${workspace.name}`"
                 @click="duplicateWorkspace(workspace)"
               >
                 Duplicate
@@ -2147,6 +2170,7 @@ onBeforeUnmount(() => {
                 class="text-button text-button-danger"
                 type="button"
                 :disabled="workspaceBusy || workspace.active || workspaces.length <= 1"
+                :aria-label="`Delete workspace ${workspace.name}`"
                 @click="requestWorkspaceDelete(workspace)"
               >
                 Delete
@@ -2230,6 +2254,7 @@ onBeforeUnmount(() => {
 }
 
 .brand {
+  margin: 0;
   font-size: 13px;
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -2513,6 +2538,11 @@ onBeforeUnmount(() => {
   background: var(--surface);
   color: var(--text);
   outline: none;
+}
+
+.profiles-dialog:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .profiles-header {

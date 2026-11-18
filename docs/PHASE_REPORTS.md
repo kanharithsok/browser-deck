@@ -322,7 +322,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 
 ## Phase 4 — Polish and macOS packaging
 
-- **Status:** In progress. Window bounds, workspace management/import-export, duplicate pane, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, and shell/IPC/session security hardening are implemented and verified; broader accessibility profiling and signed/notarized distribution remain.
+- **Status:** In progress. Window bounds, workspace management/import-export, workspace cycling shortcuts, duplicate pane, custom pane names, profile lifecycle, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, active-pane accessibility polish, automated accessibility checks, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified; a VoiceOver/screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution remain.
 
 ### Delivered so far
 
@@ -332,11 +332,18 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - Normal bounds are persisted after debounced move/resize/maximize/fullscreen changes and flushed on close. Maximized/fullscreen state itself is not persisted.
 - App-state writes capture the workspace path at enqueue time, preventing a queued save from writing into a different active workspace.
 - 2 new unit tests cover window-bounds validation and store persistence; the restart e2e sets a distinctive 1120 × 760 window, verifies the bounds in `app-state.json`, and checks restoration after relaunch.
+- Workspace shortcuts:
+  - added a native **Workspace** menu with stable IDs `workspace-next` and `workspace-previous` and accelerators `Cmd/Ctrl+Shift+]` and `Cmd/Ctrl+Shift+[`;
+  - both items call the existing trusted `switchWorkspaceTo` main-process path directly; no new IPC surface or renderer keyboard handler was added;
+  - workspace cycling uses deterministic name order with wraparound from a pure shared helper;
+  - switches are serialized so a second menu action cannot overlap an in-flight switch; menu items disable during switching and while the window is unavailable;
+  - menu enabled state refreshes after startup, workspace create/import/duplicate/delete/switch, and becomes disabled when only one workspace remains;
+  - e2e invokes both real menu items, verifies `Cmd/Ctrl+Shift+]`/`[` metadata, cycles through three workspaces in both directions including wraparound, confirms each target's pane IDs, profiles, URLs, and native view alignment, and checks enabled state before creation and after deletion.
 - Workspace management:
   - `WorkspaceStore` now lists, creates, renames, duplicates, switches, and deletes validated workspace files with unique case-insensitive names.
   - The active workspace ID is persisted in `app-state.json`; deleting the active or last workspace is blocked.
   - Switching persists the current pane definitions and layout, destroys the current native manager/views, creates the target panes and profiles, restores its persisted layout, and sends a full state refresh.
-  - Duplicating a workspace copies pane URLs/viewports and maps layout order/freeform geometry to new pane IDs while generating fresh profiles for every pane.
+  - Duplicating a workspace copies pane URLs/viewports/custom titles and maps layout order/freeform geometry to new pane IDs while generating fresh profiles for every pane.
   - A toolbar workspace switcher opens a trusted dialog with active-state badges, pane counts, create, rename, duplicate, switch, and confirmed delete actions. Native views hide while the dialog is open.
   - The renderer resets pane/order/layout state when the workspace ID changes and applies the target workspace's saved layout.
   - Main-process test hooks now read the current manager/store rather than a captured initial manager, so switching works under e2e inspection.
@@ -377,11 +384,17 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - E2e deletes the two-pane shared profile through this flow, verifies both panes close, the profile row disappears, Alice remains, and native alignment restores.
 - Duplicate pane:
   - native **Pane → Duplicate Pane** (`CmdOrCtrl+D`) and pane context-menu action duplicate the active/source pane;
-  - the duplicate always receives a fresh profile and copies the source URL and viewport settings;
+  - the duplicate always receives a fresh profile and copies the source URL, viewport settings, and custom title;
   - added a validated `duplicate-pane` IPC path and renderer command handler;
   - e2e duplicates Alice, verifies the new pane has a fresh profile and matching URL/viewport, then closes it.
+- Custom pane names:
+  - double-clicking a pane title starts inline editing; the native pane context menu also exposes **Rename Pane…**;
+  - main validates the pane ID and title text (`rename-pane` IPC), trims whitespace, limits names to 80 characters, and rejects control characters;
+  - `BrowserManager` keeps the live page title separate from the optional `customTitle`, so clearing the field restores the current page title immediately;
+  - custom titles persist in workspace JSON, restart with the workspace, are copied by duplicate pane/workspace, and round-trip through workspace import/export while profile IDs and session data stay excluded;
+  - e2e rejects unsafe/unknown-pane renames, renames Alice inline, verifies the workspace file and restart restore, then clears the name and verifies the page title returns and the stored title is removed.
 - Workspace import/export:
-  - added a versioned `paneflow-workspace` transfer format containing only name, pane URLs, viewport settings, and index-based layout;
+  - added a versioned `paneflow-workspace` transfer format containing only name, pane URLs, viewport settings, custom titles, and index-based layout;
   - profile IDs, cookies, storage, session data, executable content, and filesystem paths are never exported;
   - export uses a native Save dialog and atomic JSON write; import uses a native Open dialog, a 1 MB size limit, strict schema/URL/viewport/layout validation, and fresh profiles;
   - imported workspaces receive new IDs, pane IDs, profiles, a unique `(imported)` name, and mapped grid/freeform order/geometry;
@@ -414,29 +427,48 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - partition directory removal uses the validated UUID-only `paneflow-profile-<uuid>` helper; profile clearing uses the hardened session accessor;
   - workspace import verifies the selected path is a regular file and read failures return a safe error; transfer validation rejects credential-bearing and oversized URLs and prototype-pollution-style freeform keys;
   - added Electron fuses to `electron-builder.yml`: RunAsNode and Node options/inspector arguments disabled, file-protocol extra privileges disabled, embedded ASAR integrity and only-load-from-ASAR enabled, ad-hoc Darwin signature reset;
-  - added 10 unit tests for CSP, trusted shell documents, shell asset path/MIME handling, partition directory validation, credential/length URL rejection, and import hardening (114 tests total);
+  - added 10 unit tests for CSP, trusted shell documents, shell asset path/MIME handling, partition directory validation, credential/length URL rejection, and import hardening;
   - extended e2e to verify the `paneflow://shell/index.html` shell URL, inline-script and cross-origin-fetch CSP blocking, invalid-sender rejection from a separate node-enabled `BrowserWindow`, and blocked remote `file:`/`data:` navigation;
   - added `SECURITY.md` covering threat boundaries, secret handling, unsigned/local distribution, and the packaging checklist, and updated README, architecture, decisions, and manual checks.
+- Accessibility automation and audit:
+  - added `tests/e2e/accessibility.spec.ts`, a second Playwright Electron test that launches the built app independently and inspects the shell toolbar, pane cards, profile dialog, and workspace dialog;
+  - role/accessible-name assertions cover the level-1 heading, banner, browser-workspace main landmark, layout group and pressed states, column selector, pane count status, dialog triggers, pane articles, address/viewport/scale controls, and icon-only actions;
+  - keyboard checks verify toolbar → pane control tab order, disabled Back/Forward skipping, visible 2 px focus outlines, active-pane `aria-current` updates, dialog focus trapping with Tab/Shift+Tab, Escape closing, and focus return to the trigger;
+  - Chromium's native accessibility tree is inspected through CDP `Accessibility.getFullAXTree` for the shell and both open dialogs;
+  - axe-core 4.11.0 runs against the rendered document with WCAG 2.0/2.1/2.2 A/AA and best-practice tags; it is evaluated through CDP `Runtime.evaluate` because the shell CSP correctly blocks inline script injection (`page.addScriptTag` fails under `script-src 'self'`);
+  - the audit is clean for the shell with two loaded panes and for both dialogs after creating a second workspace;
+  - fixed confirmed defects: the shell had no level-1 heading; dialog `<header>` elements created duplicate banner landmarks; repeated profile/workspace row actions had context-free names (`Clear`, `Delete`, `Switch`, etc.); pane articles were named `Pane one pane`; the keyboard-focused dialog container had no visible focus ring;
+  - profile/workspace row actions now include the profile or workspace label in their accessible names while retaining the visible labels;
+  - VoiceOver/screen-reader order and announcements remain a manual check; axe and the CDP tree cannot verify the spoken experience.
+- 50-cycle loaded-page soak:
+  - `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` exercised 50 round trips between the authenticated original workspace and a four-pane stress workspace with two loaded fixture pages;
+  - non-destroyed webContents returned to the baseline of 2 after every cycle, and the active native view count returned to 1 after every return;
+  - whole-app working set was 588 MB before and 682 MB after the 50 cycles on the final merged branch; earlier runs measured 577 MB → 577 MB and 581 MB → 677 MB. This is a before/after sample, not a peak or per-process measurement;
+  - the final merged-branch run took ≈19.7 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
-| `npm run test:unit` | Passed: 11 files, 114 tests. Includes CSP/trusted-shell-url/asset-path tests, partition-directory validation, credential/oversized URL rejection, and import validation. |
+| `npm run test:unit` | Passed: 11 files, 121 tests. Includes workspace cycling, custom-title validation, CSP/trusted-shell-url/asset-path tests, partition-directory validation, credential/oversized URL rejection, and import validation. |
 | `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
 | `npm run lint` | Passed with no warnings or errors. |
-| `npm run check:contrast` | Passed earlier in Phase 4: 13 light and 13 dark token pairs meet WCAG thresholds. Not rerun in this security slice; token CSS is unchanged. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.4 s. Existing browser/workspace coverage plus `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection from a separate node-enabled webContents, and blocked remote `file:`/`data:` navigation. |
-| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. Not rerun in this security slice. |
-| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. Not rerun in this security slice. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (107.79 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
-| `npm run package:dir` | Passed. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
-| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; ASAR integrity validation and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
-| `npm run package:mac` | Passed earlier in Phase 4: produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt in this security slice; `package:dir` exercised the new fuse configuration. |
+| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
+| `npm run test:e2e` | Passed: 2 Playwright tests, 13.8 s. Integration coverage includes native/session/lifecycle/workspace/rename/shortcut behavior, `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection, and blocked remote `file:`/`data:` navigation; the accessibility test covers roles, names, focus, dialogs, the CDP tree, and axe audits. |
+| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
+| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
+| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 19.7 s on the final merged branch. Fifty cycles ended with 2 webContents and working set 588 MB → 682 MB. Earlier 50-cycle runs measured 577 MB → 577 MB and 581 MB → 677 MB. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (114.38 kB), preload (5.75 kB), renderer bundle (271.17 kB), and CSS (22.81 kB). |
+| `npm run package:dir` | Passed on the final merged branch. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
+| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; embedded ASAR integrity and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
+| `npm run package:mac` | Passed earlier in Phase 4: produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt after the security merge; `package:dir` exercised the merged fuse configuration. |
 | Packaged bundle inspection | Passed earlier: binary arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`; unsigned/ad-hoc. |
 | Packaged launch | Passed earlier. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
+| Packaged shell smoke (final merged branch) | Passed. Fresh `dist/mac-arm64/PaneFlow.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "PaneFlow"` and `url: "paneflow://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
 
-### Security hardening verification (2026-11-19)
+### Security hardening verification (security branch, pre-merge)
+
+The security slice was verified before merging the rename and accessibility branches; the final merged table above is authoritative.
 
 | Check | Result |
 | --- | --- |
@@ -470,12 +502,16 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 - The shell CSP deliberately keeps `style-src 'unsafe-inline'` for Vue's inline pane geometry, while inline script and eval are blocked.
 - Development CSP adds the exact loopback Vite origin and WebSocket; production has no such allowance. The automated e2e suite runs the production shell path. A dev shell smoke check rendered Vue under the development CSP, but HMR live-reload behavior is not automated.
 - Workspace exports include pane URLs verbatim, including query strings. Credential-bearing URL userinfo is rejected, but users must still avoid secret query parameters.
-- Fuses and ASAR integrity were verified through `npm run package:dir` and a packaged launch; the DMG/ZIP were not rebuilt in this security slice.
+- Fuses and ASAR integrity were verified through `npm run package:dir` and a packaged launch; the DMG/ZIP were not rebuilt in the security slice.
 - The packaged launch smoke check fetched the shell URL over Chromium remote debugging, then terminated the process rather than exercising a full interactive packaged session.
-- Leak stress covers four panes with two loaded fixture pages; the longest soak is 25 cycles (≈14.5 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
-- Working-set sampling is informational, not a pass/fail memory threshold; the 25-cycle run grew by ~70 MB.
-- Duplicate pane copies only URL/viewport; custom titles are not copied, sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
+- Automated accessibility checks cover roles, names, focus order/traps, landmarks, and axe rules; VoiceOver spoken order, live-region timing, and the practical usability of focus rings still require a manual screen-reader pass.
+- axe-core audits the trusted shell only; remote fixture/website content inside native panes is untrusted and not included in the shell accessibility audit.
+- Leak stress covers four panes with two loaded fixture pages; the longest soak is 50 cycles (≈19 s), not multi-hour profiling, and does not include heavy third-party pages or CPU/frame metrics.
+- Working-set sampling is informational, not a pass/fail memory threshold; the final merged-branch 50-cycle run grew from 588 MB to 682 MB, so it does not establish long-term memory stability.
+- Duplicate pane copies URL/viewport/custom title; sharing requires the profile-manager Open pane flow, and duplication is available through menus/IPC rather than a header button.
+- Shortcut e2e coverage invokes the real native menu items and verifies accelerator metadata; it does not synthesize OS-level key chords.
+- Workspace cycling order is alphabetical by name; there is no user-defined workspace order.
 
 ### Next smallest slice
 
-Finish accessibility, keyboard, minimum-window, and visual polish; then add long-duration memory/CPU profiling with loaded pages. Security hardening is complete for the unsigned/local build; Developer ID signing and notarization remain credential-gated.
+Run a manual VoiceOver pass across the toolbar, pane chrome, status announcements, and both dialogs; then add longer CPU/memory profiling with loaded third-party pages. Security hardening is complete for the unsigned/local build; Developer ID signing and notarization remain credential-gated.

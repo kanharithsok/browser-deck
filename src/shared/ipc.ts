@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   addPaneWithProfile: 'paneflow:add-pane-with-profile',
   duplicatePane: 'paneflow:duplicate-pane',
   closePane: 'paneflow:close-pane',
+  renamePane: 'paneflow:rename-pane',
   navigate: 'paneflow:navigate',
   back: 'paneflow:back',
   forward: 'paneflow:forward',
@@ -37,6 +38,7 @@ export const IPC_CHANNELS = {
   showPaneMenu: 'paneflow:show-pane-menu',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
+  paneRenameRequested: 'paneflow:pane-rename-requested',
   stateChanged: 'paneflow:state-changed',
   requestMeasurement: 'paneflow:request-measurement'
 } as const
@@ -82,6 +84,7 @@ export interface PaneState {
   profileId: string
   profileLabel: string
   title: string
+  customTitle: string | null
   url: string
   isLoading: boolean
   canGoBack: boolean
@@ -117,6 +120,7 @@ export interface PaneFlowApi {
   addPaneWithProfile(profileId: string, url?: string): Promise<ScriptResult>
   duplicatePane(paneId: string): Promise<ScriptResult>
   closePane(paneId: string): Promise<ScriptResult>
+  renamePane(paneId: string, title: string): Promise<ScriptResult>
   navigate(paneId: string, address: string): Promise<ScriptResult>
   back(paneId: string): Promise<ScriptResult>
   forward(paneId: string): Promise<ScriptResult>
@@ -144,4 +148,5 @@ export interface PaneFlowApi {
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
   onPaneFocused(listener: (paneId: string) => void): () => void
+  onPaneRenameRequested(listener: (paneId: string) => void): () => void
 }
