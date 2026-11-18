@@ -8,6 +8,7 @@ import {
   nativeTheme,
   screen,
   session,
+  webContents,
   WebContentsView,
   type MenuItemConstructorOptions
 } from 'electron'
@@ -724,6 +725,8 @@ async function createWindow(): Promise<void> {
     viewOrder: () => browserManager?.viewOrder() ?? [],
     readCookie: (paneId) => browserManager?.readCookie(paneId) ?? Promise.resolve(null),
     webContentsId: (paneId) => browserManager?.getWebContentsId(paneId) ?? null,
+    webContentsCount: () =>
+      webContents.getAllWebContents().filter((contents) => !contents.isDestroyed()).length,
     shellWebContentsId: () => (shell.webContents.isDestroyed() ? null : shell.webContents.id),
     contentBounds: () => {
       if (window.isDestroyed()) {

@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging. Remaining Phase 4 work covers performance, polish, import/export, and signed/notarized distribution.
+> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, and unsigned arm64 macOS packaging, and repeated-switch leak stress. Remaining Phase 4 work covers import/export, close-and-delete flows, polish, and signed/notarized distribution.
 
 ## Current capabilities
 
@@ -31,6 +31,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Profile manager dialog with creation dates, live pane usage, rename, confirmed clear, and safe delete. Clear/delete are blocked while a profile is in use.
 - Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
 - Workspace manager for create, rename, duplicate, switch, and delete, with active-state persistence and fresh profiles for duplicated panes.
+- Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline.
 - Deterministic local fixture server, unit tests, and a Playwright Electron integration test including an eight-pane alignment/freeform stress pass, viewport-emulation checks, a full workspace/session restart, profile-manager lifecycle checks, and workspace management.
 
 The current build does **not** include optional user-agent overrides, background-warm workspace switching, workspace import/export, packaging, or macOS signing. See the roadmap in [`SPEC.md`](./SPEC.md).
@@ -164,6 +165,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - New panes receive fresh profiles by default; sharing requires the profile manager's Open pane action.
 - Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
+- Leak coverage is count-based over four switch cycles; long-duration memory and loaded-page performance profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
 - Maximized/focused state is not restored across restarts. Window bounds restore only when visible on a current display.
