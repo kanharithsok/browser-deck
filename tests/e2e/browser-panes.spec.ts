@@ -150,6 +150,15 @@ async function getEmulationState(
   }, paneId)
 }
 
+async function getWorkingSetMb(app: ElectronApplication): Promise<number> {
+  const kilobytes = await app.evaluate(({ app: electronApp }) =>
+    electronApp
+      .getAppMetrics()
+      .reduce((total, metric) => total + (metric.memory?.workingSetSize ?? 0), 0)
+  )
+  return Math.round(kilobytes / 1024)
+}
+
 async function getWebContentsCount(app: ElectronApplication): Promise<number> {
   return app.evaluate(() => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -1715,6 +1724,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // Repeated workspace switching and pane churn must not leak webContents
     // or native views.
     const baselineWebContents = await getWebContentsCount(restartApp)
+    const baselineWorkingSetMb = await getWorkingSetMb(restartApp)
     expect(
       await shellEvaluate<{ ok: boolean; error?: string }>(
         restartApp,
@@ -1774,7 +1784,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'webContents cleanup after stress pane teardown'
     )
 
-    for (let cycle = 0; cycle < 3; cycle += 1) {
+    const stressCycles = Number.parseInt(process.env.PANEFLOW_STRESS_CYCLES ?? '3', 10) || 3
+    for (let cycle = 0; cycle < stressCycles; cycle += 1) {
       await shellEvaluate(
         restartApp,
         `window.paneflow.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`
@@ -1803,6 +1814,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         `webContents cleanup after cycle ${cycle + 1}`
       )
     }
+
+    const finalWorkingSetMb = await getWorkingSetMb(restartApp)
+    console.log(
+      `[soak] cycles=${stressCycles} webContents=${baselineWebContents} workingSetMb=${baselineWorkingSetMb}->${finalWorkingSetMb}`
+    )
 
     expect(
       await shellEvaluate<{ ok: boolean; error?: string }>(
