@@ -20,6 +20,8 @@ const emit = defineEmits<{
   close: []
   menu: [position: { x: number; y: number }]
   'toggle-maximize': []
+  'raise-pane': []
+  'lower-pane': []
 }>()
 
 const addressInput = ref<HTMLInputElement | null>(null)
@@ -144,6 +146,30 @@ function requestClose(): void {
 
         <span class="pane-spacer"></span>
 
+        <button
+          v-if="freeform"
+          class="icon-button"
+          type="button"
+          title="Bring pane to front"
+          aria-label="Bring pane to front"
+          @click="emit('raise-pane')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 13V3M4 7l4-4 4 4" />
+          </svg>
+        </button>
+        <button
+          v-if="freeform"
+          class="icon-button"
+          type="button"
+          title="Send pane to back"
+          aria-label="Send pane to back"
+          @click="emit('lower-pane')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 3v10M4 9l4 4 4-4" />
+          </svg>
+        </button>
         <button
           class="icon-button"
           type="button"

@@ -14,6 +14,7 @@ import {
   rectToNormalized,
   reorderPaneIds,
   resizeRect,
+  sendToBack,
   snapRect,
   type GridLayout,
   type NormalizedRect,
@@ -323,6 +324,17 @@ function raisePane(paneId: string): void {
     freeformOrder.value = nextOrder
   }
   void window.paneflow.bringPaneToFront(paneId).catch(() => undefined)
+}
+
+function lowerPane(paneId: string): void {
+  if (layoutMode.value !== 'freeform') {
+    return
+  }
+  const nextOrder = sendToBack(freeformOrder.value, paneId)
+  if (nextOrder) {
+    freeformOrder.value = nextOrder
+  }
+  void window.paneflow.sendPaneToBack(paneId).catch(() => undefined)
 }
 
 function applyFreeformRect(paneId: string, rect: Rect): void {
@@ -934,6 +946,8 @@ onBeforeUnmount(() => {
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
             @toggle-maximize="toggleMaximize(pane.id)"
+            @raise-pane="raisePane(pane.id)"
+            @lower-pane="lowerPane(pane.id)"
           />
         </div>
         <span

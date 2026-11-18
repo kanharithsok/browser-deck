@@ -203,7 +203,7 @@ Record material technical decisions here. Keep entries short but include context
   3. Freeform panes reserve a 6px shell inset around native content. Eight edge/corner handles live in that shell area and remain clickable while the website is visible.
   4. Moving uses the title row; resizing uses shell handles. Both hide native views for the active interaction so the shell receives pointer events and can show alignment guides.
   5. Move/resize uses the pure engine’s clamping and snapping helpers. Candidate guides are rendered as shell overlays while native views are hidden.
-  6. Freeform z-order is renderer state. Raising a pane reorders the native child view through a typed IPC operation; grid mode retains its own order.
+  6. Freeform z-order is renderer state. Bring-front and send-back actions update both the renderer order and native child view order through typed IPC; grid mode retains its own order.
   7. Tidy converts a grid arrangement into normalized freeform geometry.
 
 - **Alternatives considered:**
@@ -222,6 +222,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e switches grid → freeform, drags a pane, verifies all native views hide during manipulation and native bounds align after the drop.
   - It resizes from SE and NW handles, verifies both dimensions change, switches back to grid, and then back to freeform to confirm both arrangements are preserved.
+  - E2e brings a pane forward, verifies native child order and DOM z-index, sends it back, and verifies both orders reverse.
   - Existing grid reflow, scrolling, drag reorder, auth, lifecycle, and restart checks still pass.
 
 ## ADR-008 — Maximize is temporary renderer state over the preserved arrangement

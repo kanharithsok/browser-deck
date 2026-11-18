@@ -191,6 +191,37 @@ export class BrowserManager {
     return { ok: true }
   }
 
+  sendPaneToBack(paneId: string): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Pane not found.' }
+    }
+    if (this.window.isDestroyed()) {
+      return { ok: false, error: 'Window is not available.' }
+    }
+
+    // Index 0 is the trusted shell; pane views start above it.
+    this.window.contentView.addChildView(record.view, 1)
+    return { ok: true }
+  }
+
+  viewOrder(): string[] {
+    if (this.window.isDestroyed()) {
+      return []
+    }
+
+    const order: string[] = []
+    for (const child of this.window.contentView.children) {
+      for (const record of this.panes.values()) {
+        if (!record.destroyed && record.view === child) {
+          order.push(record.id)
+          break
+        }
+      }
+    }
+    return order
+  }
+
   setBounds(input: unknown, canvas: CanvasSize): ScriptResult {
     const parsed = parsePaneBounds(input, new Set(this.panes.keys()), canvas)
     if (!parsed.ok) {

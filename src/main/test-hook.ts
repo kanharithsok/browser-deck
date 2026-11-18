@@ -5,6 +5,7 @@ export interface PaneflowTestHook {
   snapshot: () => ShellState
   viewBounds: () => Array<{ paneId: string; rect: PaneViewRect }>
   viewStates: () => Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>
+  viewOrder: () => string[]
   readCookie: (paneId: string) => Promise<string | null>
   webContentsId: (paneId: string) => number | null
   shellWebContentsId: () => number | null

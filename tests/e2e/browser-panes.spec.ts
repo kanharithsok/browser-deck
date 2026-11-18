@@ -18,6 +18,7 @@ interface TestHook {
   snapshot(): ShellState
   viewBounds(): Array<{ paneId: string; rect: PaneViewRect }>
   viewStates(): Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>
+  viewOrder(): string[]
   readCookie(paneId: string): Promise<string | null>
   webContentsId(paneId: string): number | null
   shellWebContentsId(): number | null
@@ -107,6 +108,27 @@ async function getViewStates(
     }
     return hook.viewStates()
   })
+}
+
+async function getViewOrder(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    if (!hook) {
+      throw new Error('Test hook is not installed')
+    }
+    return hook.viewOrder()
+  })
+}
+
+async function readPaneZOrder(page: Page): Promise<Record<string, string>> {
+  return page.evaluate(() =>
+    Object.fromEntries(
+      Array.from(document.querySelectorAll<HTMLElement>('.pane-slot')).map((slot) => [
+        slot.querySelector<HTMLElement>('.pane-card')?.dataset.paneId ?? '',
+        getComputedStyle(slot).zIndex
+      ])
+    )
+  )
 }
 
 async function getContentBounds(app: ElectronApplication): Promise<PaneViewRect> {
@@ -603,6 +625,32 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }
     expect(shrunkAliceRect.width).toBeLessThan(resizedAliceRect.width - 20)
     expect(shrunkAliceRect.height).toBeLessThan(resizedAliceRect.height - 20)
+
+    await shellPage
+      .locator('.pane-card')
+      .nth(1)
+      .getByRole('button', { name: 'Bring pane to front' })
+      .click()
+    await expect.poll(() => getViewOrder(app as ElectronApplication)).toEqual([alicePaneId, bobPaneId])
+    await expect
+      .poll(async () => {
+        const order = await readPaneZOrder(shellPage)
+        return Number(order[bobPaneId as string] ?? 0) > Number(order[alicePaneId as string] ?? 0)
+      })
+      .toBe(true)
+
+    await shellPage
+      .locator('.pane-card')
+      .nth(1)
+      .getByRole('button', { name: 'Send pane to back' })
+      .click()
+    await expect.poll(() => getViewOrder(app as ElectronApplication)).toEqual([bobPaneId, alicePaneId])
+    await expect
+      .poll(async () => {
+        const order = await readPaneZOrder(shellPage)
+        return Number(order[bobPaneId as string] ?? 0) < Number(order[alicePaneId as string] ?? 0)
+      })
+      .toBe(true)
 
     await gridButton.click()
     await waitForAlignedBounds(app)

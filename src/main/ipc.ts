@@ -142,6 +142,18 @@ export function registerIpcHandlers(context: IpcContext): void {
     return paneId ? manager.bringPaneToFront(paneId) : { ok: false, error: 'Invalid pane ID.' }
   })
 
+  ipcMain.handle(IPC_CHANNELS.sendPaneToBack, (event, payload: unknown): ScriptResult => {
+    if (!isTrustedSender(event, context)) {
+      return unauthorized
+    }
+    const manager = context.getBrowserManager()
+    if (!manager) {
+      return unavailable
+    }
+    const paneId = readString(payload, 100)
+    return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid pane ID.' }
+  })
+
   ipcMain.handle(IPC_CHANNELS.showPaneMenu, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {
       return unauthorized
