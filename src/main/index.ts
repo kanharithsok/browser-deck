@@ -26,6 +26,7 @@ import {
   MIN_APP_WINDOW_HEIGHT,
   MIN_APP_WINDOW_WIDTH,
   defaultWorkspaceLayout,
+  type ThemePreference,
   type WindowBounds,
   type WorkspacePaneDefinition
 } from '../shared/workspace'
@@ -99,7 +100,8 @@ function currentShellState(): ShellState {
     workspace: {
       id: store?.activeWorkspaceId() ?? DEFAULT_WORKSPACE_ID,
       name: store?.activeWorkspaceName() ?? DEFAULT_WORKSPACE_NAME
-    }
+    },
+    theme: store?.theme() ?? 'system'
   }
 }
 
@@ -365,6 +367,50 @@ function applySavedWindowBounds(window: BaseWindow, store: WorkspaceStore): void
   }
 }
 
+function windowBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors ? '#171716' : '#f5f5f3'
+}
+
+function updateWindowBackground(): void {
+  const color = windowBackgroundColor()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(color)
+  }
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.setBackgroundColor(color)
+  }
+}
+
+function refreshThemeMenu(): void {
+  const menu = Menu.getApplicationMenu()
+  for (const theme of ['system', 'light', 'dark'] as const) {
+    const item = menu?.getMenuItemById(`theme-${theme}`)
+    if (item) {
+      item.checked = nativeTheme.themeSource === theme
+    }
+  }
+}
+
+function applyThemePreference(theme: ThemePreference, persist = true): void {
+  nativeTheme.themeSource = theme
+  updateWindowBackground()
+  refreshThemeMenu()
+  if (persist) {
+    const store = workspaceStore
+    if (!store) {
+      return
+    }
+    void store
+      .setTheme(theme)
+      .then(() => sendShellState())
+      .catch((error) => {
+        console.error('Could not persist the theme preference.', error)
+      })
+  } else {
+    sendShellState()
+  }
+}
+
 function buildApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
 
@@ -426,6 +472,33 @@ function buildApplicationMenu(): void {
         { role: 'reload' },
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
+        { type: 'separator' },
+        {
+          label: 'Theme',
+          submenu: [
+            {
+              id: 'theme-system',
+              label: 'System',
+              type: 'radio',
+              checked: nativeTheme.themeSource === 'system',
+              click: () => applyThemePreference('system')
+            },
+            {
+              id: 'theme-light',
+              label: 'Light',
+              type: 'radio',
+              checked: nativeTheme.themeSource === 'light',
+              click: () => applyThemePreference('light')
+            },
+            {
+              id: 'theme-dark',
+              label: 'Dark',
+              type: 'radio',
+              checked: nativeTheme.themeSource === 'dark',
+              click: () => applyThemePreference('dark')
+            }
+          ]
+        },
         { type: 'separator' },
         { role: 'togglefullscreen' }
       ]
@@ -507,6 +580,20 @@ async function createWindow(): Promise<void> {
   }
 
   const devServer = getDevServerUrl()
+
+  const profiles = new ProfileStore(app.getPath('userData'))
+  await profiles.load()
+  profileStore = profiles
+
+  const store = new WorkspaceStore(app.getPath('userData'))
+  await store.load()
+  workspaceStore = store
+
+  // Electron only propagates prefers-color-scheme changes to renderers created
+  // after a themeSource transition. Start from system, then apply the saved
+  // preference after the shell renderer has loaded.
+  nativeTheme.themeSource = 'system'
+
   const window = new BaseWindow({
     width: 1280,
     height: 860,
@@ -514,7 +601,7 @@ async function createWindow(): Promise<void> {
     minHeight: MIN_APP_WINDOW_HEIGHT,
     show: false,
     title: 'PaneFlow',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#171716' : '#f5f5f3'
+    backgroundColor: windowBackgroundColor()
   })
   mainWindow = window
 
@@ -529,7 +616,7 @@ async function createWindow(): Promise<void> {
     }
   })
   shellView = shell
-  shell.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#171716' : '#f5f5f3')
+  shell.setBackgroundColor(windowBackgroundColor())
   window.contentView.addChildView(shell)
   syncShellBounds(window, shell)
 
@@ -624,14 +711,6 @@ async function createWindow(): Promise<void> {
     mainWindow = null
   })
 
-  const profiles = new ProfileStore(app.getPath('userData'))
-  await profiles.load()
-  profileStore = profiles
-
-  const store = new WorkspaceStore(app.getPath('userData'))
-  await store.load()
-  workspaceStore = store
-
   const initialPanes = await createInitialPanes(profiles, store)
 
   const manager = createBrowserManager(window, profiles)
@@ -665,6 +744,7 @@ async function createWindow(): Promise<void> {
     applySavedWindowBounds(window, store)
     syncShellBounds(window, shell)
     window.show()
+    applyThemePreference(store.theme(), false)
     requestMeasurement()
   } catch (error) {
     console.error('Failed to initialize the PaneFlow window.', error)
@@ -674,6 +754,10 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(async () => {
   buildApplicationMenu()
+  nativeTheme.on('updated', () => {
+    updateWindowBackground()
+    refreshThemeMenu()
+  })
   installShellContentPolicy()
 
   registerIpcHandlers({
@@ -685,6 +769,7 @@ app.whenReady().then(async () => {
       id: workspaceStore?.activeWorkspaceId() ?? DEFAULT_WORKSPACE_ID,
       name: workspaceStore?.activeWorkspaceName() ?? DEFAULT_WORKSPACE_NAME
     }),
+    getThemePreference: () => workspaceStore?.theme() ?? 'system',
     saveWorkspaceLayout: async (input) => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }

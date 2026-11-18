@@ -166,6 +166,26 @@ describe('WorkspaceStore', () => {
     expect(reloaded.activeWorkspaceName()).toBe('Workspace')
   })
 
+  it('persists a valid theme preference and ignores invalid values', async () => {
+    const directory = await makeDirectory()
+    const store = new WorkspaceStore(directory)
+    await store.load()
+    expect(store.theme()).toBe('system')
+
+    await store.setTheme('dark')
+    expect(store.theme()).toBe('dark')
+    await store.setTheme('sepia')
+    expect(store.theme()).toBe('dark')
+
+    const reloaded = new WorkspaceStore(directory)
+    await reloaded.load()
+    expect(reloaded.theme()).toBe('dark')
+    await reloaded.setTheme('light')
+    const secondReload = new WorkspaceStore(directory)
+    await secondReload.load()
+    expect(secondReload.theme()).toBe('light')
+  })
+
   it('preserves a corrupt workspace and starts without stored panes', async () => {
     const directory = await makeDirectory()
     await mkdir(join(directory, 'workspaces'), { recursive: true })

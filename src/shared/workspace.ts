@@ -54,11 +54,17 @@ export interface WorkspaceSummary {
   active: boolean
 }
 
+export type ThemePreference = 'system' | 'light' | 'dark'
+
 export interface WindowBounds {
   x: number
   y: number
   width: number
   height: number
+}
+
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark'
 }
 
 export const MIN_APP_WINDOW_WIDTH = 720
@@ -70,6 +76,7 @@ export interface AppStateData {
   version: typeof APP_STATE_VERSION
   activeWorkspaceId: string
   windowBounds?: WindowBounds
+  theme?: ThemePreference
 }
 
 export function isValidWorkspaceId(value: unknown): value is string {
@@ -334,7 +341,8 @@ export function parseAppStateData(
     data: {
       version: APP_STATE_VERSION,
       activeWorkspaceId: record.activeWorkspaceId,
-      ...(windowBounds ? { windowBounds } : {})
+      ...(windowBounds ? { windowBounds } : {}),
+      ...(isThemePreference(record.theme) ? { theme: record.theme } : {})
     }
   }
 }
