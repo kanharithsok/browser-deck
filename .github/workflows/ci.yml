@@ -28,6 +28,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Contrast tokens
+        run: npm run check:contrast
+
       - name: Unit tests
         run: npm run test:unit
 

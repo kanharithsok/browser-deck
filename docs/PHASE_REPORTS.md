@@ -395,6 +395,11 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - workspace and profile dialog triggers expose `aria-haspopup="dialog"` and `aria-expanded`;
   - the workspace trigger includes the current workspace name in its accessible label;
   - e2e verifies no toolbar overflow, dialog-trigger semantics, and expanded state.
+- Contrast audit:
+  - added `scripts/check-contrast.mjs` to compute WCAG ratios for text/muted/faint/accent/focus/danger token pairs in explicit light and dark themes;
+  - darkened light-theme `--text-faint` from `#73726c` to `#6f6e68` so its weakest background ratio rises from 4.42 to 4.69;
+  - all checked pairs now meet 4.5:1 for text or 3:1 for UI/focus;
+  - `npm run check:contrast` runs in CI.
 
 ### Verification commands and results
 
@@ -403,7 +408,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run test:unit` | Passed: 9 files, 104 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 11.2 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
+| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 11.0 s, including duplicate pane, workspace import/export logic, workspace lifecycle, profile sharing/close-and-delete, theme restore, loaded-page switch stress, active-pane accessibility, and minimum-window/dialog semantics. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (100.42 kB), preload (5.27 kB), renderer bundle (266.69 kB), and CSS (22.03 kB). |
 | `npm run package:mac` | Passed. Produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. |
 | Packaged bundle inspection | Passed. Binary is arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`. Code signing is ad-hoc/unsigned as configured. |

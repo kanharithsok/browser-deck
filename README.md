@@ -65,6 +65,7 @@ npm run dev
 | `npm run start` | Preview the built app through electron-vite |
 | `npm run typecheck` | Strict TypeScript check for node and renderer code |
 | `npm run lint` | ESLint across source, tests, and scripts |
+| `npm run check:contrast` | WCAG contrast checks for light/dark design tokens |
 | `npm run test:unit` | Vitest unit tests |
 | `npm run test` | Alias for the unit suite |
 | `npm run test:e2e` | Build, then run the Playwright Electron integration test |
