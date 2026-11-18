@@ -8,7 +8,8 @@ import {
   _electron as electron,
   expect,
   test,
-  type ElectronApplication
+  type ElectronApplication,
+  type Page
 } from '@playwright/test'
 import type { PaneViewRect, ShellState } from '../../src/shared/ipc'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
@@ -119,6 +120,77 @@ async function readCookie(app: ElectronApplication, paneId: string): Promise<str
   }, paneId)
 }
 
+async function readPaneBodyText(app: ElectronApplication, paneId: string): Promise<string> {
+  return evaluateInPane<string>(app, paneId, 'document.body.innerText')
+}
+
+async function evaluateInPane<T>(
+  app: ElectronApplication,
+  paneId: string,
+  script: string
+): Promise<T> {
+  const webContentsId = await app.evaluate((_electron, id) => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    return hook ? hook.webContentsId(id) : null
+  }, paneId)
+
+  return app.evaluate(async ({ webContents }, args) => {
+    const target = args.id === null ? undefined : webContents.fromId(args.id)
+    if (!target || target.isDestroyed()) {
+      throw new Error('Pane page is not available')
+    }
+    return target.executeJavaScript(args.script)
+  }, { id: webContentsId, script }) as Promise<T>
+}
+
+async function writeIndexedDbProbe(page: Page, value: string): Promise<void> {
+  await page.evaluate(async (probe) => {
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open('paneflow-fixture', 1)
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('kv')) {
+          request.result.createObjectStore('kv')
+        }
+      }
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        const database = request.result
+        const transaction = database.transaction('kv', 'readwrite')
+        transaction.objectStore('kv').put(probe, 'probe')
+        transaction.oncomplete = () => {
+          database.close()
+          resolve()
+        }
+        transaction.onerror = () => reject(transaction.error)
+      }
+    })
+  }, value)
+}
+
+async function readIndexedDbProbe(page: Page): Promise<string | null> {
+  return page.evaluate(async () => {
+    return new Promise<string | null>((resolve, reject) => {
+      const request = indexedDB.open('paneflow-fixture', 1)
+      request.onerror = () => reject(request.error)
+      request.onsuccess = () => {
+        const database = request.result
+        if (!database.objectStoreNames.contains('kv')) {
+          database.close()
+          resolve(null)
+          return
+        }
+        const transaction = database.transaction('kv', 'readonly')
+        const read = transaction.objectStore('kv').get('probe')
+        read.onsuccess = () => {
+          database.close()
+          resolve(typeof read.result === 'string' ? read.result : null)
+        }
+        read.onerror = () => reject(read.error)
+      }
+    })
+  })
+}
+
 async function shellEvaluate<T>(app: ElectronApplication, script: string): Promise<T> {
   return app.evaluate(async ({ webContents }, source) => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -182,7 +254,7 @@ async function waitForAlignedBounds(app: ElectronApplication): Promise<void> {
   )
 }
 
-test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistence', async () => {
+test('Browser panes: native composition, isolated auth, lifecycle, and persistence', async () => {
   test.setTimeout(180_000)
 
   let fixture: FixtureServer | null = null
@@ -260,6 +332,11 @@ test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistenc
       .toBe('1')
     expect(await bobPage.evaluate(() => localStorage.getItem('paneflow_fixture'))).toBeNull()
 
+    // IndexedDB isolation between the same-origin partitions.
+    await writeIndexedDbProbe(alicePage, 'alice-idb')
+    expect(await readIndexedDbProbe(alicePage)).toBe('alice-idb')
+    expect(await readIndexedDbProbe(bobPage)).toBeNull()
+
     // Popups and permissions from remote content are denied by session policy.
     expect(await alicePage.evaluate(() => window.open('/popup'))).toBeNull()
     expect(await alicePage.evaluate(() => Notification.requestPermission())).toBe('denied')
@@ -317,6 +394,7 @@ test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistenc
       (state) => state.panes[0]?.url.includes('/pane/one') ?? false,
       'back navigation'
     )
+    expect(bobPage.url()).toContain('/pane/two')
 
     // Main-process validation rejects unsupported schemes and unknown panes;
     // renderer-side validation alone is not the security boundary.
@@ -358,6 +436,38 @@ test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistenc
     )
     await waitForAlignedBounds(app)
 
+    // Phase 1 exit criterion: two profiles authenticate independently on the
+    // same local origin, with a HttpOnly persistent session per profile.
+    await alicePage.goto(`${fixture.url}/login`)
+    await bobPage.goto(`${fixture.url}/login`)
+    await alicePage.getByRole('button', { name: 'Sign in as Alice' }).click()
+    await bobPage.getByRole('button', { name: 'Sign in as Bob' }).click()
+    await expect(alicePage.locator('#account-name')).toHaveText('alice')
+    await expect(bobPage.locator('#account-name')).toHaveText('bob')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        (state.panes[0]?.url.includes('/account') ?? false) &&
+        (state.panes[1]?.url.includes('/account') ?? false),
+      'pane URLs after sign-in'
+    )
+
+    const aliceAccountText = await alicePage.locator('main').innerText()
+    const bobAccountText = await bobPage.locator('main').innerText()
+    expect(aliceAccountText).toContain('Signed in as Alice')
+    expect(aliceAccountText).not.toContain('Signed in as Bob')
+    expect(bobAccountText).toContain('Signed in as Bob')
+    expect(bobAccountText).not.toContain('Signed in as Alice')
+    expect(await alicePage.evaluate(() => document.cookie)).not.toContain('paneflow_session')
+    expect(await bobPage.evaluate(() => document.cookie)).not.toContain('paneflow_session')
+
+    // Signing out of one profile must not affect the other profile.
+    await bobPage.getByRole('button', { name: 'Sign out' }).click()
+    await expect(bobPage).toHaveURL(/\/login$/)
+    await expect(alicePage.locator('#account-name')).toHaveText('alice')
+    await bobPage.getByRole('button', { name: 'Sign in as Bob' }).click()
+    await expect(bobPage.locator('#account-name')).toHaveText('bob')
+
     // Close the second pane and verify its native webContents is gone.
     const bobWebContentsId = await app.evaluate((_electron, paneId) => {
       const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -394,8 +504,9 @@ test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistenc
     }, fixture.url)
     expect(fixtureWebContentsCount).toBe(1)
 
-    // Remaining pane is untouched by the close.
+    // Remaining pane is untouched by the close, including its authenticated session.
     expect(await readCookie(app, alicePaneId as string)).toContain('alice')
+    await expect(alicePage.locator('#account-name')).toHaveText('alice')
 
     // Add a pane: it must receive a fresh profile and its own native view.
     await shellPage.locator('.toolbar .toolbar-button.primary').click()
@@ -443,19 +554,47 @@ test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistenc
     await app.close()
     app = null
 
-    // Relaunch with the same user data and no ?user query: persistent cookies
-    // and the same profile partitions must survive.
-    const restartApp = await launchApp(userDataDir, `${fixture.url}/pane/check,${fixture.url}/pane/check`)
+    // Relaunch with the same user data and open the account page directly:
+    // persistent profile cookies and the same authenticated sessions must survive.
+    const restartApp = await launchApp(userDataDir, `${fixture.url}/account,${fixture.url}/account`)
     app = restartApp
 
     const restarted = await waitFor(
       () => getSnapshot(restartApp),
       (state) =>
         state.panes.length === 2 &&
-        state.panes.every((pane) => pane.url.includes('/pane/check') && !pane.isLoading),
-      'restarted panes to load'
+        state.panes.every((pane) => pane.url.includes('/account') && !pane.isLoading),
+      'restarted panes to load account pages'
     )
     expect(restarted.panes.map((pane) => pane.profileId)).toEqual(firstProfileIds)
+
+    const restartedAliceText = await readPaneBodyText(
+      restartApp,
+      restarted.panes[0]?.id as string
+    )
+    const restartedBobText = await readPaneBodyText(
+      restartApp,
+      restarted.panes[1]?.id as string
+    )
+    expect(restartedAliceText).toContain('Signed in as Alice')
+    expect(restartedAliceText).not.toContain('Signed in as Bob')
+    expect(restartedBobText).toContain('Signed in as Bob')
+    expect(restartedBobText).not.toContain('Signed in as Alice')
+
+    expect(
+      await evaluateInPane<string | null>(
+        restartApp,
+        restarted.panes[0]?.id as string,
+        "localStorage.getItem('paneflow_fixture')"
+      )
+    ).toBe('1')
+    expect(
+      await evaluateInPane<string | null>(
+        restartApp,
+        restarted.panes[1]?.id as string,
+        "localStorage.getItem('paneflow_fixture')"
+      )
+    ).toBeNull()
 
     await waitFor(
       async () => ({
@@ -465,7 +604,7 @@ test('Phase 0 native views: isolation, bounds, lifecycle, and restart persistenc
       ({ first, second }) =>
         (first ?? '').includes('paneflow_user=alice') &&
         (second ?? '').includes('paneflow_user=bob'),
-      'persistent cookies after restart'
+      'persistent profile cookies after restart'
     )
 
     await waitForAlignedBounds(restartApp)

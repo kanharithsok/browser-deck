@@ -39,6 +39,36 @@ Record material technical decisions here. Keep entries short but include context
   - Closing a pane was verified in the integration test to destroy its `webContents` while leaving the other pane and its session intact.
   - See `docs/PHASE_REPORTS.md` for exact commands and results.
 
+## ADR-002 — Authentication state belongs to each website profile
+
+- **Status:** Accepted
+- **Date:** 2026-11-18
+- **Context:** Phase 1 must prove that two panes can authenticate independently on the same origin and keep those sessions across restarts without leaking cookies, tokens, or credentials into PaneFlow configuration or logs. PaneFlow is a browser workspace, not an identity provider.
+
+- **Decision:**
+  1. Websites own authentication. PaneFlow creates a separate persistent Electron partition per profile and otherwise does not mediate sign-in, passwords, tokens, or authorization.
+  2. PaneFlow never copies cookies or credentials into workspace files, profile JSON, logs, exports, fixtures, screenshots, or Git.
+  3. The deterministic fixture provides two synthetic accounts but no passwords. A form POST creates a server-side session and sets an HttpOnly, persistent cookie in the requesting profile's jar.
+  4. Session checks are server-rendered. Page JavaScript cannot read the HttpOnly session cookie, which also proves the app is not relying on a privileged page bridge.
+  5. Persistence is verified by relaunching the app with the same user-data directory and opening `/account` directly in both reused profiles.
+
+- **Alternatives considered:**
+  - **Store credentials or session tokens in PaneFlow configuration.** Rejected: violates the security boundary and would leak secrets outside Electron-managed profile storage.
+  - **Copy cookies between profiles to simulate sharing.** Rejected: bypasses explicit profile selection and undermines isolation.
+  - **Build an application-level account vault.** Out of scope; sites already provide their own authentication.
+  - **Use query-string cookies as the final proof.** Rejected as insufficient for the exit criterion; Phase 0 used query cookies only as a basic isolation check.
+
+- **Consequences:**
+  - Login compatibility depends on the website and its treatment of Electron; PaneFlow does not spoof user agents or promise universal compatibility.
+  - Session-only cookies and `sessionStorage` remain outside restart guarantees. Persistent cookies, localStorage, IndexedDB, and persistent HttpOnly session cookies are covered.
+  - Future profile clear/delete actions must use Electron's session APIs rather than editing cookie jars manually.
+  - The fixture server holds sessions in memory for the lifetime of the test run; this is test infrastructure, not production storage.
+
+- **Evidence / verification:**
+  - E2e signs Alice in through `/login` in pane one and Bob in pane two on the same origin, verifies each account page and HttpOnly session isolation, signs Bob out without affecting Alice, signs Bob back in, restarts the app, and verifies both account sessions and profile IDs persist.
+  - The same test verifies persistent profile cookies and localStorage survive restart, and IndexedDB/localStorage stay isolated within the run.
+  - See the Phase 1 section of `docs/PHASE_REPORTS.md`.
+
 ## ADR template
 
 ### ADR-NNN — Title
