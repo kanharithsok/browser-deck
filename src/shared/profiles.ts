@@ -11,6 +11,11 @@ export interface ProfileStoreData {
   profiles: BrowserProfile[]
 }
 
+export interface ProfileSummary extends BrowserProfile {
+  paneIds: string[]
+  inUse: boolean
+}
+
 const PROFILE_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const MAX_LABEL_LENGTH = 80

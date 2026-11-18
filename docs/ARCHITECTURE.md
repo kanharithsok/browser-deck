@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phases 0–2 complete; Phase 3 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, and workspace persistence are implemented and verified. The profile manager remains.
+> Status: Phase 3 complete. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence, and the profile manager are implemented and verified. Phase 4 covers additional polish, workspace management, and macOS packaging.
 
 ## Technology baseline
 
@@ -135,6 +135,14 @@ Contract:
 
 The renderer uses grid placements from the engine and a compact 1–5 column selector. The workspace scrolls to the engine's content height; native views are shown only when fully inside the viewport. Freeform mode uses normalized geometry, title-row dragging, eight resize handles, snapping guides, explicit z-order controls, and a Tidy action. Maximize temporarily fills the workspace while hiding other native views. Native menu/keyboard commands cover add, close, reload, maximize, and layout mode.
 
+## Profile manager
+
+The shell exposes a **Profiles** toolbar dialog. Opening it hides all native pane views through the existing validated visibility path so the trusted DOM dialog is not covered; closing it re-measures and restores visible panes. The dialog traps focus, closes on Escape/backdrop/Close, and returns focus to the toolbar action.
+
+The main process supplies labels, creation dates, and pane IDs for each profile. Clear/delete actions are rejected while any live pane references the profile; the UI also disables those controls. Rename persists metadata and emits a pane-state refresh so live headers show the new label. Clear calls `clearStorageData`, `clearCache`, and `clearAuthCache` on the profile partition. Delete requires confirmation, clears the session, removes `profiles.json` metadata, and best-effort removes `Partitions/paneflow-profile-<id>`. No cookies, tokens, or raw storage are exposed in the dialog or IPC responses.
+
+Profile assignment/sharing and close-and-delete flows are not implemented; new panes always get fresh profiles, and unused profiles remain deletable from the manager.
+
 ## Browser pane lifecycle
 
 `BrowserManager` owns a `Map<paneId, PaneRecord>` containing the view, profile, URL, title, loading/error state, and visibility state.
@@ -175,6 +183,10 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:set-pane-bounds` | Validated native view rectangles and visible/hidden state |
 | `paneflow:set-pane-viewport` | Validated per-pane viewport preset, custom size, DPR, and display scale |
 | `paneflow:save-workspace-layout` | Validated renderer-owned grid/freeform layout state |
+| `paneflow:list-profiles` | Profile metadata, creation dates, and live pane usage |
+| `paneflow:rename-profile` | Validated profile label update |
+| `paneflow:clear-profile` | Clear cookies, storage, cache, and auth cache for an unused profile |
+| `paneflow:delete-profile` | Clear and remove an unused profile and its partition data |
 | `paneflow:bring-pane-to-front` | Reorder a native pane view to the top of the stack |
 | `paneflow:send-pane-to-back` | Reorder a native pane view to the bottom above the shell |
 | `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
@@ -189,7 +201,7 @@ Every `ipcMain.handle` validates that the sender is the shell `webContents` and 
 
 `ProfileStore` currently seeds two profile records on first launch so the Phase 0/1 experiment can reuse stable partitions across restarts. Newly created panes receive a new UUID and a new `persist:paneflow-profile-<uuid>` partition. Labels are presentation metadata and never appear in partition names. Records live in `<userData>/profiles.json`, written with a temp-file + flush + rename sequence. Writes are serialized and use a unique temporary name so concurrent saves cannot overwrite a newer snapshot. Invalid files are renamed with a `.corrupt-<timestamp>` suffix and replaced with safe defaults.
 
-This is provisional infrastructure. Rename, clear, delete, explicit sharing, and an in-use registry belong to Phase 3.
+The profile manager provides validated rename, clear, and delete lifecycle actions with live-pane usage checks. Explicit profile sharing/assignment and close-and-delete flows remain future work.
 
 PaneFlow is not an identity provider and stores no credentials. Authentication remains owned by each website: the website sets cookies in its profile's Electron session, and the app preserves that session across pane recreation and app restarts. The local fixture demonstrates this with server-issued HttpOnly session cookies for two synthetic accounts, including logout isolation and restart persistence.
 
@@ -223,12 +235,12 @@ Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: fa
 - The renderer owns layout state and sends normalized updates through `save-workspace-layout`; the main process validates and normalizes pane references. Saves are skipped during active drags and committed after the interaction.
 - Maximized/focused state is intentionally not persisted. No cookies, tokens, page contents, or credentials are written to workspace JSON.
 
-Shutdown flushes queued writes through `will-quit`. Only the default workspace and active-workspace pointer exist today; workspace creation/switching UI and window bounds are future Phase 3/4 work.
+Shutdown flushes queued writes through `will-quit`. Only the default workspace and active-workspace pointer exist today; workspace creation/switching UI and window bounds are Phase 4 work.
 
 ## Testing
 
-- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding and restoration, corruption recovery, and atomic persistence.
-- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns), retained closed-profile cookies, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
+- **Unit:** pure bounds validation, grid/freeform layout, normalized geometry, snapping, ordering, maximize/restore, viewport preset/custom validation and fit math, workspace schema/order/geometry normalization, workspace-store persistence/corruption/validation, URL normalization/scheme policy, profile ID/partition/label validation, profile-store seeding/restoration/rename/removal, corruption recovery, and atomic persistence.
+- **Integration/e2e:** launches the built Electron app against a local fixture server and verifies two isolated profiles, independent form-based authentication with HttpOnly sessions, logout isolation, cookie/localStorage/IndexedDB isolation, popup and permission denial, no remote bridge/Node access, page viewport matching the pane content rectangle, 2/5/1-column grid reflow with native bounds alignment, five-column header wrapping, drag reordering with views hidden during drag, native-aware scrolling with hidden off-screen views, freeform move/resize and mode-switch preservation, temporary maximize/restore, explicit native z-order changes, menu command routing, an eight-pane grid/freeform alignment stress pass, per-pane viewport presets/custom dimensions, concurrent different presets in two panes, fit/actual emulation scale, invalid custom recovery, workspace persistence through restart (pane identity, profile, URL, viewport, grid/freeform geometry, columns), retained closed-profile cookies, profile-manager usage/rename/clear/delete and in-use protection, window resize alignment, address/back controls, focus handoff, pane close destroying a `webContents`, fresh profiles for new panes, and authenticated session/cookie/localStorage/profile-ID persistence after a restart.
 - **Manual:** Retina viewport (`devicePixelRatio` 2), native menu stacking, visual fit/actual scaling, workspace restore smoke check, and alignment on macOS.
 
 The Playwright test inspects the main process through a test hook that is only installed when `PANEFLOW_TEST=1` and the app is not packaged. Native page targets are also available to Playwright, so real page clicks are used for fixture interactions.
@@ -241,7 +253,9 @@ The Playwright test inspects the main process through a test hook that is only i
 - Only the default workspace exists; there is no workspace creation/switching/rename UI yet.
 - Window bounds, theme preference, and maximized state are not persisted.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
-- The profile manager (list/rename/clear/delete) is not implemented yet.
+- Profile clear/delete require all panes using the profile to be closed; there is no close-and-delete flow.
+- Profile assignment/sharing and workspace create/switch UI are not implemented.
+- Partition-directory deletion is best-effort after session data is cleared.
 - Vertical grid scrolling is verified at one window size and pane count; more stress and performance measurement remain.
 - Grid drag reordering is pointer-only; keyboard reordering remains.
 - Freeform mode is pointer-only; menu accelerators are configured but raw keystrokes are not automated.
@@ -251,7 +265,7 @@ The Playwright test inspects the main process through a test hook that is only i
 - Freeform snapping guides are wired but not asserted by e2e.
 - The layout engine's default 160 × 140 card minimum and main's 80 × 60 native view minimum still need to be unified and verified at the minimum window size.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
-- Profile rename, clear, delete, explicit sharing, and an in-use profile manager remain.
+- Explicit profile sharing/assignment and close-and-delete flows remain.
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
 - Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.

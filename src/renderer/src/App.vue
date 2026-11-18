@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaneCard from './components/PaneCard.vue'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
+import type { ProfileSummary } from '../../shared/profiles'
 import type { PaneViewport } from '../../shared/viewports'
 import type { WorkspaceLayout } from '../../shared/workspace'
 import {
@@ -29,6 +30,12 @@ import {
 } from '../../shared/layout'
 
 type LayoutMode = 'grid' | 'freeform'
+type ProfileActionKind = 'clear' | 'delete'
+
+interface ProfileActionState {
+  kind: ProfileActionKind
+  profileId: string
+}
 
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
@@ -45,6 +52,18 @@ const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
 const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
+const profilesOpen = ref(false)
+const profiles = ref<ProfileSummary[]>([])
+const profilesLoading = ref(false)
+const profileError = ref<string | null>(null)
+const profileNotice = ref<string | null>(null)
+const profileBusy = ref(false)
+const profileAction = ref<ProfileActionState | null>(null)
+const renamingProfileId = ref<string | null>(null)
+const renameDraft = ref('')
+const profilesDialogEl = ref<HTMLElement | null>(null)
+const profilesButtonEl = ref<HTMLButtonElement | null>(null)
+const profileDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -588,6 +607,211 @@ async function closePane(paneId: string): Promise<void> {
   }
 }
 
+function formatProfileDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Unknown' : profileDateFormatter.format(date)
+}
+
+function profilePaneTitles(profile: ProfileSummary): string {
+  const titles = profile.paneIds
+    .map((paneId) => panes.value.find((pane) => pane.id === paneId)?.title)
+    .filter((title): title is string => Boolean(title))
+  return titles.length > 0 ? titles.join(', ') : `${profile.paneIds.length} pane(s)`
+}
+
+async function refreshProfiles(): Promise<void> {
+  profilesLoading.value = true
+  profileError.value = null
+  try {
+    const result = await window.paneflow.listProfiles()
+    if (result.ok) {
+      profiles.value = result.profiles
+    } else {
+      profileError.value = result.error
+    }
+  } catch {
+    profileError.value = 'Could not read profiles.'
+  } finally {
+    profilesLoading.value = false
+  }
+}
+
+function openProfiles(): void {
+  if (profilesOpen.value) {
+    return
+  }
+  profilesOpen.value = true
+  profileError.value = null
+  profileNotice.value = null
+  profileAction.value = null
+  renamingProfileId.value = null
+  void refreshProfiles()
+  void nextTick(() => {
+    scheduleMeasure()
+    profilesDialogEl.value?.focus()
+  })
+}
+
+function closeProfiles(): void {
+  profilesOpen.value = false
+  profiles.value = []
+  profilesLoading.value = false
+  profileError.value = null
+  profileNotice.value = null
+  profileAction.value = null
+  renamingProfileId.value = null
+  renameDraft.value = ''
+  void nextTick(() => {
+    scheduleMeasure()
+    profilesButtonEl.value?.focus()
+  })
+}
+
+function startProfileRename(profile: ProfileSummary): void {
+  if (profileBusy.value) {
+    return
+  }
+  profileError.value = null
+  profileNotice.value = null
+  profileAction.value = null
+  renamingProfileId.value = profile.id
+  renameDraft.value = profile.label
+  void nextTick(() => {
+    const input = profilesDialogEl.value?.querySelector<HTMLInputElement>(
+      '.profile-rename-input'
+    )
+    input?.focus()
+    input?.select()
+  })
+}
+
+function cancelProfileRename(): void {
+  renamingProfileId.value = null
+  renameDraft.value = ''
+  profileError.value = null
+}
+
+async function submitProfileRename(profile: ProfileSummary): Promise<void> {
+  if (profileBusy.value) {
+    return
+  }
+  const label = renameDraft.value.trim()
+  if (!label) {
+    profileError.value = 'Enter a profile name.'
+    return
+  }
+
+  profileBusy.value = true
+  profileError.value = null
+  try {
+    const result = await window.paneflow.renameProfile(profile.id, label)
+    if (!result.ok) {
+      profileError.value = result.error
+      return
+    }
+    renamingProfileId.value = null
+    renameDraft.value = ''
+    profileNotice.value = `Renamed profile to “${label}”.`
+    await refreshProfiles()
+  } catch {
+    profileError.value = 'Could not rename the profile.'
+  } finally {
+    profileBusy.value = false
+  }
+}
+
+function requestProfileAction(kind: ProfileActionKind, profile: ProfileSummary): void {
+  if (profileBusy.value || profile.inUse) {
+    return
+  }
+  profileError.value = null
+  profileNotice.value = null
+  renamingProfileId.value = null
+  profileAction.value = { kind, profileId: profile.id }
+}
+
+function cancelProfileAction(): void {
+  profileAction.value = null
+  profileError.value = null
+}
+
+async function confirmProfileAction(profile: ProfileSummary): Promise<void> {
+  const action = profileAction.value
+  if (
+    profileBusy.value ||
+    !action ||
+    action.profileId !== profile.id ||
+    profile.inUse
+  ) {
+    return
+  }
+
+  profileBusy.value = true
+  profileError.value = null
+  try {
+    const result =
+      action.kind === 'clear'
+        ? await window.paneflow.clearProfile(profile.id)
+        : await window.paneflow.deleteProfile(profile.id)
+    if (!result.ok) {
+      profileError.value = result.error
+      await refreshProfiles()
+      return
+    }
+
+    profileAction.value = null
+    profileNotice.value =
+      action.kind === 'clear'
+        ? `Cleared browser data for “${profile.label}”.`
+        : `Deleted profile “${profile.label}”.`
+    await refreshProfiles()
+  } catch {
+    profileError.value =
+      action.kind === 'clear' ? 'Could not clear the profile.' : 'Could not delete the profile.'
+  } finally {
+    profileBusy.value = false
+  }
+}
+
+function onProfilesKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    if (renamingProfileId.value) {
+      cancelProfileRename()
+    } else if (profileAction.value) {
+      cancelProfileAction()
+    } else {
+      closeProfiles()
+    }
+    return
+  }
+
+  if (event.key !== 'Tab') {
+    return
+  }
+  const dialog = profilesDialogEl.value
+  if (!dialog) {
+    return
+  }
+  const focusable = Array.from(
+    dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
+  ).filter((element) => element.getClientRects().length > 0)
+  if (focusable.length === 0) {
+    event.preventDefault()
+    dialog.focus()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
+  }
+}
+
 async function reloadAll(): Promise<void> {
   actionError.value = null
   try {
@@ -660,6 +884,9 @@ async function reloadActivePane(): Promise<void> {
 }
 
 function handlePaneCommand(command: PaneCommand): void {
+  if (profilesOpen.value) {
+    return
+  }
   const pane = currentPane()
   switch (command) {
     case 'add-pane':
@@ -882,11 +1109,12 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
+    const nativeViewsHidden = isDragging.value || profilesOpen.value
     const visible =
-      !isDragging.value &&
+      !nativeViewsHidden &&
       (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
       isRectFullyVisible(rect, workspaceRect)
-    if (!visible && !isDragging.value) {
+    if (!visible && !nativeViewsHidden) {
       suspended.add(paneId)
     }
     updates.push({
@@ -962,6 +1190,10 @@ watch(isDragging, (dragging) => {
   if (!dragging) {
     void saveWorkspaceLayout()
   }
+})
+
+watch(profilesOpen, () => {
+  void nextTick(scheduleMeasure)
 })
 
 watch([paneOrder, gridColumns, layoutMode, freeformGeometries, freeformOrder], () => {
@@ -1067,6 +1299,19 @@ onBeforeUnmount(() => {
 
       <span class="pane-count" role="status" aria-live="polite">{{ paneCountLabel }}</span>
       <button
+        ref="profilesButtonEl"
+        class="toolbar-button"
+        type="button"
+        title="Manage browser profiles"
+        @click="openProfiles"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="5.5" r="2.5" />
+          <path d="M3.5 13c.4-2.2 2.2-3.5 4.5-3.5s4.1 1.3 4.5 3.5" />
+        </svg>
+        Profiles
+      </button>
+      <button
         class="toolbar-button primary"
         type="button"
         :disabled="addingPane"
@@ -1170,6 +1415,167 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </main>
+
+    <div v-if="profilesOpen" class="modal-backdrop" @click.self="closeProfiles">
+      <section
+        ref="profilesDialogEl"
+        class="profiles-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="profiles-title"
+        aria-describedby="profiles-description"
+        tabindex="-1"
+        @keydown="onProfilesKeydown"
+      >
+        <header class="profiles-header">
+          <div>
+            <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
+            <p id="profiles-description" class="profiles-description">
+              Each profile keeps its own cookies and site storage. Close its panes before clearing
+              or deleting it.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            title="Close profiles"
+            aria-label="Close profiles"
+            @click="closeProfiles"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </header>
+
+        <div v-if="profileError" class="profiles-message profiles-error" role="alert">
+          {{ profileError }}
+        </div>
+        <div v-else-if="profileNotice" class="profiles-message profiles-notice" role="status">
+          {{ profileNotice }}
+        </div>
+
+        <div v-if="profilesLoading" class="profiles-empty" role="status">Loading profiles…</div>
+        <div v-else-if="profiles.length === 0" class="profiles-empty">
+          No browser profiles yet. Add a pane to create one.
+        </div>
+        <ul v-else class="profile-list">
+          <li
+            v-for="profile in profiles"
+            :key="profile.id"
+            class="profile-row"
+            :data-profile-id="profile.id"
+          >
+            <div class="profile-info">
+              <form
+                v-if="renamingProfileId === profile.id"
+                class="profile-rename-form"
+                @submit.prevent="submitProfileRename(profile)"
+              >
+                <input
+                  v-model="renameDraft"
+                  class="profile-rename-input"
+                  type="text"
+                  maxlength="80"
+                  autocomplete="off"
+                  aria-label="Profile name"
+                  @input="profileError = null"
+                />
+                <button class="text-button" type="submit" :disabled="profileBusy">Save</button>
+                <button
+                  class="text-button"
+                  type="button"
+                  :disabled="profileBusy"
+                  @click="cancelProfileRename"
+                >
+                  Cancel
+                </button>
+              </form>
+              <span v-else class="profile-label">{{ profile.label }}</span>
+              <span class="profile-meta">Created {{ formatProfileDate(profile.createdAt) }}</span>
+              <span class="profile-usage" :class="{ 'profile-usage-active': profile.inUse }">
+                {{ profile.inUse ? `In use by ${profilePaneTitles(profile)}` : 'Unused' }}
+              </span>
+            </div>
+
+            <div v-if="renamingProfileId !== profile.id" class="profile-controls">
+              <button
+                class="text-button"
+                type="button"
+                :disabled="profileBusy"
+                @click="startProfileRename(profile)"
+              >
+                Rename
+              </button>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="profileBusy || profile.inUse"
+                :title="
+                  profile.inUse
+                    ? 'Close panes using this profile before clearing its data.'
+                    : 'Clear cookies, storage, and cache.'
+                "
+                @click="requestProfileAction('clear', profile)"
+              >
+                Clear
+              </button>
+              <button
+                class="text-button text-button-danger"
+                type="button"
+                :disabled="profileBusy || profile.inUse"
+                :title="
+                  profile.inUse
+                    ? 'Close panes using this profile before deleting it.'
+                    : 'Delete this profile and its browser data.'
+                "
+                @click="requestProfileAction('delete', profile)"
+              >
+                Delete
+              </button>
+            </div>
+
+            <div
+              v-if="profileAction?.profileId === profile.id"
+              class="profile-confirm"
+              role="group"
+              :aria-label="`Confirm ${profileAction.kind} for ${profile.label}`"
+            >
+              <span>
+                {{
+                  profileAction.kind === 'clear'
+                    ? `Clear cookies, storage, and cache for “${profile.label}”?`
+                    : `Delete “${profile.label}” and its browser data? This cannot be undone.`
+                }}
+              </span>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="profileBusy"
+                @click="confirmProfileAction(profile)"
+              >
+                {{ profileAction.kind === 'clear' ? 'Clear data' : 'Delete profile' }}
+              </button>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="profileBusy"
+                @click="cancelProfileAction"
+              >
+                Cancel
+              </button>
+            </div>
+          </li>
+        </ul>
+
+        <footer class="profiles-footer">
+          <span class="profiles-count">
+            {{ profiles.length }} profile{{ profiles.length === 1 ? '' : 's' }}
+          </span>
+          <button class="text-button" type="button" @click="closeProfiles">Close</button>
+        </footer>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -1453,5 +1859,206 @@ onBeforeUnmount(() => {
   margin: 0 0 8px;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(18, 18, 17, 0.35);
+}
+
+.profiles-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(700px, 100%);
+  max-height: min(740px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.profiles-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.profiles-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.profiles-description {
+  max-width: 62ch;
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.profiles-message {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.profiles-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.profiles-notice {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.profiles-empty {
+  padding: 26px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.profile-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.profile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  align-items: start;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-row:first-child {
+  border-top: none;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profile-label {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-meta,
+.profile-usage {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.profile-usage {
+  color: var(--text-muted);
+}
+
+.profile-usage-active {
+  color: var(--accent-strong);
+}
+
+.profile-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.profile-controls .text-button,
+.profile-confirm .text-button,
+.profile-rename-form .text-button {
+  margin-top: 0;
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+
+.text-button-danger {
+  color: var(--danger);
+}
+
+.text-button-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.profile-rename-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.profile-rename-input {
+  width: min(280px, 100%);
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.profile-rename-input:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+.profile-confirm {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.profiles-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.profiles-count {
+  color: var(--text-faint);
+  font-size: 11.5px;
 }
 </style>

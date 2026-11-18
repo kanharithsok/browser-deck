@@ -25,6 +25,11 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.setPaneViewport, paneId, viewport),
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
     ipcRenderer.invoke(IPC_CHANNELS.saveWorkspaceLayout, layout),
+  listProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.listProfiles),
+  renameProfile: (profileId: string, label: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.renameProfile, profileId, label),
+  clearProfile: (profileId: string) => ipcRenderer.invoke(IPC_CHANNELS.clearProfile, profileId),
+  deleteProfile: (profileId: string) => ipcRenderer.invoke(IPC_CHANNELS.deleteProfile, profileId),
   bringPaneToFront: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.bringPaneToFront, paneId),
   sendPaneToBack: (paneId: string) =>

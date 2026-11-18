@@ -27,8 +27,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Closing one pane does not sign out or navigate another. (Remaining pane's session and account stay active; e2e.)
 - [x] New panes receive a fresh profile by default. (New-pane profile ID checked.)
 - [ ] Duplicated panes receive a fresh profile by default. (Pane duplication is not implemented yet.)
-- [ ] Explicitly shared profiles share expected cookie/storage state. (Sharing UI is Phase 3.)
-- [ ] Profile manager lists usage, renames, clears, and deletes profiles safely. (Pending Phase 3 profile-manager slice.)
+- [ ] Explicitly shared profiles share expected cookie/storage state. (Profile assignment/sharing UI is not implemented.)
+- [x] Profile manager lists usage, renames, clears, and deletes profiles safely. (E2e verifies in-use protection, rename persistence, cookie clearing, and metadata deletion; profile actions hide native views while the dialog is open.)
+- [ ] Clear/delete a profile while its panes are open via a close-and-delete flow. (Blocked by design; panes must be closed first.)
+- [ ] Assign an existing profile to a new pane. (Not implemented.)
 - [x] Session-only cookie and `sessionStorage` limitations are documented. (`SPEC.md`, `README.md`, and architecture docs state the limits.)
 
 ## Workspace
@@ -60,6 +62,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Window bounds, theme preference, and multiple workspaces restore. (Only the active default workspace ID is persisted.)
 - [ ] Maximized/focused state restores. (Intentionally not persisted.)
 - [ ] Workspace create/rename/duplicate/switch/delete. (Not implemented; only the default workspace exists.)
+- [ ] Explicit profile assignment/sharing across panes. (Not implemented.)
 
 ## Viewport emulation
 

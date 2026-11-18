@@ -235,7 +235,7 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
 
 ## Phase 3 — Viewport emulation and persistence
 
-- **Status:** In progress. Per-pane viewport emulation and workspace persistence are implemented and verified; the profile manager remains.
+- **Status:** Complete for the Phase 3 exit criteria. Per-pane viewport emulation, workspace persistence/restore, and the profile manager are implemented and verified. Workspace create/switch UI and explicit profile assignment remain future work.
 - **Environment:** macOS 27.2.1 (Mac16,12, Apple M4, Retina `devicePixelRatio` 2), Node.js 24.22.3, npm 11.19.1, Electron 45.3.4, electron-vite 6.0.0, Vite 8.3.8, Vue 3.5.45, TypeScript 6.0.3.
 
 ### Delivered so far
@@ -273,25 +273,33 @@ Phase 3: implement per-pane viewport presets and custom dimensions with Electron
 - Fixed a restore-only Electron crash:
   - device emulation is deferred until a page has loaded; enabling it on an empty `WebContentsView` before its first navigation segfaulted Electron;
   - shutdown flushes queued workspace writes through `will-quit`.
-- Added 13 tests: workspace schema validation/normalization (7), workspace store persistence/corruption/validation (5), and profile ID restoration (1).
+- Added 14 tests: workspace schema validation/normalization (7), workspace store persistence/corruption/validation (5), profile ID restoration (1), and profile rename/remove validation (1).
 - Extended the restart e2e to verify restored pane ID, profile, authenticated URL, mobile viewport, grid columns, freeform geometry, layout mode, native alignment, retained closed-profile cookies, and continued operation after restore.
+- Added the profile manager:
+  - toolbar **Profiles** action opens a shell dialog while native panes are temporarily hidden;
+  - lists every profile with creation date and in-use pane titles;
+  - rename updates metadata and live pane labels, rejecting empty/duplicate names;
+  - clear removes cookies, storage, cache, and auth cache only after an inline confirmation;
+  - delete clears data, removes metadata, and removes the partition directory only after confirmation;
+  - clear/delete are blocked while any pane uses the profile;
+  - e2e verifies in-use protection, rename persistence, cookie clearing, and metadata deletion.
 
 ### Verification commands and results
 
 | Command | Result |
 | --- | --- |
 | `npx vitest run tests/unit/viewports.test.ts tests/unit/workspace.test.ts tests/unit/workspace-store.test.ts` | Passed: 8 viewport, 7 workspace schema, and 5 workspace-store tests. |
-| `npm run test:unit` | Passed: 8 files, 93 tests. |
+| `npm run test:unit` | Passed: 8 files, 94 tests. |
 | `npm run typecheck` | Passed. |
 | `npm run lint` | Passed. |
-| `npm run test:e2e` | Passed: 1 Playwright test, 7.3 s. Existing Phase 2 coverage plus viewport emulation, concurrent pane presets, validation, fit/actual state, five-column header wrapping, and workspace restore after restart. |
-| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (63.48 kB), preload (3.15 kB), and the renderer bundle. |
+| `npm run test:e2e` | Passed: 1 Playwright test, 8.0 s. Existing Phase 2 coverage plus viewport emulation, concurrent pane presets, validation, fit/actual state, five-column header wrapping, workspace restore after restart, and profile-manager lifecycle. |
+| `npm run build` | Passed. electron-vite emitted `out/main/index.js` (68.76 kB), preload (3.71 kB), and the renderer bundle (244.72 kB). |
 | Manual viewport check | Passed. The fixture reported 390 × 844 at DPR 3 in fit and actual modes. Fit rendered the page scaled down inside the pane; actual rendered at 1:1 and clipped the 844 px viewport at the pane's 696 px content height while the reported CSS viewport stayed 390 × 844. |
 | Restore smoke check | Passed with a hand-authored workspace: one pane, mobile viewport, freeform geometry, and a fixture URL restored; the app stayed running. The failure path that enabled emulation before load was isolated to an Electron SIGSEGV and fixed by deferring emulation until `did-stop-loading`. |
 
 ### Exit criteria
 
-Not yet met. Workspace and profile state now restore reliably after restart, including pane IDs, profile references, URLs, viewports, grid/freeform layout, and selected columns. The Phase 3 exit condition still requires the profile manager with clear/delete lifecycle.
+Met in the automated macOS run. Different panes used independent viewport configurations; pane IDs, profile references, authenticated URLs, viewport settings, grid columns, freeform geometry, layout mode, and active workspace ID restored after restart; the profile manager listed usage, renamed profiles, rejected unsafe actions on in-use profiles, cleared unused profile data, and deleted unused profile metadata. Browser sessions for retained profiles remained isolated.
 
 ### Known issues / risks
 
@@ -301,13 +309,16 @@ Not yet met. Workspace and profile state now restore reliably after restart, inc
 - Only the default workspace exists; there is no create/rename/duplicate/switch/delete workspace UI yet. `app-state.json` carries an active workspace ID for future switching.
 - Window bounds, theme preference, and multiple workspace files are not part of restored state yet.
 - Maximized/focused state is intentionally not persisted.
+- Profile clear/delete require all panes using the profile to be closed first; there is no close-and-delete flow.
+- Profile assignment/sharing UI is not implemented; new panes always receive fresh profiles.
+- Partition-directory removal after delete is best-effort; session data is cleared first, and leftover Chromium cache files are inaccessible through the profile manager.
 - The display scale selector is hidden only by wrapping, not collapsed into the pane menu; very narrow freeform panes produce a taller three-row chrome block.
 - Overlapping freeform panes can cover each other's headers and far resize handles; the 8-pane stress test dispatches z-order/maximize actions directly when another pane's header would intercept pointer events.
 - The fixture verifies layout/dpr values, not touch, GPS, or device-specific APIs.
 
 ### Next smallest slice
 
-Implement the profile manager: list profiles with labels and creation dates, show pane usage, rename profiles, clear profile data with confirmation, and delete unused profiles while blocking deletion of profiles referenced by live panes. Add typed IPC plus a compact manager UI, and verify persistence/corruption behavior after rename/delete.
+Phase 4: workspace creation/switching UI, explicit profile assignment/sharing, window/theme restoration, accessibility and visual polish, performance stress, and macOS packaging. Do not treat the current build output as a distributable app.
 
 ## Phase 4 — Polish and macOS packaging
 

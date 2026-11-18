@@ -88,6 +88,20 @@ async function readPersistedWorkspace(userDataDir: string): Promise<WorkspaceDat
   }
 }
 
+async function readPersistedProfiles(
+  userDataDir: string
+): Promise<Array<{ id: string; label: string }>> {
+  try {
+    const raw = await readFile(join(userDataDir, 'profiles.json'), 'utf8')
+    const parsed = JSON.parse(raw) as {
+      profiles?: Array<{ id: string; label: string }>
+    }
+    return parsed.profiles ?? []
+  } catch {
+    return []
+  }
+}
+
 async function getSnapshot(app: ElectronApplication): Promise<ShellState> {
   return app.evaluate(() => {
     const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
@@ -1308,6 +1322,72 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[0]?.viewport.preset === 'responsive',
       'responsive viewport after restart verification'
     )
+    await waitForAlignedBounds(restartApp)
+
+    // Profile manager: usage, rename, clear, and safe delete.
+    await restartShell
+      .locator('.toolbar')
+      .getByRole('button', { name: 'Profiles' })
+      .click()
+    const profilesDialog = restartShell.getByRole('dialog', { name: 'Browser profiles' })
+    await expect(profilesDialog).toBeVisible()
+    await expect
+      .poll(async () => (await getViewStates(restartApp)).filter((state) => state.visible).length)
+      .toBe(0)
+
+    const aliceProfileRow = profilesDialog.locator(
+      `.profile-row[data-profile-id="${aliceProfileId}"]`
+    )
+    const bobProfileRow = profilesDialog.locator(
+      `.profile-row[data-profile-id="${bobProfileId}"]`
+    )
+    await expect(aliceProfileRow).toContainText('In use by')
+    await expect(aliceProfileRow.getByRole('button', { name: 'Clear' })).toBeDisabled()
+    await expect(aliceProfileRow.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    await expect(bobProfileRow).toContainText('Unused')
+    await expect(bobProfileRow.getByRole('button', { name: 'Clear' })).toBeEnabled()
+
+    await bobProfileRow.getByRole('button', { name: 'Rename' }).click()
+    const renameInput = bobProfileRow.getByLabel('Profile name')
+    await expect(renameInput).toHaveValue('Profile 2')
+    await renameInput.fill('Bob QA')
+    await bobProfileRow.getByRole('button', { name: 'Save' }).click()
+    await expect(bobProfileRow.locator('.profile-label')).toHaveText('Bob QA')
+    await expect
+      .poll(async () => (await readPersistedProfiles(userDataDir)).find((p) => p.id === bobProfileId)?.label)
+      .toBe('Bob QA')
+
+    await bobProfileRow.getByRole('button', { name: 'Clear' }).click()
+    await expect(
+      bobProfileRow.getByRole('group', { name: /Confirm clear/ })
+    ).toContainText('Clear cookies')
+    await bobProfileRow.getByRole('button', { name: 'Clear data' }).click()
+    const fixtureUrl = (fixture as FixtureServer).url
+    await expect
+      .poll(async () => {
+        const cookies = await restartApp.evaluate(
+          async ({ session }, args) => {
+            return session
+              .fromPartition(`persist:paneflow-profile-${args.profileId}`)
+              .cookies.get({ url: args.url })
+          },
+          { profileId: bobProfileId, url: fixtureUrl }
+        )
+        return cookies.length
+      })
+      .toBe(0)
+    await expect(profilesDialog.getByRole('status')).toContainText('Cleared browser data')
+
+    await bobProfileRow.getByRole('button', { name: 'Delete' }).click()
+    await bobProfileRow.getByRole('button', { name: 'Delete profile' }).click()
+    await expect(bobProfileRow).toHaveCount(0)
+    await expect(profilesDialog.getByRole('status')).toContainText('Deleted profile')
+    await expect
+      .poll(async () => (await readPersistedProfiles(userDataDir)).some((p) => p.id === bobProfileId))
+      .toBe(false)
+
+    await profilesDialog.getByRole('button', { name: 'Close' }).last().click()
+    await expect(profilesDialog).toHaveCount(0)
     await waitForAlignedBounds(restartApp)
 
     // Native-aware scrolling: add panes, force an overflowing single-column
