@@ -3,10 +3,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaneCard from './components/PaneCard.vue'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { PaneViewport } from '../../shared/viewports'
+import type { WorkspaceLayout } from '../../shared/workspace'
 import {
   DEFAULT_GRID_COLUMNS,
   DEFAULT_MIN_PANE_HEIGHT,
   DEFAULT_MIN_PANE_WIDTH,
+  GRID_MAX_COLUMNS,
+  GRID_MIN_COLUMNS,
   bringToFront,
   isRectFullyVisible,
   layoutGrid,
@@ -63,6 +66,9 @@ let disposeFocusListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
 let focusManagementEnabled = false
+let layoutPersistenceReady = false
+let layoutRestored = false
+let lastSavedLayoutKey = ''
 
 const paneCountLabel = computed(() => {
   const count = panes.value.length
@@ -425,6 +431,71 @@ function isResizeHandle(value: string | undefined): value is ResizeHandle {
   )
 }
 
+function buildWorkspaceLayout(): WorkspaceLayout {
+  const ids = new Set(panes.value.map((pane) => pane.id))
+  // Copy geometry into plain objects. Vue's reactive proxies cannot cross the
+  // IPC structured-clone boundary.
+  const freeform = Object.fromEntries(
+    Object.entries(freeformGeometries.value)
+      .filter(([paneId]) => ids.has(paneId))
+      .map(([paneId, rect]) => [
+        paneId,
+        { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+      ])
+  )
+  return {
+    mode: layoutMode.value,
+    columns: gridColumns.value,
+    gridOrder: paneOrder.value.filter((paneId) => ids.has(paneId)),
+    freeform,
+    freeformOrder: freeformOrder.value.filter((paneId) => ids.has(paneId))
+  }
+}
+
+async function saveWorkspaceLayout(): Promise<void> {
+  if (!layoutPersistenceReady) {
+    return
+  }
+
+  const layout = buildWorkspaceLayout()
+  const key = JSON.stringify(layout)
+  if (key === lastSavedLayoutKey) {
+    return
+  }
+  lastSavedLayoutKey = key
+
+  try {
+    const result = await window.paneflow.saveWorkspaceLayout(layout)
+    if (!result.ok) {
+      actionError.value = result.error
+    }
+  } catch {
+    actionError.value = 'Could not save the workspace layout.'
+  }
+}
+
+function applyPersistedLayout(layout: WorkspaceLayout): void {
+  const ids = new Set(panes.value.map((pane) => pane.id))
+  const idsInOrder = panes.value.map((pane) => pane.id)
+  const appendMissing = (order: readonly string[]): string[] => {
+    const retained = order.filter((paneId) => ids.has(paneId))
+    const retainedSet = new Set(retained)
+    return [...retained, ...idsInOrder.filter((paneId) => !retainedSet.has(paneId))]
+  }
+
+  layoutMode.value = layout.mode === 'freeform' ? 'freeform' : 'grid'
+  gridColumns.value = Math.min(
+    GRID_MAX_COLUMNS,
+    Math.max(GRID_MIN_COLUMNS, Math.round(layout.columns) || DEFAULT_GRID_COLUMNS)
+  )
+  paneOrder.value = appendMissing(layout.gridOrder)
+  freeformGeometries.value = Object.fromEntries(
+    Object.entries(layout.freeform).filter(([paneId]) => ids.has(paneId))
+  )
+  freeformOrder.value = appendMissing(layout.freeformOrder)
+  maximizedPaneId.value = null
+}
+
 function applyState(state: ShellState): void {
   const previousIds = new Set(panes.value.map((pane) => pane.id))
   const addedPane =
@@ -462,6 +533,17 @@ function applyState(state: ShellState): void {
   }
 
   panes.value = state.panes
+  if (
+    !layoutRestored &&
+    (state.panes.length > 0 || state.layout.gridOrder.length === 0)
+  ) {
+    applyPersistedLayout(state.layout)
+    layoutRestored = true
+  }
+  if (!layoutPersistenceReady && state.panes.length > 0) {
+    layoutPersistenceReady = true
+    void saveWorkspaceLayout()
+  }
 
   void nextTick(() => {
     if (layoutMode.value === 'freeform') {
@@ -875,8 +957,18 @@ watch(layoutMode, (mode) => {
   })
 })
 
-watch(isDragging, () => {
+watch(isDragging, (dragging) => {
   void nextTick(scheduleMeasure)
+  if (!dragging) {
+    void saveWorkspaceLayout()
+  }
+})
+
+watch([paneOrder, gridColumns, layoutMode, freeformGeometries, freeformOrder], () => {
+  if (!layoutPersistenceReady || isDragging.value) {
+    return
+  }
+  void saveWorkspaceLayout()
 })
 
 onMounted(async () => {
@@ -900,7 +992,13 @@ onMounted(async () => {
   readWorkspaceSize()
 
   try {
-    applyState(await window.paneflow.getState())
+    const initialState = await window.paneflow.getState()
+    applyState(initialState)
+    await nextTick()
+    if (initialState.panes.length > 0 || initialState.layout.gridOrder.length === 0) {
+      layoutPersistenceReady = true
+      await saveWorkspaceLayout()
+    }
   } catch {
     actionError.value = 'Could not read pane state.'
   } finally {

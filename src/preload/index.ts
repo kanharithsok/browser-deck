@@ -8,6 +8,7 @@ import {
   type ShellState
 } from '../shared/ipc'
 import type { PaneViewport } from '../shared/viewports'
+import type { WorkspaceLayout } from '../shared/workspace'
 
 const api: PaneFlowApi = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<ShellState>,
@@ -22,6 +23,8 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.setPaneBounds, updates),
   setPaneViewport: (paneId: string, viewport: PaneViewport) =>
     ipcRenderer.invoke(IPC_CHANNELS.setPaneViewport, paneId, viewport),
+  saveWorkspaceLayout: (layout: WorkspaceLayout) =>
+    ipcRenderer.invoke(IPC_CHANNELS.saveWorkspaceLayout, layout),
   bringPaneToFront: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.bringPaneToFront, paneId),
   sendPaneToBack: (paneId: string) =>

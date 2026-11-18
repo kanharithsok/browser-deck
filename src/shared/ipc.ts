@@ -1,4 +1,5 @@
 import type { PaneViewport } from './viewports'
+import type { WorkspaceLayout } from './workspace'
 
 export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
@@ -11,6 +12,7 @@ export const IPC_CHANNELS = {
   reloadAll: 'paneflow:reload-all',
   setPaneBounds: 'paneflow:set-pane-bounds',
   setPaneViewport: 'paneflow:set-pane-viewport',
+  saveWorkspaceLayout: 'paneflow:save-workspace-layout',
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
@@ -56,8 +58,12 @@ export interface PaneState {
   viewport: PaneViewport
 }
 
-export interface ShellState {
+export interface ShellSnapshot {
   panes: PaneState[]
+}
+
+export interface ShellState extends ShellSnapshot {
+  layout: WorkspaceLayout
 }
 
 export interface PaneMenuRequest {
@@ -77,6 +83,7 @@ export interface PaneFlowApi {
   reloadAll(): Promise<ScriptResult>
   setPaneBounds(updates: PaneBoundsUpdate[]): Promise<ScriptResult>
   setPaneViewport(paneId: string, viewport: PaneViewport): Promise<ScriptResult>
+  saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>

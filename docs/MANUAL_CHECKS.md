@@ -28,6 +28,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] New panes receive a fresh profile by default. (New-pane profile ID checked.)
 - [ ] Duplicated panes receive a fresh profile by default. (Pane duplication is not implemented yet.)
 - [ ] Explicitly shared profiles share expected cookie/storage state. (Sharing UI is Phase 3.)
+- [ ] Profile manager lists usage, renames, clears, and deletes profiles safely. (Pending Phase 3 profile-manager slice.)
 - [x] Session-only cookie and `sessionStorage` limitations are documented. (`SPEC.md`, `README.md`, and architecture docs state the limits.)
 
 ## Workspace
@@ -46,7 +47,19 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Explicit freeform z-order controls. (E2e verifies native child order and DOM z-index for bring-front/send-back.)
 - [x] Switching grid/freeform preserves both arrangements. (E2e cycles modes and checks geometry.)
 - [x] Maximize/restore returns to the prior geometry. (E2e maximizes a grid pane, hides unrelated native views, and restores the prior bounds.)
-- [ ] Layout restores after app restart. (Selected columns are not persisted yet.)
+- [x] Layout restores after app restart. (E2e restores one pane in freeform mode with its saved geometry, mobile viewport, and one-column grid setting; switching back to Grid shows the saved columns.)
+
+## Workspace persistence
+
+- [x] Pane IDs, profile references, URLs, and viewport settings survive restart. (E2e verifies the same pane ID, Alice profile ID, authenticated URL, and mobile 390 × 844 DPR 3 settings.)
+- [x] Grid columns and grid/freeform mode survive restart. (E2e restores a freeform workspace with columns set to 1, then returns to Grid.)
+- [x] Freeform geometry survives restart. (E2e compares the restored normalized pane rectangle with the persisted value.)
+- [x] Closed profile data is retained and isolated. (E2e reads Bob's persistent partition cookies after Bob's pane was closed and the app restarted.)
+- [x] Corrupt workspace and app-state files recover safely. (Unit tests verify `.corrupt-<timestamp>` preservation and safe defaults.)
+- [x] Invalid workspace pane URLs/viewports are rejected before writing. (Unit tests reject `javascript:` URLs and malformed profiles/panes.)
+- [ ] Window bounds, theme preference, and multiple workspaces restore. (Only the active default workspace ID is persisted.)
+- [ ] Maximized/focused state restores. (Intentionally not persisted.)
+- [ ] Workspace create/rename/duplicate/switch/delete. (Not implemented; only the default workspace exists.)
 
 ## Viewport emulation
 

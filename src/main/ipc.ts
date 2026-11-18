@@ -1,12 +1,15 @@
 import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
-import { IPC_CHANNELS, type ScriptResult } from '../shared/ipc'
+import { IPC_CHANNELS, type ShellState, type ScriptResult } from '../shared/ipc'
+import type { WorkspaceLayout } from '../shared/workspace'
 import type { BrowserManager } from './browser-manager'
 
 interface IpcContext {
   getBrowserManager: () => BrowserManager | null
   getShellWebContents: () => WebContents | null
   getCanvasSize: () => CanvasSize
+  getWorkspaceLayout: () => WorkspaceLayout
+  saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
 }
 
 const unauthorized: ScriptResult = { ok: false, error: 'Unauthorized sender.' }
@@ -32,11 +35,13 @@ function readFiniteNumber(value: unknown): number | null {
 }
 
 export function registerIpcHandlers(context: IpcContext): void {
-  ipcMain.handle(IPC_CHANNELS.getState, (event) => {
+  ipcMain.handle(IPC_CHANNELS.getState, (event): ShellState => {
+    const layout = context.getWorkspaceLayout()
     if (!isTrustedSender(event, context)) {
-      return { panes: [] }
+      return { panes: [], layout }
     }
-    return context.getBrowserManager()?.snapshot() ?? { panes: [] }
+    const manager = context.getBrowserManager()
+    return manager ? { ...manager.snapshot(), layout } : { panes: [], layout }
   })
 
   ipcMain.handle(IPC_CHANNELS.addPane, async (event, payload: unknown): Promise<ScriptResult> => {
@@ -145,6 +150,20 @@ export function registerIpcHandlers(context: IpcContext): void {
         return { ok: false, error: 'Invalid pane ID.' }
       }
       return manager.setViewport(paneId, payload)
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.saveWorkspaceLayout,
+    async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      try {
+        return await context.saveWorkspaceLayout(payload)
+      } catch {
+        return { ok: false, error: 'Could not save the workspace layout.' }
+      }
     }
   )
 
