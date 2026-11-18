@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 4 in progress. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated accessibility audits, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified. Remaining Phase 4 work covers the VoiceOver/manual screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution.
+> Status: Phase 4 complete; the unsigned local macOS MVP is complete. Native composition, profile sessions, grid/freeform workspace behavior, native-aware scrolling and z-order, maximize/restore, keyboard/menu actions, per-pane viewport emulation, workspace persistence/management, profile management, explicit profile sharing, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated accessibility audits, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified. Post-MVP hardening covers the VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist.
 
 ## Technology baseline
 
@@ -298,13 +298,13 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Native views are not clipped by the shell's scroll containers. Native-aware scrolling works by hiding partially off-screen views; only fully visible panes are interactive.
 - An emulated viewport larger than its pane in actual mode is clipped by the native view; pane-level panning of the emulated surface is not implemented.
 - Workspace switching tears down and recreates native pane views; pages reload instead of staying warm in the background.
-- Leak stress is count-based (webContents/native views) over a 50-cycle switch loop, not long-duration memory profiling; memory is sampled before/after rather than peak/per-process, and observed 50-cycle growth ranged from 0 MB in one run to ~94 MB on the final merged branch.
+- Leak stress is count-based (webContents/native views) over a 50-cycle switch loop, not long-duration memory profiling; memory is sampled before/after rather than peak/per-process, and observed 50-cycle growth ranged from 0 MB in one run to ~95 MB on final `main`.
 - Duplicated workspaces receive fresh profiles immediately, even if the duplicate is never opened.
 - Maximized/fullscreen state is not persisted. Window bounds restore only when visible on a current display.
 - Overlapping freeform panes can cover each other's shell chrome, including far resize handles; the covering pane must be moved or a reachable control used.
 - Profile clear/delete of in-use profiles closes all panes using them after confirmation.
 - Profile sharing is initiated only from the profile manager; there is no profile picker in the main Add pane flow.
-- Duplicate pane copies URL/viewport and always creates a fresh profile; custom titles and session copying are not supported.
+- Duplicate pane copies URL/viewport/custom title and always creates a fresh profile; session copying is not supported.
 - Native workspace import/export file dialogs are not automated in Playwright; pure transfer/materialization logic is unit-tested.
 - Background-warm workspace switching and long-duration memory/CPU profiling with loaded pages are not implemented.
 - Partition-directory deletion is best-effort after session data is cleared.
@@ -317,10 +317,10 @@ Code signing is intentionally disabled with `identity: null` for the current uns
 - Freeform snapping guides are wired but not asserted by e2e.
 - The layout engine's default 160 × 140 card minimum and main's 80 × 60 native view minimum still need to be unified and verified at the minimum window size.
 - Window resize alignment converges after one layout frame; an e2e assertion waits for stable alignment.
-- Workspace import/export and long-duration, third-party-page CPU/memory profiling remain.
+- Long-duration, third-party-page CPU/memory profiling remains.
 - Remote `http:` destinations are not visually distinguished from HTTPS yet; the URL helper computes the condition but the pane state does not expose it.
 - A page that closes its own `webContents` removes the pane cleanly, but the shell does not yet explain why the pane disappeared.
-- Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, unit tests, and build only.
+- Electron integration tests require a local macOS GUI session; CI covers typecheck, lint, contrast, unit tests, and build only.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, and release automation remain.
 - The shell CSP permits inline styles for Vue geometry bindings. Inline script and eval remain blocked.
 - Local profile data is protected by OS account permissions, not application-level encryption in this unsigned build.

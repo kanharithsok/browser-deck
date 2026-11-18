@@ -109,9 +109,9 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 
 - [x] Repeated workspace switching does not leak `webContents` or native views. (E2e creates a four-pane stress workspace with two loaded fixture pages and compares non-destroyed webContents/view counts after every return; default 3 cycles, configurable via `PANEFLOW_STRESS_CYCLES`.)
 - [x] Eight-pane grid/freeform alignment stress. (Existing e2e pass.)
-- [x] Short loaded-page soak with memory sampling. (8 cycles: 2 webContents, 575 MB → 515 MB; 25 cycles: 2 webContents, 573 MB → 643 MB; final merged-branch 50 cycles: 2 webContents, 588 MB → 682 MB; earlier runs: 577 MB → 577 MB and 581 MB → 677 MB.)
+- [x] Short loaded-page soak with memory sampling. (8 cycles: 2 webContents, 575 MB → 515 MB; 25 cycles: 2 webContents, 573 MB → 643 MB; final `main` 50 cycles: 2 webContents, 589 MB → 684 MB; earlier runs: 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB.)
 - [x] Accessibility suite starts and closes a separate Electron app cleanly without affecting the main integration run. (Two Playwright tests pass in one worker.)
-- [ ] Multi-hour memory/CPU profiling with loaded third-party pages. (Not run. Working set is sampled before/after, not peak, and 50 cycles take ≈19 s.)
+- [ ] Multi-hour memory/CPU profiling with loaded third-party pages. (Not run. Working set is sampled before/after, not peak, and 50 cycles take ≈20 s.)
 - [ ] CPU/frame measurement during drag, resize, and scrolling. (Not run.)
 
 ## Packaging
@@ -120,7 +120,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.paneflow`, `0.1.0`, `icon.icns`, developer tools.)
 - [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
 - [x] Electron fuses are applied to the packaged app. (`npx electron-fuses read --app dist/mac-arm64/PaneFlow.app`; RunAsNode/Node-options/inspector/file-protocol privileges disabled, ASAR integrity and only-load-from-ASAR enabled.)
-- [ ] Developer ID signing and notarization. (Blocked on Apple Developer credentials; current build is unsigned/ad-hoc.)
+- [ ] Developer ID signing and notarization. (Post-MVP; blocked on Apple Developer credentials. The supported distribution is the unsigned/ad-hoc local arm64 build.)
 - [ ] Intel/universal packaging. (Current build is arm64-only by owner decision.)
 - [ ] Auto-update and release publishing. (Not implemented.)
 

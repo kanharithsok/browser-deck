@@ -4,7 +4,7 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–3 complete; Phase 4 in progress. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Remaining Phase 4 work covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, and signed/notarized distribution. See [`SECURITY.md`](./SECURITY.md).
+> **Project status:** Phases 0–4 complete; the unsigned local macOS MVP is complete. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-MVP hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
 
 ## Current capabilities
 
@@ -138,9 +138,9 @@ npm run build
 PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts
 ```
 
-The observed 50-cycle run on the final merged branch took about 20 s, returned to 2 non-destroyed webContents after every cycle, and sampled whole-app working set at 588 MB before and 682 MB after. Earlier runs measured 577 MB → 577 MB and 581 MB → 677 MB. It is a switch soak, not a peak, per-process, multi-hour, or third-party-page profile.
+The observed 50-cycle run on `main` after the final merge took about 20 s, returned to 2 non-destroyed webContents after every cycle, and sampled whole-app working set at 589 MB before and 684 MB after. Earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB. It is a switch soak, not a peak, per-process, multi-hour, or third-party-page profile.
 
-The Playwright tests require a local macOS GUI session. Unit tests include the pure layout engine. The CI workflow is configured to run typecheck, lint, unit tests, and build; e2e remains a local check until headless Electron execution is proven.
+The Playwright tests require a local macOS GUI session. Unit tests include the pure layout engine. The CI workflow runs typecheck, lint, contrast, unit tests, and build; e2e remains a local check until headless Electron execution is proven.
 
 ## Architecture
 
@@ -190,7 +190,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
 - Active-pane chrome is indicated by an accent border and `aria-current`; dialog triggers expose expanded state, and the toolbar stays overflow-free at the tested 760 px width. Automated axe/role/AX checks cover the shell and dialogs, but VoiceOver order/announcements and focus-ring usability still need a manual pass.
 - Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
-- Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 588 MB → 682 MB on the final merged branch; earlier runs measured 577 MB → 577 MB and 581 MB → 677 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
+- Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 589 MB → 684 MB on final `main`; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
 - In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
 - Maximized/focused state is not restored across restarts. Window bounds restore only when visible on a current display.
