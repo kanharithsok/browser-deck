@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { rm } from 'node:fs/promises'
 import { join, isAbsolute } from 'node:path'
 import {
   app,
@@ -13,7 +14,11 @@ import { IPC_CHANNELS, type PaneCommand, type ShellState } from '../shared/ipc'
 import { isLoopbackHostname, normalizeAddress } from '../shared/url'
 import type { CanvasSize } from '../shared/geometry'
 import { RESPONSIVE_VIEWPORT } from '../shared/viewports'
-import type { BrowserProfile } from '../shared/profiles'
+import {
+  partitionForProfile,
+  type BrowserProfile,
+  type ProfileSummary
+} from '../shared/profiles'
 import {
   defaultWorkspaceLayout,
   type WorkspacePaneDefinition
@@ -41,6 +46,7 @@ const SHELL_CSP = [
 let mainWindow: BaseWindow | null = null
 let shellView: WebContentsView | null = null
 let browserManager: BrowserManager | null = null
+let profileStore: ProfileStore | null = null
 let workspaceStore: WorkspaceStore | null = null
 let panePersistenceEnabled = false
 let lastPersistedPaneKey = ''
@@ -155,6 +161,48 @@ async function createInitialPanes(
     console.error('Could not save the initial workspace.', error)
   }
   return initial
+}
+
+function messageFromError(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
+function profileSummaries(): ProfileSummary[] {
+  const store = profileStore
+  if (!store) {
+    return []
+  }
+  const usage = browserManager?.profilePaneIds() ?? new Map<string, string[]>()
+  return store.list().map((profile) => {
+    const paneIds = [...(usage.get(profile.id) ?? [])]
+    return {
+      id: profile.id,
+      label: profile.label,
+      createdAt: profile.createdAt,
+      paneIds,
+      inUse: paneIds.length > 0
+    }
+  })
+}
+
+function profileInUse(profileId: string): boolean {
+  return (browserManager?.profilePaneIds().get(profileId)?.length ?? 0) > 0
+}
+
+async function clearProfileSession(profileId: string): Promise<void> {
+  const profileSession = session.fromPartition(partitionForProfile(profileId))
+  await profileSession.clearStorageData()
+  await profileSession.clearCache()
+  await profileSession.clearAuthCache()
+}
+
+async function removeProfilePartition(profileId: string): Promise<void> {
+  const partitionDirectory = join(
+    app.getPath('userData'),
+    'Partitions',
+    `paneflow-profile-${profileId}`
+  )
+  await rm(partitionDirectory, { recursive: true, force: true })
 }
 
 function buildApplicationMenu(): void {
@@ -386,16 +434,17 @@ async function createWindow(): Promise<void> {
     mainWindow = null
   })
 
-  const profileStore = new ProfileStore(app.getPath('userData'))
-  await profileStore.load()
+  const profiles = new ProfileStore(app.getPath('userData'))
+  await profiles.load()
+  profileStore = profiles
 
   const store = new WorkspaceStore(app.getPath('userData'))
   await store.load()
   workspaceStore = store
 
-  const initialPanes = await createInitialPanes(profileStore, store)
+  const initialPanes = await createInitialPanes(profiles, store)
 
-  const manager = new BrowserManager(window, profileStore, {
+  const manager = new BrowserManager(window, profiles, {
     onStateChanged: () => {
       const current = browserManager
       if (!current) {
@@ -462,6 +511,62 @@ app.whenReady().then(async () => {
       }
       await workspaceStore.setLayout(input)
       return { ok: true }
+    },
+    listProfiles: async () => {
+      if (!profileStore) {
+        return { ok: false, error: 'Profiles are not ready.' }
+      }
+      return { ok: true, profiles: profileSummaries() }
+    },
+    renameProfile: async (profileId, label) => {
+      if (!profileStore) {
+        return { ok: false, error: 'Profiles are not ready.' }
+      }
+      try {
+        await profileStore.rename(profileId, label)
+        browserManager?.notifyProfilesChanged()
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not rename the profile.') }
+      }
+    },
+    clearProfile: async (profileId) => {
+      if (!profileStore?.get(profileId)) {
+        return { ok: false, error: 'Profile not found.' }
+      }
+      if (profileInUse(profileId)) {
+        return {
+          ok: false,
+          error: 'Close panes using this profile before clearing its data.'
+        }
+      }
+      try {
+        await clearProfileSession(profileId)
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not clear the profile.') }
+      }
+    },
+    deleteProfile: async (profileId) => {
+      if (!profileStore?.get(profileId)) {
+        return { ok: false, error: 'Profile not found.' }
+      }
+      if (profileInUse(profileId)) {
+        return {
+          ok: false,
+          error: 'Close panes using this profile before deleting it.'
+        }
+      }
+      try {
+        await clearProfileSession(profileId)
+        await profileStore.remove(profileId)
+        await removeProfilePartition(profileId).catch((error) => {
+          console.error('Could not remove the profile partition directory.', error)
+        })
+        return { ok: true }
+      } catch (error) {
+        return { ok: false, error: messageFromError(error, 'Could not delete the profile.') }
+      }
     }
   })
 

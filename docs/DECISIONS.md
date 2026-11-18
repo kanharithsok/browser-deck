@@ -353,6 +353,40 @@ Record material technical decisions here. Keep entries short but include context
   - E2e closes and relaunches with the same user data and verifies the restored pane ID, Alice profile ID, authenticated `/account` URL, mobile viewport (390 × 844, DPR 3), one-column grid setting, freeform mode/geometry, native alignment, and retained Bob profile cookies.
   - A standalone restore smoke test exposed an Electron SIGSEGV when emulation was applied before load; deferring emulation until `did-stop-loading` removed the crash and the same restore then succeeded.
 
+## ADR-012 — Profile lifecycle lives in the trusted shell with main-enforced usage rules
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** `SPEC.md` §9.4 requires a profile manager listing labels/creation data and pane usage, renaming, clearing data, and deleting unused profiles with protection against deleting active profiles. Remote pane content must never receive profile metadata or session controls. Shell DOM overlays are covered by native pane views.
+
+- **Decision:**
+  1. A **Profiles** toolbar action opens a trusted shell dialog. While it is open, all native pane views are hidden through the existing validated visibility path; closing re-measures and restores them.
+  2. Main exposes typed `list-profiles`, `rename-profile`, `clear-profile`, and `delete-profile` IPC. Every handler validates the shell sender and payload. Responses contain labels, creation timestamps, pane IDs, and usage only—never cookies or storage values.
+  3. Clear and delete are rejected while any live pane uses the profile. The dialog also disables those actions and explains why.
+  4. Rename validates non-empty, bounded, duplicate-free labels, persists metadata, and emits a pane-state refresh so live headers update.
+  5. Clear calls `clearStorageData`, `clearCache`, and `clearAuthCache` on the profile partition after inline confirmation. Delete performs the same clear, removes `profiles.json` metadata, and best-effort removes the partition directory.
+  6. Focus is trapped in the dialog, Escape cancels the current rename/confirmation or closes it, and focus returns to the toolbar action.
+  7. New panes continue to receive fresh profiles; explicit profile assignment/sharing is deferred.
+
+- **Alternatives considered:**
+  - **Native menu-only profile actions.** Rejected for rename/confirmation UX and list presentation.
+  - **A separate settings window.** Deferred; hiding native views and using the trusted shell keeps one window and reuses the visibility path.
+  - **Clear/delete in-use profiles with automatic pane closure.** Rejected for this slice because it needs a close-and-delete flow and stronger confirmation.
+  - **Render cookie/storage values in the manager.** Rejected by security requirements; only metadata and usage are shown.
+  - **Delete only metadata and leave partition data.** Rejected; clear runs first and directory removal is best-effort.
+
+- **Consequences:**
+  - The dialog is temporarily an opaque workspace overlay; pane websites are hidden while it is open.
+  - Users must close panes before clearing or deleting their profile.
+  - Duplicate profile labels are rejected case-insensitively.
+  - Partition directory removal can be incomplete if Chromium still holds files, but profile data has already been cleared and is no longer reachable.
+  - Profile assignment/sharing and close-and-delete flows remain future work.
+
+- **Evidence / verification:**
+  - Unit tests verify profile rename, duplicate/empty rejection, metadata removal, and reload persistence.
+  - E2e opens the manager, verifies native views hide, checks in-use Alice actions are disabled, renames Bob, clears Bob's partition cookies, deletes Bob's profile metadata, and closes the dialog with native views restored aligned.
+  - The existing restart test first verifies Bob's retained cookies before the manager clears/deletes the unused profile.
+
 ## ADR template
 
 ### ADR-NNN — Title

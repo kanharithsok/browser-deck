@@ -1,6 +1,11 @@
 import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
-import { IPC_CHANNELS, type ShellState, type ScriptResult } from '../shared/ipc'
+import {
+  IPC_CHANNELS,
+  type ProfileListResult,
+  type ShellState,
+  type ScriptResult
+} from '../shared/ipc'
 import type { WorkspaceLayout } from '../shared/workspace'
 import type { BrowserManager } from './browser-manager'
 
@@ -10,6 +15,10 @@ interface IpcContext {
   getCanvasSize: () => CanvasSize
   getWorkspaceLayout: () => WorkspaceLayout
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
+  listProfiles: () => Promise<ProfileListResult>
+  renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
+  clearProfile: (profileId: string) => Promise<ScriptResult>
+  deleteProfile: (profileId: string) => Promise<ScriptResult>
 }
 
 const unauthorized: ScriptResult = { ok: false, error: 'Unauthorized sender.' }
@@ -166,6 +175,47 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
     }
   )
+
+  ipcMain.handle(IPC_CHANNELS.listProfiles, async (event): Promise<ProfileListResult> => {
+    if (!isTrustedSender(event, context)) {
+      return { ok: false, error: 'Unauthorized sender.' }
+    }
+    return context.listProfiles()
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.renameProfile,
+    async (event, profileIdInput: unknown, labelInput: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const profileId = readString(profileIdInput, 100)
+      const label = readString(labelInput, 200)
+      if (!profileId || label === null) {
+        return { ok: false, error: 'Invalid profile name.' }
+      }
+      return context.renameProfile(profileId, label)
+    }
+  )
+
+  const registerProfileAction = (
+    channel: string,
+    action: (profileId: string) => Promise<ScriptResult>
+  ): void => {
+    ipcMain.handle(channel, async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const profileId = readString(payload, 100)
+      if (!profileId) {
+        return { ok: false, error: 'Invalid profile ID.' }
+      }
+      return action(profileId)
+    })
+  }
+
+  registerProfileAction(IPC_CHANNELS.clearProfile, context.clearProfile)
+  registerProfileAction(IPC_CHANNELS.deleteProfile, context.deleteProfile)
 
   ipcMain.handle(IPC_CHANNELS.bringPaneToFront, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {

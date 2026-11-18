@@ -384,6 +384,23 @@ export class BrowserManager {
     return { panes }
   }
 
+  profilePaneIds(): Map<string, string[]> {
+    const usage = new Map<string, string[]>()
+    for (const record of this.panes.values()) {
+      if (!this.liveWebContents(record)) {
+        continue
+      }
+      const paneIds = usage.get(record.profile.id) ?? []
+      paneIds.push(record.id)
+      usage.set(record.profile.id, paneIds)
+    }
+    return usage
+  }
+
+  notifyProfilesChanged(): void {
+    this.emitState()
+  }
+
   workspacePanes(): WorkspacePaneDefinition[] {
     const panes: WorkspacePaneDefinition[] = []
     for (const record of this.panes.values()) {

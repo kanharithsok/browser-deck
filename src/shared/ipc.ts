@@ -1,3 +1,4 @@
+import type { ProfileSummary } from './profiles'
 import type { PaneViewport } from './viewports'
 import type { WorkspaceLayout } from './workspace'
 
@@ -13,6 +14,10 @@ export const IPC_CHANNELS = {
   setPaneBounds: 'paneflow:set-pane-bounds',
   setPaneViewport: 'paneflow:set-pane-viewport',
   saveWorkspaceLayout: 'paneflow:save-workspace-layout',
+  listProfiles: 'paneflow:list-profiles',
+  renameProfile: 'paneflow:rename-profile',
+  clearProfile: 'paneflow:clear-profile',
+  deleteProfile: 'paneflow:delete-profile',
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
@@ -31,6 +36,10 @@ export type PaneCommand =
   | 'toggle-layout'
 
 export type ScriptResult = { ok: true } | { ok: false; error: string }
+
+export type ProfileListResult =
+  | { ok: true; profiles: ProfileSummary[] }
+  | { ok: false; error: string }
 
 export interface PaneViewRect {
   x: number
@@ -84,6 +93,10 @@ export interface PaneFlowApi {
   setPaneBounds(updates: PaneBoundsUpdate[]): Promise<ScriptResult>
   setPaneViewport(paneId: string, viewport: PaneViewport): Promise<ScriptResult>
   saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
+  listProfiles(): Promise<ProfileListResult>
+  renameProfile(profileId: string, label: string): Promise<ScriptResult>
+  clearProfile(profileId: string): Promise<ScriptResult>
+  deleteProfile(profileId: string): Promise<ScriptResult>
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>

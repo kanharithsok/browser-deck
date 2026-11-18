@@ -122,6 +122,37 @@ export class ProfileStore {
     return profile
   }
 
+  async rename(profileId: string, label: string): Promise<BrowserProfile> {
+    const profile = this.get(profileId)
+    if (!profile) {
+      throw new Error('Profile not found.')
+    }
+    const normalized = normalizeProfileLabel(label)
+    if (!normalized) {
+      throw new Error('Enter a profile name of 80 characters or fewer.')
+    }
+    const duplicate = this.profiles.some(
+      (entry) => entry.id !== profileId && entry.label.toLowerCase() === normalized.toLowerCase()
+    )
+    if (duplicate) {
+      throw new Error('That profile name is already in use.')
+    }
+
+    // Keep the object identity so live pane records see the new label.
+    profile.label = normalized
+    await this.save()
+    return profile
+  }
+
+  async remove(profileId: string): Promise<void> {
+    const profile = this.get(profileId)
+    if (!profile) {
+      throw new Error('Profile not found.')
+    }
+    this.profiles = this.profiles.filter((entry) => entry.id !== profileId)
+    await this.save()
+  }
+
   async create(label?: string): Promise<BrowserProfile> {
     const normalized = label === undefined ? null : normalizeProfileLabel(label)
     const profile: BrowserProfile = {
