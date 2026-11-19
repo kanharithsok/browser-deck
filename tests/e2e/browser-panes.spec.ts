@@ -684,6 +684,42 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
     await waitForAlignedBounds(app)
     await expect.poll(() => shellPage.locator('.pane-snapshot').count()).toBe(2)
+    const firstCanvasCard = shellPage.locator('.pane-card').first()
+    const secondCanvasCard = shellPage.locator('.pane-card').nth(1)
+    const paneDragBefore = await firstCanvasCard.boundingBox()
+    const otherPaneBefore = await secondCanvasCard.boundingBox()
+    const backgroundBefore = await shellPage
+      .locator('.workspace')
+      .evaluate((element) => getComputedStyle(element).backgroundPosition)
+    const paneDragHeader = await firstCanvasCard.locator('.pane-title-row').boundingBox()
+    if (!paneDragBefore || !otherPaneBefore || !paneDragHeader) {
+      throw new Error('Canvas pane drag bounds are unavailable')
+    }
+    await shellPage.mouse.move(paneDragHeader.x + 20, paneDragHeader.y + paneDragHeader.height / 2)
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(
+      paneDragHeader.x + 60,
+      paneDragHeader.y + paneDragHeader.height / 2 + 4,
+      { steps: 6 }
+    )
+    await shellPage.mouse.up()
+    await waitForVisibleAlignedBounds(app)
+    const paneDragAfter = await firstCanvasCard.boundingBox()
+    const otherPaneAfter = await secondCanvasCard.boundingBox()
+    expect(paneDragAfter?.x).not.toBe(paneDragBefore.x)
+    expect(paneDragAfter?.y).not.toBe(paneDragBefore.y)
+    expect(otherPaneAfter?.x).toBe(otherPaneBefore.x)
+    expect(otherPaneAfter?.y).toBe(otherPaneBefore.y)
+    expect(
+      await shellPage
+        .locator('.workspace')
+        .evaluate((element) => getComputedStyle(element).backgroundPosition)
+    ).toBe(backgroundBefore)
+
+    // Website content remains interactive while the label is the drag handle.
+    await alicePage.locator('#popup-button').click()
+    await expect(alicePage.locator('#output')).toContainText('Popup denied by PaneFlow.')
+
     const canvasBefore = await shellPage.locator('.pane-card').first().boundingBox()
     if (!canvasBefore) {
       throw new Error('Canvas pane bounds are unavailable')

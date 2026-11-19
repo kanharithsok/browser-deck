@@ -407,7 +407,7 @@ function requestClose(): void {
 
 .pane-card-canvas .pane-title-row {
   gap: 5px;
-  cursor: default;
+  cursor: grab;
 }
 
 .pane-card-canvas .pane-profile {
