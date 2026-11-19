@@ -4,13 +4,21 @@ import PaneNavigation from './PaneNavigation.vue'
 import type { PaneState } from '../../../shared/ipc'
 import type { PaneViewport } from '../../../shared/viewports'
 
-const props = defineProps<{
-  pane: PaneState
-}>()
+const props = withDefaults(
+  defineProps<{
+    pane: PaneState
+    showCanvasTools?: boolean
+  }>(),
+  {
+    showCanvasTools: false
+  }
+)
 
 const emit = defineEmits<{
   'set-viewport': [viewport: PaneViewport]
   'layout-changed': []
+  'fit-all': []
+  overview: []
 }>()
 
 const addressError = ref<string | null>(null)
@@ -37,6 +45,34 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
       @set-viewport="emit('set-viewport', $event)"
       @layout-changed="emit('layout-changed')"
     />
+
+    <div v-if="showCanvasTools" class="global-canvas-tools">
+      <button
+        class="global-canvas-tool"
+        type="button"
+        title="Fit all panes to view"
+        aria-label="Fit all panes to view"
+        @click="emit('fit-all')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+        </svg>
+      </button>
+      <button
+        class="global-canvas-tool"
+        type="button"
+        title="Canvas overview"
+        aria-label="Canvas overview"
+        @click="emit('overview')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2.5" y="3" width="4.5" height="4.5" rx="0.7" />
+          <rect x="9" y="3" width="4.5" height="4.5" rx="0.7" />
+          <rect x="2.5" y="9" width="4.5" height="4.5" rx="0.7" />
+          <rect x="9" y="9" width="4.5" height="4.5" rx="0.7" />
+        </svg>
+      </button>
+    </div>
 
     <span :id="statusId" class="global-pane-status" role="status" aria-live="polite">
       {{ addressError ?? (pane.error ? 'Load failed' : '') }}
@@ -112,6 +148,40 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
 .status-dot-error {
   background: var(--danger);
   opacity: 1;
+}
+
+.global-canvas-tools {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.global-canvas-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.global-canvas-tool:hover {
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
+.global-canvas-tool svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .global-pane-status {

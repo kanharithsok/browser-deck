@@ -1015,6 +1015,37 @@ Record material technical decisions here. Keep entries short but include context
   - E2e wheel-pans and verifies visible native bounds realign with the DOM after the gesture.
   - Existing content-interaction, pane-header drag, background pan, and Hand-tool checks continue to pass.
 
+## ADR-034 — Canvas overview is a modal minimap with one-click Fit all
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Users can pan or zoom far enough to lose every pane. A persistent DOM minimap cannot float over native `WebContentsView` pages, and a permanent side panel would reduce the already-limited canvas area and force layout shifts.
+
+- **Decision:**
+  1. Add a Canvas overview dialog containing a projected minimap of every pane and the current viewport.
+  2. Include both pane bounds and viewport bounds in the projection, so distant panes remain visible even after panning far away.
+  3. Selecting a pane centers it, fits a zoom that can show the whole frame, and closes the overview. Selecting empty map space centers that world point.
+  4. Add a one-click **Fit all panes** action to the Canvas global bar, plus a Fit all action in the overview.
+  5. Hide native views while the overview is open through the existing measured-visibility path; no DOM overlay is attempted over native content.
+  6. Keep the overview as a modal preview rather than a permanent sidebar.
+
+- **Alternatives considered:**
+  - **Persistent minimap overlay.** Rejected; native views cover the shell.
+  - **Persistent side dock.** Rejected for the minimal layout; it shrinks the canvas and shifts every pane.
+  - **Native menu listing panes.** Rejected; it provides no spatial preview.
+  - **Fit-only control with no map.** Rejected; users still need to understand where panes went.
+
+- **Consequences:**
+  - Recovery takes two actions (overview → pane/Fit), while the global bar Fit action is one click.
+  - Opening the overview temporarily hides live native views and shows snapshot/placeholder content behind the modal.
+  - Fit all may change pan and zoom; it does not modify world positions.
+  - No new persistence format is required. Viewport pan/zoom remain transient.
+
+- **Evidence / verification:**
+  - Unit tests cover frame projection, viewport inclusion, far-away viewport bounds, and empty/invalid inputs.
+  - E2e opens the Canvas overview, verifies two frame buttons and the viewport rectangle, hides native views, clicks Fit all, verifies the dialog closes, and asserts both cards fit fully inside the workspace with native bounds aligned.
+  - Existing Canvas pan/zoom/drag/content tests continue to pass.
+
 ## ADR template
 
 ### ADR-NNN — Title

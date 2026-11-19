@@ -50,6 +50,7 @@ src/
     geometry.ts         bounds validation and clamping
     canvas.ts           infinite-canvas frame sizing and row arrangement
     layout.ts           pure grid/freeform layout engine
+    minimap.ts          projects pane frames and the viewport into an overview map
     pane-chrome.ts      temporary pane-chrome preview types and labels
     profiles.ts         profile IDs, labels, partition names, validation
     shell.ts            shell URL constants, CSP builder, trusted document check
@@ -131,6 +132,8 @@ The toolbar Add pane control is a split button. Its chevron opens a native `Menu
 The toolbar appearance button opens a native System/Light/Dark menu. Main keeps `nativeTheme.themeSource`, persisted preference, native chrome, and the shell's resolved `data-theme` synchronized. Each pane's webContents receives the resolved `prefers-color-scheme` through the debugger's `Emulation.setEmulatedMedia`, so loaded websites react without a reload. Pane navigation controls are shared by the per-pane bar and the optional global bar; the C preview moves them into the global bar.
 
 Canvas layout uses world-coordinate pane positions plus a viewport pan offset and zoom. The shell draws a radial-gradient dot field whose background position follows the pan. Dragging empty canvas, wheel panning, or using the Hand tool updates only the shell transform until the gesture ends; native views are hidden for the duration. Holding Space temporarily enables the Hand tool. While Hand is active, the wheel zooms around the cursor between 50% and 200%; pane frame sizes, positions, and snapshots scale in the shell, while main applies the matching scale through device emulation for responsive panes. Main captures JPEG page snapshots through `capturePaneSnapshots`; the shell displays those images while panning and for partially off-screen panes. On release, the validated bounds path restores native views for frames fully inside the workspace. Canvas positions are persisted in workspace layout; pan and zoom are viewport state.
+
+The Canvas overview is a modal dialog because a DOM minimap would be covered by native pane views. Opening it hides native views through the measured-visibility path. `src/shared/minimap.ts` projects all pane frames and the current viewport into a fixed map, including the viewport bounds so panes remain findable after panning far away. Selecting a frame centers it and fits a zoom that can show the whole frame; selecting the map background centers that world point. The Canvas global bar exposes one-click Fit all panes and the overview trigger.
 
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 

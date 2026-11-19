@@ -781,6 +781,37 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const canvasAfter = await shellPage.locator('.pane-card').first().boundingBox()
     expect(canvasAfter?.x).not.toBe(canvasBefore.x)
     expect(canvasAfter?.y).not.toBe(canvasBefore.y)
+
+    // The overview shows every pane and the current viewport, and Fit all
+    // brings every pane back into the visible workspace.
+    await expect(shellPage.getByRole('button', { name: 'Fit all panes to view' })).toBeVisible()
+    await shellPage.getByRole('button', { name: 'Canvas overview' }).click()
+    const overview = shellPage.getByRole('dialog', { name: 'Canvas overview' })
+    await expect(overview).toBeVisible()
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
+      .toBe(true)
+    await expect(overview.locator('.overview-frame')).toHaveCount(2)
+    await expect(overview.locator('.overview-viewport')).toBeVisible()
+    await overview.getByRole('button', { name: 'Fit all panes' }).click()
+    await expect(overview).toBeHidden()
+    await waitForVisibleAlignedBounds(app)
+    const fittedWorkspace = await shellPage.locator('.workspace').boundingBox()
+    const fittedCards = await shellPage.locator('.pane-card').evaluateAll((cards) =>
+      cards.map((card) => card.getBoundingClientRect().toJSON())
+    )
+    if (!fittedWorkspace || fittedCards.length !== 2) {
+      throw new Error('Canvas fit-all bounds are unavailable')
+    }
+    for (const card of fittedCards) {
+      expect(card.x).toBeGreaterThanOrEqual(fittedWorkspace.x - 1)
+      expect(card.y).toBeGreaterThanOrEqual(fittedWorkspace.y - 1)
+      expect(card.x + card.width).toBeLessThanOrEqual(fittedWorkspace.x + fittedWorkspace.width + 1)
+      expect(card.y + card.height).toBeLessThanOrEqual(
+        fittedWorkspace.y + fittedWorkspace.height + 1
+      )
+    }
+
     const handTool = shellPage.getByRole('button', { name: 'Hand tool' })
     await handTool.click()
     await expect(handTool).toHaveAttribute('aria-pressed', 'true')

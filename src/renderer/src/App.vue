@@ -10,6 +10,7 @@ import {
   canvasFrameSize,
   type CanvasPosition
 } from '../../shared/canvas'
+import { layoutMinimap } from '../../shared/minimap'
 import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrome'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
@@ -52,6 +53,9 @@ type ProfileActionKind = 'clear' | 'delete'
 
 const CANVAS_MIN_ZOOM = 0.5
 const CANVAS_MAX_ZOOM = 2
+const OVERVIEW_MAP_WIDTH = 520
+const OVERVIEW_MAP_HEIGHT = 300
+const CANVAS_FIT_PADDING = 24
 
 interface CanvasDragState {
   startX: number
@@ -103,6 +107,8 @@ const canvasZoom = ref(1)
 const canvasHandMode = ref(false)
 const spaceHandMode = ref(false)
 const isCanvasPanning = ref(false)
+const overviewOpen = ref(false)
+const overviewDialogEl = ref<HTMLElement | null>(null)
 const isCanvasPaneDragging = ref(false)
 const canvasDrag = ref<CanvasDragState | null>(null)
 const canvasPaneDrag = ref<CanvasPaneDragState | null>(null)
@@ -221,6 +227,41 @@ const canvasWorkspaceStyle = computed(() =>
   layoutMode.value === 'canvas'
     ? { backgroundPosition: `${canvasPan.value.x}px ${canvasPan.value.y}px` }
     : undefined
+)
+
+const canvasMinimapViewport = computed(() => {
+  const zoom = canvasZoom.value
+  if (zoom <= 0) {
+    return null
+  }
+  return {
+    x: -canvasPan.value.x / zoom,
+    y: -canvasPan.value.y / zoom,
+    width: workspaceSize.value.width / zoom,
+    height: workspaceSize.value.height / zoom
+  }
+})
+
+const canvasMinimapLayout = computed(() =>
+  layoutMinimap(
+    orderedPanes.value.flatMap((pane) => {
+      const frame = canvasFrames.value.get(pane.id)
+      return frame
+        ? [
+            {
+              id: pane.id,
+              x: frame.x,
+              y: frame.y,
+              width: frame.width,
+              height: frame.height,
+              active: activePaneId.value === pane.id
+            }
+          ]
+        : []
+    }),
+    canvasMinimapViewport.value,
+    { width: OVERVIEW_MAP_WIDTH, height: OVERVIEW_MAP_HEIGHT }
+  )
 )
 
 const showGlobalPaneBar = computed(
@@ -938,6 +979,158 @@ function onWorkspaceWheel(event: WheelEvent): void {
   scheduleCanvasWheelEnd()
 }
 
+function fitCanvasToPanes(): void {
+  if (canvasFrames.value.size === 0 || workspaceSize.value.width < 1) {
+    return
+  }
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const frame of canvasFrames.value.values()) {
+    minX = Math.min(minX, frame.x)
+    minY = Math.min(minY, frame.y)
+    maxX = Math.max(maxX, frame.x + frame.width)
+    maxY = Math.max(maxY, frame.y + frame.height)
+  }
+  const worldWidth = Math.max(1, maxX - minX)
+  const worldHeight = Math.max(1, maxY - minY)
+  const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
+  const availableHeight = Math.max(1, workspaceSize.value.height - CANVAS_FIT_PADDING * 2)
+  const zoom = Math.min(
+    CANVAS_MAX_ZOOM,
+    Math.max(
+      CANVAS_MIN_ZOOM,
+      Math.min(availableWidth / worldWidth, availableHeight / worldHeight, 1)
+    )
+  )
+  canvasZoom.value = zoom
+  canvasPan.value = {
+    x: Math.round(workspaceSize.value.width / 2 - (minX + worldWidth / 2) * zoom),
+    y: Math.round(workspaceSize.value.height / 2 - (minY + worldHeight / 2) * zoom)
+  }
+  syncCanvasZoomToMain(zoom)
+  void nextTick(scheduleMeasure)
+  scheduleSnapshotRefresh(300)
+}
+
+function focusCanvasPane(paneId: string): void {
+  const frame = canvasFrames.value.get(paneId)
+  if (!frame) {
+    return
+  }
+  const contentHeight = frame.height - CANVAS_HEADER_HEIGHT
+  const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
+  const availableHeight = Math.max(
+    1,
+    workspaceSize.value.height - CANVAS_FIT_PADDING * 2 - CANVAS_HEADER_HEIGHT
+  )
+  const fitZoom = Math.min(
+    CANVAS_MAX_ZOOM,
+    Math.max(
+      CANVAS_MIN_ZOOM,
+      Math.min(availableWidth / frame.width, availableHeight / contentHeight, 1)
+    )
+  )
+  const zoom = Math.min(canvasZoom.value, fitZoom)
+  const screenWidth = frame.width * zoom
+  const screenHeight = contentHeight * zoom + CANVAS_HEADER_HEIGHT
+  canvasZoom.value = zoom
+  canvasPan.value = {
+    x: Math.round((workspaceSize.value.width - screenWidth) / 2 - frame.x * zoom),
+    y: Math.round((workspaceSize.value.height - screenHeight) / 2 - frame.y * zoom)
+  }
+  activePaneId.value = paneId
+  syncCanvasZoomToMain(zoom)
+  void nextTick(scheduleMeasure)
+  scheduleSnapshotRefresh(300)
+}
+
+function openCanvasOverview(): void {
+  if (layoutMode.value !== 'canvas' || overviewOpen.value) {
+    return
+  }
+  overviewOpen.value = true
+  actionError.value = null
+  void nextTick(() => {
+    scheduleMeasure()
+    overviewDialogEl.value?.focus()
+  })
+}
+
+function closeCanvasOverview(): void {
+  if (!overviewOpen.value) {
+    return
+  }
+  overviewOpen.value = false
+  void nextTick(() => {
+    scheduleMeasure()
+    recoverFocus()
+  })
+}
+
+function onOverviewKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeCanvasOverview()
+    return
+  }
+  if (event.key !== 'Tab') {
+    return
+  }
+  const dialog = overviewDialogEl.value
+  if (!dialog) {
+    return
+  }
+  const focusable = Array.from(
+    dialog.querySelectorAll<HTMLElement>('button:not([disabled])')
+  ).filter((element) => element.getClientRects().length > 0)
+  if (focusable.length === 0) {
+    event.preventDefault()
+    dialog.focus()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
+  }
+}
+
+function canvasPaneTitle(paneId: string): string {
+  return panes.value.find((pane) => pane.id === paneId)?.title ?? 'Pane'
+}
+
+function fitCanvasAndCloseOverview(): void {
+  fitCanvasToPanes()
+  closeCanvasOverview()
+}
+
+function focusCanvasPaneAndClose(paneId: string): void {
+  focusCanvasPane(paneId)
+  closeCanvasOverview()
+}
+
+function onMinimapBackgroundClick(event: MouseEvent): void {
+  const layout = canvasMinimapLayout.value
+  const map = event.currentTarget
+  if (!layout || !(map instanceof HTMLElement)) {
+    return
+  }
+  const rect = map.getBoundingClientRect()
+  const worldX = (event.clientX - rect.left - layout.offsetX) / layout.scale
+  const worldY = (event.clientY - rect.top - layout.offsetY) / layout.scale
+  canvasPan.value = {
+    x: Math.round(workspaceSize.value.width / 2 - worldX * canvasZoom.value),
+    y: Math.round(workspaceSize.value.height / 2 - worldY * canvasZoom.value)
+  }
+  closeCanvasOverview()
+}
+
 function centerCanvasPane(paneId: string): void {
   const frame = canvasFrames.value.get(paneId)
   if (!frame) {
@@ -986,6 +1179,7 @@ function onCanvasSpaceDown(event: KeyboardEvent): void {
     maximizedPaneId.value ||
     profilesOpen.value ||
     workspacesOpen.value ||
+    overviewOpen.value ||
     isEditableTarget(event.target)
   ) {
     return
@@ -1116,6 +1310,7 @@ function applyState(state: ShellState): void {
     canvasPan.value = { x: 0, y: 0 }
     canvasZoom.value = 1
     syncCanvasZoomToMain(1)
+    overviewOpen.value = false
     canvasHandMode.value = false
     spaceHandMode.value = false
     isCanvasPanning.value = false
@@ -1908,7 +2103,7 @@ async function reloadActivePane(): Promise<void> {
 }
 
 function handlePaneCommand(command: PaneCommand): void {
-  if (profilesOpen.value || workspacesOpen.value) {
+  if (profilesOpen.value || workspacesOpen.value || overviewOpen.value) {
     return
   }
   const pane = currentPane()
@@ -2173,6 +2368,7 @@ async function measurePanes(): Promise<void> {
       isDragging.value ||
       profilesOpen.value ||
       workspacesOpen.value ||
+      overviewOpen.value ||
       isCanvasPanning.value ||
       isCanvasPaneDragging.value ||
       canvasHandActive.value
@@ -2248,6 +2444,7 @@ watch(layoutMode, (mode) => {
   }
 
   if (mode !== 'canvas') {
+    overviewOpen.value = false
     canvasHandMode.value = false
     spaceHandMode.value = false
     isCanvasPanning.value = false
@@ -2291,6 +2488,10 @@ watch(profilesOpen, () => {
 })
 
 watch(workspacesOpen, () => {
+  void nextTick(scheduleMeasure)
+})
+
+watch(overviewOpen, () => {
   void nextTick(scheduleMeasure)
 })
 
@@ -2612,8 +2813,11 @@ onBeforeUnmount(() => {
       v-if="showGlobalPaneBar && activePane"
       :key="activePane.id"
       :pane="activePane"
+      :show-canvas-tools="layoutMode === 'canvas'"
       @set-viewport="setPaneViewport(activePane.id, $event)"
       @layout-changed="onPaneLayoutChanged"
+      @fit-all="fitCanvasToPanes"
+      @overview="openCanvasOverview"
     />
 
     <main
@@ -3101,6 +3305,91 @@ onBeforeUnmount(() => {
         </footer>
       </section>
     </div>
+
+    <div v-if="overviewOpen" class="modal-backdrop" @click.self="closeCanvasOverview">
+      <section
+        ref="overviewDialogEl"
+        class="profiles-dialog overview-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="overview-title"
+        aria-describedby="overview-description"
+        tabindex="-1"
+        @keydown="onOverviewKeydown"
+      >
+        <div class="profiles-header">
+          <div>
+            <h2 id="overview-title" class="profiles-title">Canvas overview</h2>
+            <p id="overview-description" class="profiles-description">
+              All panes and the current view. Select a pane to center it, or fit every pane back
+              into view.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            title="Close overview"
+            aria-label="Close overview"
+            @click="closeCanvasOverview"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="overview-body">
+          <div
+            class="overview-map"
+            :style="{ width: `${OVERVIEW_MAP_WIDTH}px`, height: `${OVERVIEW_MAP_HEIGHT}px` }"
+            @click="onMinimapBackgroundClick"
+          >
+            <template v-if="canvasMinimapLayout">
+              <button
+                v-for="frame in canvasMinimapLayout.frames"
+                :key="frame.id"
+                class="overview-frame"
+                :class="{ active: frame.active }"
+                type="button"
+                :style="{
+                  left: `${frame.rect.x}px`,
+                  top: `${frame.rect.y}px`,
+                  width: `${frame.rect.width}px`,
+                  height: `${frame.rect.height}px`
+                }"
+                :title="`Focus pane: ${canvasPaneTitle(frame.id)}`"
+                :aria-label="`Focus pane: ${canvasPaneTitle(frame.id)}`"
+                @click.stop="focusCanvasPaneAndClose(frame.id)"
+              ></button>
+              <span
+                class="overview-viewport"
+                :style="{
+                  left: `${canvasMinimapLayout.viewport.x}px`,
+                  top: `${canvasMinimapLayout.viewport.y}px`,
+                  width: `${canvasMinimapLayout.viewport.width}px`,
+                  height: `${canvasMinimapLayout.viewport.height}px`
+                }"
+                aria-hidden="true"
+              ></span>
+            </template>
+            <p v-else class="overview-empty">No panes to show.</p>
+          </div>
+        </div>
+
+        <footer class="profiles-footer">
+          <span class="profiles-count">
+            {{ panes.length }} pane{{ panes.length === 1 ? '' : 's' }} ·
+            {{ Math.round(canvasZoom * 100) }}%
+          </span>
+          <div class="workspace-footer-actions">
+            <button class="text-button" type="button" @click="fitCanvasAndCloseOverview">
+              Fit all panes
+            </button>
+            <button class="text-button" type="button" @click="closeCanvasOverview">Close</button>
+          </div>
+        </footer>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -3484,6 +3773,66 @@ onBeforeUnmount(() => {
 .profiles-dialog:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+
+.overview-dialog {
+  width: min(620px, 100%);
+}
+
+.overview-body {
+  padding: 14px 16px;
+}
+
+.overview-map {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 16px 16px;
+  cursor: crosshair;
+}
+
+.overview-frame {
+  position: absolute;
+  min-width: 3px;
+  min-height: 3px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
+  cursor: pointer;
+}
+
+.overview-frame:hover {
+  border-color: var(--text-muted);
+  background: var(--surface-raised);
+}
+
+.overview-frame.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.overview-viewport {
+  position: absolute;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  pointer-events: none;
+}
+
+.overview-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .profiles-header {
