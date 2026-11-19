@@ -1252,6 +1252,48 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
     await waitForVisibleAlignedBounds(app)
 
+    // Pane actions must stay available at every canvas zoom. At 80% these two
+    // iPhone frames straddle the old 340 px breakpoint that hid actions.
+    await focusPane(shellPage, alicePaneId as string)
+    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-15-pro-max')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.preset === 'iphone-15-pro-max',
+      'iPhone 15 Pro Max viewport for action visibility'
+    )
+    await focusPane(shellPage, bobPaneId as string)
+    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-15-pro')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[1]?.viewport.preset === 'iphone-15-pro',
+      'iPhone 15 Pro viewport for action visibility'
+    )
+    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
+    await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
+    await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('80%')
+    const aliceActionCard = shellPage.locator(
+      `.pane-card[data-pane-id="${alicePaneId}"]`
+    )
+    const bobActionCard = shellPage.locator(`.pane-card[data-pane-id="${bobPaneId}"]`)
+    expect((await aliceActionCard.boundingBox())?.width ?? 0).toBeGreaterThan(340)
+    expect((await bobActionCard.boundingBox())?.width ?? 0).toBeLessThanOrEqual(340)
+    for (const card of [aliceActionCard, bobActionCard]) {
+      await expect(card.locator('.pane-actions')).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Maximize pane' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Pane actions' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Close pane' })).toBeVisible()
+    }
+
+    // Restore responsive panes for the remaining zoom/emulation checks.
+    await focusPane(shellPage, alicePaneId as string)
+    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await focusPane(shellPage, bobPaneId as string)
+    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await waitForVisibleAlignedBounds(app)
+
     // Responsive panes scale their live views through canvas zoom. Returning
     // the canvas to 100% disables device emulation and restores the responsive
     // page viewport to the pane content rectangle.
