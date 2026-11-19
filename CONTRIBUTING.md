@@ -12,6 +12,7 @@ Thanks for your interest in PaneFlow. The project is in its early development st
 ## Development expectations
 
 - Use the Node version in `.nvmrc` and npm.
+- Prefer the Make targets (`make dev`, `make check`, `make test-e2e`); they check the toolchain and install stale dependencies before running.
 - Follow the existing TypeScript, Vue, and Electron conventions.
 - Add tests for behavior changes.
 - Treat remote website content as untrusted.

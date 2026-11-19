@@ -45,6 +45,7 @@ The current build does **not** include optional user-agent overrides, background
 - Git.
 - Node.js 24 (use the version in `.nvmrc`).
 - npm.
+- GNU Make (included with the macOS developer tools).
 - [OpenCode 2](https://opencode.ai/) installed and configured with a coding model.
 
 The verified environment is Node 24.22.3, npm 11.19.1, Electron 45.3.4, and macOS 27.2.1 on Apple silicon.
@@ -53,27 +54,31 @@ The verified environment is Node 24.22.3, npm 11.19.1, Electron 45.3.4, and macO
 
 ```bash
 nvm use
-npm install
-npm run dev
+make dev
 ```
 
-`npm run dev` starts a local fixture server on a random loopback port and launches electron-vite. Two panes open with independent fixture sessions (`alice` and `bob`) that display their per-profile cookie, localStorage, viewport, and device pixel ratio. Open `/login` in a pane to try the fixture's independent authenticated sessions.
+`make dev` checks the Node.js version, installs dependencies when `package.json` or `package-lock.json` has changed, downloads the Electron runtime when needed, and starts a local fixture server on a random loopback port. Two panes open with independent fixture sessions (`alice` and `bob`) that display their per-profile cookie, localStorage, viewport, and device pixel ratio. Open `/login` in a pane to try the fixture's independent authenticated sessions.
 
-## Scripts
+To preview the production build instead, run `make start`. Run `make` or `make help` to list every target. A separate `npm install` is not normally required; use `make install` to force a clean reinstall.
 
-| Script | Purpose |
-| --- | --- |
-| `npm run dev` | Fixture server + electron-vite development app |
-| `npm run build` | Build main, preload, and renderer into `out/` |
-| `npm run start` | Preview the built app through electron-vite |
-| `npm run typecheck` | Strict TypeScript check for node and renderer code |
-| `npm run lint` | ESLint across source, tests, and scripts |
-| `npm run check:contrast` | WCAG contrast checks for light/dark design tokens |
-| `npm run test:unit` | Vitest unit tests |
-| `npm run test` | Alias for the unit suite |
-| `npm run test:e2e` | Build, then run the Playwright Electron integration test |
-| `npm run package:mac` | Build an unsigned arm64 DMG + ZIP under `dist/` |
-| `npm run package:dir` | Build the unpacked arm64 `.app` under `dist/` |
+## Commands
+
+| Make target | npm script | Purpose |
+| --- | --- | --- |
+| `make dev` | `npm run dev` | Fixture server + electron-vite development app |
+| `make start` | `npm run start` | Build and preview the app through electron-vite |
+| `make build` | `npm run build` | Build main, preload, and renderer into `out/` |
+| `make typecheck` | `npm run typecheck` | Strict TypeScript check for node and renderer code |
+| `make lint` | `npm run lint` | ESLint across source, tests, and scripts |
+| `make check-contrast` | `npm run check:contrast` | WCAG contrast checks for light/dark design tokens |
+| `make test-unit` | `npm run test:unit` | Vitest unit tests |
+| `make test` | `npm run test:unit` | Alias for the unit suite |
+| `make test-e2e` | `npm run test:e2e` | Build, then run the Playwright Electron integration test |
+| `make check` | — | Typecheck, lint, unit tests, and contrast checks |
+| `make package` | — | Build the unpacked arm64 `.app` (alias for `package-dir`) |
+| `make package-mac` | `npm run package:mac` | Build an unsigned arm64 DMG + ZIP under `dist/` |
+| `make package-dir` | `npm run package:dir` | Build the unpacked arm64 `.app` under `dist/` |
+| `make install` | — | Force `npm ci` and an Electron runtime install |
 
 ## Packaging
 
@@ -100,10 +105,8 @@ Workspace cycling follows workspace name order, wraps at either end, and restore
 ## Testing
 
 ```bash
-npm run typecheck
-npm run lint
-npm run test:unit
-npm run test:e2e
+make check
+make test-e2e
 ```
 
 The e2e tests launch the built app against local fixtures and verify:
@@ -172,6 +175,7 @@ OpenCode discovers `AGENTS.md`, `.opencode/agents/`, `.opencode/skills/`, and `.
 .github/              GitHub Actions CI
 .opencode/            Project agents, skills, and slash commands
 docs/                 Architecture, decisions, manual checks, phase reports
+Makefile              Developer commands with toolchain and dependency checks
 SECURITY.md           Threat boundaries and local-distribution checklist
 scripts/              Development launcher
 src/main/             Electron lifecycle, native views, IPC, profiles
