@@ -75,7 +75,12 @@ import {
 import { registerIpcHandlers } from './ipc'
 import { writeJsonAtomically } from './json-file'
 import { ProfileStore } from './profile-store'
-import { getProfileSession, hardenSession } from './session-policy'
+import {
+  getProfileSession,
+  hardenSession,
+  setBlockedActionReporter,
+  type BlockedActionEvent
+} from './session-policy'
 import { installShellProtocol, registerShellScheme } from './shell-protocol'
 import { installTestHook } from './test-hook'
 import { WorkspaceStore } from './workspace-store'
@@ -146,6 +151,50 @@ function currentShellState(): ShellState {
     },
     theme: store?.theme() ?? 'system',
     resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+  }
+}
+
+function sendPaneNotice(paneId: string, message: string): void {
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.webContents.send(IPC_CHANNELS.paneNotice, { paneId, message })
+  }
+}
+
+function permissionNotice(permission: string): string {
+  switch (permission) {
+    case 'notifications':
+      return 'Notifications blocked'
+    case 'media':
+      return 'Camera/mic blocked'
+    case 'geolocation':
+    case 'geolocation-approximate':
+      return 'Location blocked'
+    case 'clipboard-read':
+      return 'Clipboard blocked'
+    case 'display-capture':
+      return 'Screen capture blocked'
+    default:
+      return 'Permission blocked'
+  }
+}
+
+function reportBlockedAction(event: BlockedActionEvent): void {
+  const manager = browserManager
+  if (!manager) {
+    return
+  }
+
+  if (event.kind === 'permission') {
+    const paneId = manager.paneIdForWebContentsId(event.webContentsId)
+    if (paneId) {
+      sendPaneNotice(paneId, permissionNotice(event.permission))
+    }
+    return
+  }
+
+  const paneId = manager.paneIdForDownload(event.profileId, event.origin)
+  if (paneId) {
+    sendPaneNotice(paneId, 'Download blocked')
   }
 }
 
@@ -249,6 +298,9 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
       if (shellView && !shellView.webContents.isDestroyed()) {
         shellView.webContents.send(IPC_CHANNELS.paneMaximizeRequested, paneId)
       }
+    },
+    onPaneNotice: (notice) => {
+      sendPaneNotice(notice.paneId, notice.message)
     },
     onPaneRenameRequested: (paneId) => {
       if (shellView && !shellView.webContents.isDestroyed()) {
@@ -1365,6 +1417,8 @@ app.on('web-contents-created', (_event, contents) => {
     event.preventDefault()
   })
 })
+
+setBlockedActionReporter(reportBlockedAction)
 
 app.whenReady().then(async () => {
   devServerUrl = getDevServerUrl()

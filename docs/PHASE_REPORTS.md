@@ -789,3 +789,22 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual check | Invalid `javascript:` input displays a readable inline danger message at 1280 × 860 and 720 × 560 without toolbar overflow; Escape restores the current URL. |
 
 **Known behavior / limitations:** Long address errors truncate with a full-text tooltip. Inline errors temporarily consume toolbar width and squeeze the address input at the minimum window width. Native pane-menu clicks for Copy URL and Maximize/Restore are not automated by Playwright and need a manual GUI pass.
+
+## Post-MVP — Visible feedback for blocked popups, downloads, and permissions
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Added a `paneflow:pane-notice` main → shell event and a transient header status for blocked remote actions. Popups are reported by the pane `setWindowOpenHandler`; permission requests are mapped by `webContents` ID; downloads are mapped by profile and initiator origin. Notices are short, non-interactive messages, coalesce identical text per device, and auto-dismiss after six seconds. The deny-by-default policy is unchanged: there are no Allow/Prompt controls, no download handling, and no permission persistence in this slice.
+
+**Files changed:** `src/main/session-policy.ts`, `src/main/browser-manager.ts`, `src/main/index.ts`, `src/preload/index.ts`, `src/shared/ipc.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-045), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.47 kB, preload 9.49 kB, renderer JS 330.90 kB, shell CSS 27.61 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.5 s. Added coverage for `Popup blocked`, `Notifications blocked`, and `Download blocked` notices on the originating device. |
+| Visual check | Triggered a fixture notification request and confirmed `Notifications blocked` appears in the device header without shifting the workspace. |
+
+**Known behavior / limitations:** Notices are informational only. Events that cannot be attributed to a live pane are denied without a message. Repeated identical notices keep the six-second timer refreshed rather than stacking. Native permission prompts and download management remain intentionally out of scope.

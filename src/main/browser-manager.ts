@@ -16,6 +16,7 @@ import {
 } from '../shared/canvas'
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
 import type {
+  PaneNotice,
   PaneScreenshotResult,
   PaneState,
   PaneViewRect,
@@ -69,6 +70,7 @@ interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
   onPaneMaximizeRequested?: (paneId: string) => void
+  onPaneNotice?: (notice: PaneNotice) => void
   onPaneRenameRequested?: (paneId: string) => void
   onPaneLayerChanged?: () => void
   getColorScheme: () => PaneColorScheme
@@ -738,6 +740,38 @@ export class BrowserManager {
     return webContents ? webContents.id : null
   }
 
+  paneIdForWebContentsId(webContentsId: number): string | null {
+    for (const record of this.panes.values()) {
+      const webContents = this.liveWebContents(record)
+      if (webContents?.id === webContentsId) {
+        return record.id
+      }
+    }
+    return null
+  }
+
+  /** Matches a blocked download to the pane whose profile and origin initiated it. */
+  paneIdForDownload(profileId: string, origin: string): string | null {
+    let fallback: string | null = null
+    for (const record of this.panes.values()) {
+      if (record.profile.id !== profileId || !this.liveWebContents(record)) {
+        continue
+      }
+      fallback ??= record.id
+      if (!origin) {
+        continue
+      }
+      try {
+        if (new URL(record.url).origin === origin) {
+          return record.id
+        }
+      } catch {
+        // about:blank and invalid URLs cannot match an origin.
+      }
+    }
+    return fallback
+  }
+
   destroyAll(): void {
     if (this.destroyed) {
       return
@@ -916,7 +950,10 @@ export class BrowserManager {
       }
     })
 
-    webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    webContents.setWindowOpenHandler(() => {
+      this.reportNotice(record, 'Popup blocked')
+      return { action: 'deny' }
+    })
     webContents.on('will-attach-webview', (event) => {
       event.preventDefault()
     })
@@ -930,6 +967,10 @@ export class BrowserManager {
         this.options.onPaneFocused?.(record.id)
       }
     })
+  }
+
+  private reportNotice(record: PaneRecord, message: string): void {
+    this.options.onPaneNotice?.({ paneId: record.id, message })
   }
 
   private handleUnexpectedDestruction(record: PaneRecord): void {

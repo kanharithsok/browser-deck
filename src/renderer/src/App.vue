@@ -18,7 +18,13 @@ import type {
   CanvasMinimapState
 } from '../../shared/minimap'
 import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrome'
-import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
+import type {
+  PaneCommand,
+  PaneNotice,
+  PaneState,
+  ScriptResult,
+  ShellState
+} from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
 import {
   VIEWPORT_CATEGORY_LABELS,
@@ -130,6 +136,7 @@ const isCanvasPaneDragging = ref(false)
 const canvasDrag = ref<CanvasDragState | null>(null)
 const canvasPaneDrag = ref<CanvasPaneDragState | null>(null)
 const paneSnapshots = ref<Record<string, string>>({})
+const paneNotices = ref<Record<string, string>>({})
 const usesMacTitlebar = navigator.platform.startsWith('Mac')
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
@@ -193,6 +200,9 @@ const dragState = ref<DragState | null>(null)
 const dropTargetId = ref<string | null>(null)
 const isDragging = ref(false)
 
+const paneNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const PANE_NOTICE_DURATION = 6000
+
 let disposeStateListener: (() => void) | null = null
 let disposeMinimapActionListener: (() => void) | null = null
 let disposeZoomActionListener: (() => void) | null = null
@@ -200,6 +210,7 @@ let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
 let disposeMaximizeListener: (() => void) | null = null
+let disposeNoticeListener: (() => void) | null = null
 let disposeRenameListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
@@ -562,6 +573,55 @@ function requestPaneMaximize(paneId: string): void {
   }
   selectPane(paneId)
   toggleMaximize(paneId)
+}
+
+function removePaneNotice(paneId: string): void {
+  if (!(paneId in paneNotices.value)) {
+    return
+  }
+  const next = { ...paneNotices.value }
+  delete next[paneId]
+  paneNotices.value = next
+}
+
+function clearPaneNotice(paneId: string): void {
+  const timer = paneNoticeTimers.get(paneId)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    paneNoticeTimers.delete(paneId)
+  }
+  removePaneNotice(paneId)
+}
+
+function showPaneNotice(notice: PaneNotice): void {
+  if (!panes.value.some((pane) => pane.id === notice.paneId)) {
+    return
+  }
+  const existing = paneNoticeTimers.get(notice.paneId)
+  if (existing !== undefined) {
+    clearTimeout(existing)
+  }
+  if (paneNotices.value[notice.paneId] !== notice.message) {
+    paneNotices.value = {
+      ...paneNotices.value,
+      [notice.paneId]: notice.message
+    }
+  }
+  const timer = setTimeout(() => {
+    paneNoticeTimers.delete(notice.paneId)
+    removePaneNotice(notice.paneId)
+  }, PANE_NOTICE_DURATION)
+  paneNoticeTimers.set(notice.paneId, timer)
+}
+
+function clearAllPaneNotices(): void {
+  for (const timer of paneNoticeTimers.values()) {
+    clearTimeout(timer)
+  }
+  paneNoticeTimers.clear()
+  if (Object.keys(paneNotices.value).length > 0) {
+    paneNotices.value = {}
+  }
 }
 
 function blurActiveShellControl(): void {
@@ -1575,6 +1635,7 @@ function applyState(state: ShellState): void {
     document.body.classList.remove('paneflow-canvas-panning')
     document.body.classList.remove('paneflow-canvas-pane-dragging')
     paneSnapshots.value = {}
+    clearAllPaneNotices()
     layoutMode.value = 'canvas'
     gridColumns.value = DEFAULT_GRID_COLUMNS
     maximizedPaneId.value = null
@@ -1593,6 +1654,11 @@ function applyState(state: ShellState): void {
     !workspaceChanged && focusManagementEnabled && state.panes.length < panes.value.length
 
   const nextIds = new Set(state.panes.map((pane) => pane.id))
+  for (const paneId of Object.keys(paneNotices.value)) {
+    if (!nextIds.has(paneId)) {
+      clearPaneNotice(paneId)
+    }
+  }
   const retained = paneOrder.value.filter((paneId) => nextIds.has(paneId))
   const retainedIds = new Set(retained)
   const appended = state.panes
@@ -3063,6 +3129,7 @@ onMounted(async () => {
   })
   disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
   disposeMaximizeListener = window.paneflow.onPaneMaximizeRequested(requestPaneMaximize)
+  disposeNoticeListener = window.paneflow.onPaneNotice(showPaneNotice)
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -3105,8 +3172,10 @@ onBeforeUnmount(() => {
   disposeCommandListener?.()
   disposeFocusListener?.()
   disposeMaximizeListener?.()
+  disposeNoticeListener?.()
   disposeRenameListener?.()
   resizeObserver?.disconnect()
+  clearAllPaneNotices()
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', onGlobalKeyDown)
   window.removeEventListener('pointermove', onPointerMove)
@@ -3247,6 +3316,7 @@ onBeforeUnmount(() => {
             :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
             :rename-request="paneRenameRequests[pane.id] ?? 0"
+            :notice="paneNotices[pane.id]"
             :chrome-style="effectivePaneChrome"
             :snapshot="layoutMode === 'canvas' ? paneSnapshots[pane.id] : undefined"
             :canvas="layoutMode === 'canvas'"

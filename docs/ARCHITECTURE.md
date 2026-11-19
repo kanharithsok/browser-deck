@@ -248,6 +248,7 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
 | `paneflow:pane-focused` | Main → shell notification when a native pane gains focus |
 | `paneflow:pane-maximize-requested` | Main → shell request to maximize/restore a specific pane from its native menu |
+| `paneflow:pane-notice` | Main → shell transient notice for a blocked popup, download, or permission request |
 | `paneflow:show-pane-menu` | Native pane actions menu |
 | `paneflow:state-changed` | Main → shell state snapshots |
 | `paneflow:request-measurement` | Main → shell re-measure request |
@@ -264,14 +265,16 @@ PaneFlow is not an identity provider and stores no credentials. Authentication r
 
 Every remote session applies:
 
-- `setPermissionRequestHandler` → deny;
+- `setPermissionRequestHandler` → deny and report a transient notice;
 - `setPermissionCheckHandler` → deny;
 - `setDisplayMediaRequestHandler` → deny (null stream);
 - `setDevicePermissionHandler` → deny HID/serial/USB;
 - `setBluetoothPairingHandler` → reject pairing;
-- `will-download` → prevent;
-- pane `setWindowOpenHandler` → deny;
+- `will-download` → prevent and report a transient notice;
+- pane `setWindowOpenHandler` → deny and report a transient notice;
 - `will-attach-webview` → prevent.
+
+Blocked-action notices are intentionally non-interactive. Permission requests map to a pane by `webContents` ID; downloads map by profile and initiator origin; popups are reported directly by the pane handler. The shell shows the message in that device's header status for six seconds, so the deny-by-default policy remains intact while making the block visible.
 
 The trusted shell's default session receives the same deny-by-default policy. Remote views use `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `nodeIntegrationInSubFrames: false`, `nodeIntegrationInWorker: false`, `webviewTag: false`, `webSecurity: true`, `allowRunningInsecureContent: false`, no application preload, and their profile partition. `will-navigate` and `will-redirect` enforce the `http:` / `https:` / `about:blank` policy. URLs with embedded credentials or more than 2,048 characters are rejected so they cannot enter workspace state. TLS errors are not ignored.
 
