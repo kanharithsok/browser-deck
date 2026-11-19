@@ -300,9 +300,7 @@ const canvasMinimapState = computed<CanvasMinimapState>(() => ({
   }
 }))
 
-const showGlobalPaneBar = computed(
-  () => effectivePaneChrome.value === 'c' && activePane.value !== null
-)
+const showGlobalPaneBar = computed(() => effectivePaneChrome.value === 'c')
 
 const profilePaneCounts = computed(() => {
   const counts = new Map<string, number>()
@@ -1132,8 +1130,15 @@ function zoomCanvasAtCenter(zoom: number): void {
 
 function applyCanvasZoomAction(action: CanvasZoomAction): void {
   if (action.type === 'menu') {
-    openCanvasZoomMenu()
+    if (appMenuMode.value === 'zoom') {
+      closeAppMenu(false)
+    } else {
+      openCanvasZoomMenu()
+    }
     return
+  }
+  if (appMenuMode.value === 'zoom') {
+    closeAppMenu(false)
   }
   switch (action.type) {
     case 'step':
@@ -1320,7 +1325,7 @@ function syncCanvasMinimapVisibility(): void {
     layoutMode.value === 'canvas' &&
     !profilesOpen.value &&
     !workspacesOpen.value &&
-    appMenuMode.value === null
+    (appMenuMode.value === null || appMenuMode.value === 'zoom')
   void window.paneflow
     .setCanvasMinimapVisible(visible)
     .catch(() => undefined)
@@ -1332,6 +1337,9 @@ function syncCanvasMinimapVisibility(): void {
 function onCanvasMinimapAction(action: CanvasMinimapAction): void {
   if (layoutMode.value !== 'canvas') {
     return
+  }
+  if (appMenuMode.value === 'zoom') {
+    closeAppMenu(false)
   }
   if (action.type === 'focus') {
     focusCanvasPane(action.paneId)
@@ -2445,6 +2453,12 @@ async function setPaneViewport(paneId: string, viewport: PaneViewport): Promise<
   }
 }
 
+function onGlobalPaneSetViewport(viewport: PaneViewport): void {
+  if (activePane.value) {
+    void setPaneViewport(activePane.value.id, viewport)
+  }
+}
+
 function onPaneLayoutChanged(): void {
   void nextTick(scheduleMeasure)
 }
@@ -3151,11 +3165,13 @@ onBeforeUnmount(() => {
     </div>
 
     <GlobalPaneBar
-      v-if="showGlobalPaneBar && activePane"
-      :key="activePane.id"
+      v-if="showGlobalPaneBar"
+      :key="activePane ? activePane.id : 'empty'"
       :pane="activePane"
       :show-canvas-tools="layoutMode === 'canvas'"
-      @set-viewport="setPaneViewport(activePane.id, $event)"
+      :fit-all-disabled="panes.length === 0"
+      :has-panes="panes.length > 0"
+      @set-viewport="onGlobalPaneSetViewport"
       @layout-changed="onPaneLayoutChanged"
       @fit-all="fitCanvasToPanes"
     />

@@ -1104,7 +1104,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
     const zoomMenu = shellPage.getByRole('menu', { name: 'Zoom' })
     await expect(zoomMenu).toBeVisible()
-    await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(false)
+    await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(true)
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.visible)
+      .toBe(true)
     await expect(zoomMenu.getByRole('menuitemradio')).toHaveCount(7)
     await zoomMenu.getByRole('menuitemradio', { name: '50%', exact: true }).click()
     await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('50%')
@@ -1112,19 +1115,24 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await resetCanvasZoomFromBar(shellPage, zoomPage)
     await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
 
-    // Clicking empty canvas clears the active pane and hides its global bar;
-    // clicking a pane restores the selection.
+    // Clicking empty canvas clears the active pane without moving the
+    // workspace; clicking a pane restores the selection and its address.
     const deselectWorkspace = await shellPage.locator('.workspace').boundingBox()
     if (!deselectWorkspace) {
       throw new Error('Canvas deselect workspace bounds are unavailable')
     }
     await shellPage.mouse.click(deselectWorkspace.x + 6, deselectWorkspace.y + 6)
     await expect.poll(() => shellPage.locator('.pane-card-active').count()).toBe(0)
-    await expect(shellPage.locator('.global-pane-bar')).toHaveCount(0)
+    await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
+    await expect(shellPage.locator('.global-pane-bar')).toContainText('No pane selected')
+    const clearedWorkspace = await shellPage.locator('.workspace').boundingBox()
+    expect(clearedWorkspace).toEqual(deselectWorkspace)
     await shellPage.locator('.pane-title').first().click()
     await waitForVisibleAlignedBounds(app)
     await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)
-    await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
+    await expect(shellPage.locator('.global-pane-bar .address-input')).toBeVisible()
+    const reselectedWorkspace = await shellPage.locator('.workspace').boundingBox()
+    expect(reselectedWorkspace).toEqual(deselectWorkspace)
 
     await handTool.click()
     await expect(handTool).toHaveAttribute('aria-pressed', 'true')
