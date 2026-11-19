@@ -10,7 +10,7 @@ html body {
   font-size: 11px;
 }
 
-.zoom-bar {
+.canvas-bar {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -56,6 +56,11 @@ html body {
   color: var(--text);
 }
 
+.icon-button.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
 .icon-button:disabled {
   cursor: default;
   opacity: 0.4;
@@ -69,6 +74,18 @@ html body {
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.appearance-button svg[hidden] {
+  display: none;
+}
+
+.bar-separator {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border);
 }
 
 .chevron {

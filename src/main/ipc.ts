@@ -48,7 +48,6 @@ interface IpcContext {
   getWorkspaceIdentity: () => WorkspaceIdentity
   getThemePreference: () => ThemePreference
   getResolvedTheme: () => 'light' | 'dark'
-  showThemeMenu: (x: number, y: number) => Promise<ScriptResult>
   setThemePreference: (theme: ThemePreference) => void
   updateCanvasMinimapState: (state: CanvasMinimapState) => void
   setCanvasMinimapVisible: (visible: boolean) => void
@@ -56,6 +55,7 @@ interface IpcContext {
   forwardCanvasMinimapAction: (action: CanvasMinimapAction) => void
   updateCanvasZoomState: () => void
   forwardCanvasZoomAction: (action: CanvasZoomAction) => void
+  setCanvasHandMode: (active: boolean) => void
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
@@ -530,25 +530,6 @@ export function registerIpcHandlers(context: IpcContext): void {
     return { ok: true }
   })
 
-  ipcMain.handle(IPC_CHANNELS.showThemeMenu, async (event, payload: unknown): Promise<ScriptResult> => {
-    if (!isTrustedSender(event, context)) {
-      return unauthorized
-    }
-
-    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-      return { ok: false, error: 'Invalid menu request.' }
-    }
-
-    const request = payload as Record<string, unknown>
-    const x = readFiniteNumber(request.x)
-    const y = readFiniteNumber(request.y)
-    if (x === null || y === null) {
-      return { ok: false, error: 'Invalid menu request.' }
-    }
-
-    return context.showThemeMenu(x, y)
-  })
-
   ipcMain.handle(
     IPC_CHANNELS.capturePaneSnapshots,
     async (event): Promise<PaneSnapshotsResult> => {
@@ -587,6 +568,20 @@ export function registerIpcHandlers(context: IpcContext): void {
     context.updateCanvasZoomState()
     return { ok: true }
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.setCanvasHandMode,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      if (typeof payload !== 'boolean') {
+        return { ok: false, error: 'Invalid canvas hand mode.' }
+      }
+      context.setCanvasHandMode(payload)
+      return { ok: true }
+    }
+  )
 
   ipcMain.handle(
     IPC_CHANNELS.canvasZoomAction,

@@ -959,7 +959,7 @@ Record material technical decisions here. Keep entries short but include context
   4. Pan by dragging empty canvas. A Hand tool hides all native views and lets the user pan from anywhere. The pan offset is transient viewport state, not persisted.
   5. While panning or using the Hand tool, hide native views and show recent in-memory JPEG snapshots. On release, restore live native views for frames fully inside the workspace; partially visible frames remain snapshots.
   6. Clicking a partially visible frame centers it and restores its native view.
-  7. Use the existing global active-pane bar and compact per-pane labels in Canvas mode.
+  7. Use the existing active-pane controls in the top toolbar and compact per-pane labels in Canvas mode.
   8. Drag a pane's header/label area to move that pane in world coordinates. Website content stays in the native view and keeps normal page interaction; dragging content does not move the frame or canvas.
   9. Defer device bezels and frame resizing. Canvas zoom is covered by ADR-033.
 
@@ -1024,7 +1024,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Decision:**
   1. Add a small trusted `WebContentsView` rendered from `minimap.html` and pinned to the bottom-right above pane views. Show it whenever Canvas mode is active; no reveal button. Hide it while the Profiles or Workspaces dialog is open.
   2. Include both pane bounds and viewport bounds in the projection, so distant panes remain visible after panning far away. Draw the viewport as a dashed outline.
-  3. Selecting a frame centers and focuses that pane; selecting empty map space recenters the world point there. Add **Fit all panes** to the minimap header and keep it in the Canvas global bar.
+  3. Selecting a frame centers and focuses that pane; selecting empty map space recenters the world point there. Add **Fit all panes** to the minimap header and keep it in the top toolbar.
   4. Adapt the panel width between 168 and 208 px as the window narrows. Let the panel collapse to a compact header and expand again; the collapsed header stays visible.
   5. Keep the minimap above native views through the native child order. Do not hide covered pane views or swap them for snapshots; pane content remains live outside the minimap rectangle.
   6. Validate the shell and minimap senders separately. Projection state flows shell → main → minimap; focus/recenter/fit actions flow minimap → main → shell. Main returns focus to the shell after an action so Space and other shell shortcuts keep working.
@@ -1139,20 +1139,20 @@ Record material technical decisions here. Keep entries short but include context
   - Unit tests cover the viewport preset catalog and device/selection metadata.
   - E2e verifies the **+** control has only a plus, opens the 10-item Add menu, shows section headings, creates an iPhone 15 Pro pane, closes with Escape, restores the minimap, opens the right-click menu, switches to Add pane, toggles Hand mode, and changes appearance. Accessibility e2e verifies menu semantics, ArrowDown focus, and Escape close.
 
-## ADR-038 — Canvas zoom bar is a native overlay, and workspaces fit on open
+## ADR-038 — Canvas controls bar is a native overlay, and workspaces fit on open
 
-- **Status:** Accepted
+- **Status:** Accepted; bar contents extended by ADR-041 and scaling refined by ADR-042
 - **Date:** 2026-11-19
-- **Context:** The top-right percentage button was a small reset affordance, not a zoom control. Responsively-style zoom needs persistent zoom-out/zoom-in buttons and an exact percentage menu. The shell DOM cannot render a persistent bar above native pane views, so the bar must be a trusted native overlay. Users also lose orientation when a workspace opens at a saved pan far from its panes, and the active-pane bar stays visible after clicking empty canvas.
+- **Context:** The top-right percentage button was a small reset affordance, not a zoom control. Responsively-style zoom needs persistent zoom-out/zoom-in buttons and an exact percentage menu. The shell DOM cannot render a persistent bar above native pane views, so the bar must be a trusted native overlay. Users also lose orientation when a workspace opens at a saved pan far from its panes.
 
 - **Decision:**
-  1. Add a trusted `WebContentsView` rendered from `zoom.html`, pinned to the bottom center at 204 × 40 DIP with a 12 px margin, above pane views and the minimap.
+  1. Add a trusted `WebContentsView` rendered from `zoom.html`, pinned to the bottom center at 280 × 40 DIP with a 12 px margin, above pane views and the minimap. The bar holds Hand, zoom-out, the percentage button, zoom-in, and appearance.
   2. Show zoom-out and zoom-in buttons with a 10% step and a percentage button between them. Clicking the percentage button opens the standard in-shell `AppMenu` above the bar with 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%).
   3. Extend the Canvas zoom range to 25–200%. The shell clamps every wheel, step, preset, and reset action and applies it around the workspace center for button/menu actions.
-  4. Hide the zoom bar and minimap for dialogs and non-zoom custom menus. Keep both visible while the zoom menu is open because the menu sits above the bar and does not overlap the minimap; using a zoom-bar or minimap action closes the menu first. The zoom menu still hides intersecting native pane views through the existing menu path.
+  4. Hide the canvas bar and minimap for dialogs and non-zoom/non-appearance custom menus. Keep both visible while the zoom or appearance menu is open because those menus sit above the bar and do not overlap the minimap; using a bar or minimap action closes the menu first. The menu still hides intersecting native pane views through the existing menu path.
   5. Validate the zoom bar sender separately from the shell and minimap. State flows main → bar; actions flow bar → main → shell. Main only accepts the built `paneflow://shell/zoom.html` document or the validated development origin.
   6. Fit all panes when a workspace first appears and after switching workspaces, using a short ready/retry loop until the workspace has non-zero size. Do not refit on ordinary state updates.
-  7. A primary click on empty canvas with less than 4 px of movement clears the active pane; the bar stays mounted with a quiet empty state. Panning, middle-button drags, pointer cancellation, and clicks that start on a pane do not clear it. Selecting a pane, its header, or a minimap frame restores selection. The cleared state is transient.
+  7. A primary click on empty canvas with less than 4 px of movement clears the active pane; the top toolbar stays mounted with a quiet empty state. Panning, middle-button drags, pointer cancellation, and clicks that start on a pane do not clear it. Selecting a pane, its header, or a minimap frame restores selection. The cleared state is transient.
   8. Remove the top-right percentage control and make all top-right toolbar buttons borderless.
 
 - **Alternatives considered:**
@@ -1165,44 +1165,44 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - The bar occupies a small bottom-center rectangle and intercepts input there.
   - The window owns one more persistent webContents that is not part of pane or workspace persistence.
-  - Opening the zoom menu keeps the bar and minimap visible; other custom menus and dialogs still hide them.
-  - Using the zoom bar or minimap while the zoom menu is open closes the menu before applying the action.
-  - Zoom range increases from 50–200% to 25–200%; very small zoom can make pane chrome and snapshots harder to read.
+  - Opening the zoom or appearance menu keeps the bar and minimap visible; other custom menus and dialogs still hide them.
+  - Using the canvas bar or minimap while a bar menu is open closes the menu before applying the action.
+  - Zoom range increases from 50–200% to 25–200%; very small zoom scales pane chrome and snapshots down together (see ADR-042).
   - The cleared active-pane state is not persisted and does not modify workspace data.
 
 - **Evidence / verification:**
-  - Unit tests cover zoom clamping, presets, state/action validation, and trusted zoom document URLs in production and development.
-  - E2e verifies the bar's bottom-center bounds, step control, 7 preset radio items, Fit all, Reset, startup fit, empty-canvas deselection/reselection, and borderless top-right toolbar buttons. It also verifies that the bar and minimap remain visible while the zoom menu is open. Accessibility e2e verifies the bar's named controls, the menu's keyboard focus, Escape dismissal, and an axe audit of the bar.
+  - Unit tests cover zoom/hand/theme state and action validation, and trusted zoom document URLs in production and development.
+  - E2e verifies the bar's bottom-center bounds, Hand, step control, 7 preset radio items, Fit all, Reset, startup fit, empty-canvas deselection/reselection, and borderless top-right toolbar buttons. It also verifies that the bar and minimap remain visible while the zoom menu is open. Accessibility e2e verifies the bar's named controls, appearance menu, keyboard focus, Escape dismissal, and an axe audit of the bar.
 
-## ADR-039 — Keep the active-pane bar mounted to stabilize the Canvas
+## ADR-039 — Keep the active-pane controls mounted to stabilize the Canvas
 
-- **Status:** Accepted
+- **Status:** Accepted; placement moved into the top toolbar by ADR-041
 - **Date:** 2026-11-19
 - **Context:** In Canvas, selecting a pane mounted a 34 px active-pane bar between the toolbar and the workspace; clearing the selection removed it. The workspace therefore moved down and up on every selection change, which made panes appear to jump. A left or right inspector was considered as an alternative home for the address and viewport controls.
 
 - **Decision:**
-  1. Keep the active-pane bar mounted whenever Canvas chrome is active. It always occupies the same 34 px row above the workspace.
-  2. When no pane is selected, show a quiet empty state: "No pane selected" plus "Click a pane to edit its address". When the workspace has no panes, show "No panes" plus "Add a pane to get started". Keep the Canvas Fit all control at the right and disable it when there are no panes.
-  3. Keep the bar's populated content within the same height at supported window widths. Titles, profiles, and status text truncate instead of wrapping the bar.
-  4. Do not move the address/viewport controls into a left or right sidebar in this slice. A persistent side panel would permanently narrow the canvas and add more chrome; the stable top bar preserves the canvas-first layout with a smaller change.
+  1. Keep the active-pane controls mounted whenever Canvas chrome is active. They occupy a stable row in the top toolbar, which is always 42 px.
+  2. When no pane is selected, show a quiet empty state: "No pane selected" plus "Click a pane to edit its address". When the workspace has no panes, show "No panes" plus "Add a pane to get started". Keep Fit all at the right and disable it when there are no panes.
+  3. Keep the populated content within the same height at supported window widths. Titles, profiles, and status text truncate instead of wrapping; the custom viewport editor replaces the address row instead of adding a second row.
+  4. Do not move the address/viewport controls into a left or right sidebar in this slice. A persistent side panel would permanently narrow the canvas and add more chrome; the stable top toolbar preserves the canvas-first layout with a smaller change.
   5. Clear selection without resizing the workspace, so pane frames and native views do not shift.
 
 - **Alternatives considered:**
   - **Reserve a blank 34 px strip when no pane is selected.** Rejected; it stabilizes the layout but wastes the row. The empty state explains the row and keeps Fit all available.
   - **Overlay the bar on top of the workspace.** Rejected; it would cover the top of panes or require an extra canvas inset, complicating fit and pan.
-  - **Left or right inspector panel.** Deferred; it is a larger redesign that permanently reduces canvas width. The stable top bar solves the reported jump without changing the canvas-first model.
+  - **Left or right inspector panel.** Deferred; it is a larger redesign that permanently reduces canvas width. The stable top toolbar solves the reported jump without changing the canvas-first model.
   - **Keep removing the bar and animate the workspace.** Rejected; animation does not remove the layout shift and adds motion without solving the underlying instability.
 
 - **Consequences:**
-  - The workspace is always 34 px shorter in Canvas, including when nothing is selected.
-  - The empty row provides a stable place for the address controls and a hint for new users.
+  - The top toolbar is always present and stable; there is no separate 34 px row.
+  - The empty state provides a stable place for the address controls and a hint for new users.
   - Selecting or clearing a pane no longer changes the workspace rectangle or native bounds.
   - A future side-inspector design can reuse the same empty-state and stable-height principles.
 
 - **Evidence / verification:**
   - E2e captures the workspace rectangle while a pane is selected, after an empty-canvas click, and after reselecting a pane; all three rectangles are identical.
-  - E2e verifies the empty bar shows "No pane selected" and the populated bar exposes the address input.
-  - Visual check at 1280 × 860 and 720 × 560 confirms the bar stays 34 px and the empty state remains readable.
+  - E2e verifies the empty toolbar shows "No pane selected" and the populated toolbar exposes the address input.
+  - Visual check at 1280 × 860 and 720 × 560 confirms the single-row toolbar stays 42 px and the empty state remains readable.
 
 ## ADR-040 — Pane actions stay visible when Canvas frames narrow
 
@@ -1230,6 +1230,66 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e sets a 430 × 932 pane and a 393 × 852 pane, fits them, resets to 100%, zooms out to 80%, confirms the card widths straddle 340 px, and asserts maximize, pane actions, and close are visible on both.
   - A manual visual pass at 80% shows both headers with controls and no header overflow (`scrollWidth === clientWidth`).
+
+## ADR-041 — Top toolbar embeds active-pane controls; management moves to native menus
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** The top toolbar mixed app chrome (workspace switcher, Hand, Profiles, appearance), while a separate 34 px active-pane row held the address, navigation, and viewport controls. The result felt crowded and split related controls across two rows. The user asked to clean up the top bar, move Workspace and Profiles to the menubar, move Hand and appearance to the bottom, keep Reload/Add, and put the URL bar at the top.
+
+- **Decision:**
+  1. Make the top toolbar a single stable 42 px row: PaneFlow brand, active-pane context, back/forward/reload, address, viewport selector, Fit all, Reload all, and Add pane. The context hides when the embedded active-pane region is narrower than 640 px.
+  2. Remove the workspace switcher and Profiles button from the toolbar. Add **Workspaces…** to the native Workspace menu and a native **Profiles → Manage Profiles…** menu. Both send shell commands that open the existing dialogs; closing a dialog returns focus to the active address input (or Add pane when no pane exists).
+  3. Move Hand and appearance into the bottom canvas bar. Hand sends a validated action to the shell; appearance opens the in-shell System/Light/Dark menu above the bar. The native View → Theme menu remains.
+  4. Keep Reload all and Add in the top toolbar. Fit all stays adjacent to the active-pane controls.
+  5. Render the custom viewport editor inline in the top toolbar, replacing the address row for the same 42 px height. Do not add a second row that would move the workspace.
+
+- **Alternatives considered:**
+  - **Put the active-pane controls in a left/right sidebar.** Deferred; it permanently narrows the canvas and adds more chrome. The single-row toolbar preserves the canvas-first layout.
+  - **Keep the separate active-pane row.** Rejected; it duplicates the toolbar row and makes the top of the window feel heavy.
+  - **Keep Workspace/Profiles as toolbar buttons.** Rejected; native menus are the requested home and leave room for the URL controls.
+  - **Open appearance as a native menu from the bottom bar.** Rejected; a native menu anchored at the bottom is harder to position. The existing shell menu renders above the bar and stays inside the window.
+  - **Let the custom viewport editor wrap the toolbar.** Rejected; it would shift the canvas. Replacing the address row keeps the height stable.
+
+- **Consequences:**
+  - The top toolbar is dense at wide widths but collapses the pane context at narrow widths.
+  - Workspace/profile discovery moves to the macOS menu bar; the dialogs remain unchanged.
+  - The custom viewport editor temporarily hides the address row while editing.
+  - The bottom canvas bar carries five controls and is 280 px wide.
+  - Keyboard focus return from native-menu dialogs goes to the active address rather than a toolbar trigger.
+
+- **Evidence / verification:**
+  - E2e verifies the single-row toolbar, absence of workspace/profile/hand/appearance toolbar buttons, native Workspaces/Profiles menu commands, custom viewport editing at a stable 42 px height, and Hand/appearance controls in the bottom bar.
+  - Accessibility e2e verifies toolbar roles/names, tab order, native-menu dialog focus return to the address input, bottom-bar Hand/Appearance controls, and axe audits.
+
+## ADR-042 — Canvas zoom scales the whole pane while the viewport stays fixed
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Canvas zoom shrank or grew the pane slot and the page content, but the pane header chrome stayed at a fixed 32 px height and 12 px type. At 50% the page looked zoomed while the header stayed full size; at 200% the page was huge while the header stayed small. The user clarified that a 100 × 100 frame must remain a 100 × 100 viewport at 50%, and the whole pane should zoom as one unit rather than changing the page's internal zoom.
+
+- **Decision:**
+  1. Keep the pane's logical world frame at its declared viewport size plus the 32 px header. Canvas zoom is a visual scale of that frame.
+  2. Size the pane slot to `frame.height × zoom` and `frame.width × zoom`. Give the header wrapper `32 px × zoom`; lay the header out at its world width and apply `transform: scale(zoom)` with `transform-origin: top left`.
+  3. Keep the page's CSS viewport at the declared size. Main applies device-emulation scale equal to the Canvas zoom (or the fixed-viewport fit scale), so the page is rendered at the same visual scale without reflowing or changing `window.innerWidth/Height`.
+  4. Derive fit and centering math from the full frame height, not the old unscaled header offset.
+  5. Keep shell-only chrome such as the top toolbar and bottom canvas bar at normal size; only the pane is scaled.
+
+- **Alternatives considered:**
+  - **Keep the header fixed while the page scales.** Rejected; it makes zoom feel like page zoom and causes controls to disappear at narrow scaled widths.
+  - **Keep the page at 100% and resize only the frame.** Rejected; responsive pages would reflow and fixed viewports would crop or scroll, breaking design comparison.
+  - **Use CSS `zoom` on the whole pane.** Rejected; native `WebContentsView`s cannot be CSS-transformed as part of the shell and would desynchronize native bounds.
+  - **Scale only the page content.** Rejected; it violates the requirement that the frame be treated as its declared size as a whole.
+
+- **Consequences:**
+  - Pane header text and controls scale with zoom; at 25–50% they are small but proportionally correct.
+  - Click targets and drag handles scale with the pane.
+  - The page viewport stays fixed at every zoom, so responsive breakpoints do not change.
+  - Snapshot and native bounds share the same scaled content rectangle.
+
+- **Evidence / verification:**
+  - Manual measurement at 100%, 50%, and 200%: a 560 × 700 frame stays a 560 × 700 page viewport while the card renders at 560 × 732, 280 × 366, and 1120 × 1464; the header renders at 32, 16, and 64 px.
+  - E2e continues to verify native bounds alignment after zoom and responsive emulation below 100%.
 
 ## ADR template
 

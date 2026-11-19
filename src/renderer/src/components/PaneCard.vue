@@ -177,143 +177,145 @@ function requestClose(): void {
     :aria-label="`Browser pane: ${pane.title}`"
     :aria-current="active ? 'true' : undefined"
   >
-    <header class="pane-header">
-      <div class="pane-main">
-        <div class="pane-title-row">
-          <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
-          <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
+    <div class="pane-header-shell">
+      <header class="pane-header">
+        <div class="pane-main">
+          <div class="pane-title-row">
+            <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
+            <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
 
-          <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
-            {{ pane.title }}
-          </span>
-          <form v-else class="pane-title-form" @submit.prevent="submitRename">
-            <input
-              ref="titleInput"
-              v-model="titleDraft"
-              class="pane-title-input"
-              :class="{ 'pane-title-input-invalid': titleError }"
-              type="text"
-              :maxlength="MAX_PANE_TITLE_LENGTH"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Use page title"
-              :aria-label="`Pane name for ${pane.title}`"
-              :aria-invalid="titleError ? 'true' : 'false'"
-              :aria-describedby="titleError ? statusId : undefined"
-              @input="titleError = null"
-              @blur="onTitleBlur"
-              @keydown.esc.prevent="cancelRename"
-            />
-          </form>
-          <span
-            class="pane-profile"
-            :title="
-              profilePaneCount > 1
-                ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} panes)`
-                : `Browser profile: ${pane.profileLabel}`
-            "
-          >
-            {{ profileLabelText }}
-          </span>
+            <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
+              {{ pane.title }}
+            </span>
+            <form v-else class="pane-title-form" @submit.prevent="submitRename">
+              <input
+                ref="titleInput"
+                v-model="titleDraft"
+                class="pane-title-input"
+                :class="{ 'pane-title-input-invalid': titleError }"
+                type="text"
+                :maxlength="MAX_PANE_TITLE_LENGTH"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Use page title"
+                :aria-label="`Pane name for ${pane.title}`"
+                :aria-invalid="titleError ? 'true' : 'false'"
+                :aria-describedby="titleError ? statusId : undefined"
+                @input="titleError = null"
+                @blur="onTitleBlur"
+                @keydown.esc.prevent="cancelRename"
+              />
+            </form>
+            <span
+              class="pane-profile"
+              :title="
+                profilePaneCount > 1
+                  ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} panes)`
+                  : `Browser profile: ${pane.profileLabel}`
+              "
+            >
+              {{ profileLabelText }}
+            </span>
 
-          <span
-            v-if="showViewportBadge"
-            class="pane-viewport-badge"
-            :title="`Viewport: ${viewportLabel}`"
-          >
-            {{ viewportLabel }}
-          </span>
+            <span
+              v-if="showViewportBadge"
+              class="pane-viewport-badge"
+              :title="`Viewport: ${viewportLabel}`"
+            >
+              {{ viewportLabel }}
+            </span>
 
-          <span
-            :id="statusId"
-            class="pane-status"
-            role="status"
-            aria-live="polite"
-            :title="titleError ?? addressError ?? pane.error ?? undefined"
-          >
-            <template v-if="titleError">{{ titleError }}</template>
-            <template v-else-if="addressError">{{ addressError }}</template>
-            <template v-else-if="pane.error">Load failed</template>
-            <template v-else-if="pane.isLoading"><span class="sr-only">Loading</span></template>
-          </span>
+            <span
+              :id="statusId"
+              class="pane-status"
+              role="status"
+              aria-live="polite"
+              :title="titleError ?? addressError ?? pane.error ?? undefined"
+            >
+              <template v-if="titleError">{{ titleError }}</template>
+              <template v-else-if="addressError">{{ addressError }}</template>
+              <template v-else-if="pane.error">Load failed</template>
+              <template v-else-if="pane.isLoading"><span class="sr-only">Loading</span></template>
+            </span>
+          </div>
+
+          <PaneNavigation
+            v-if="chromeStyle !== 'c'"
+            v-show="showNavigation"
+            :pane="pane"
+            :status-id="statusId"
+            @address-error="addressError = $event"
+            @set-viewport="emit('set-viewport', $event)"
+            @layout-changed="emit('layout-changed')"
+          />
         </div>
 
-        <PaneNavigation
-          v-if="chromeStyle !== 'c'"
-          v-show="showNavigation"
-          :pane="pane"
-          :status-id="statusId"
-          @address-error="addressError = $event"
-          @set-viewport="emit('set-viewport', $event)"
-          @layout-changed="emit('layout-changed')"
-        />
-      </div>
-
-      <div class="pane-actions">
-        <button
-          v-if="freeform"
-          class="icon-button"
-          type="button"
-          title="Bring pane to front"
-          aria-label="Bring pane to front"
-          @click="emit('raise-pane')"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 13V3M4 7l4-4 4 4" />
-          </svg>
-        </button>
-        <button
-          v-if="freeform"
-          class="icon-button"
-          type="button"
-          title="Send pane to back"
-          aria-label="Send pane to back"
-          @click="emit('lower-pane')"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 3v10M4 9l4 4 4-4" />
-          </svg>
-        </button>
-        <button
-          class="icon-button"
-          type="button"
-          :title="maximized ? 'Restore pane' : 'Maximize pane'"
-          :aria-label="maximized ? 'Restore pane' : 'Maximize pane'"
-          @click="emit('toggle-maximize')"
-        >
-          <svg v-if="maximized" viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M6 3H3v3M10 3h3v3M6 13H3v-3M10 13h3v-3" />
-          </svg>
-          <svg v-else viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
-          </svg>
-        </button>
-        <button
-          class="icon-button"
-          type="button"
-          title="Pane actions"
-          aria-label="Pane actions"
-          @click="openMenu"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="3" cy="8" r="1.2" fill="currentColor" />
-            <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-            <circle cx="13" cy="8" r="1.2" fill="currentColor" />
-          </svg>
-        </button>
-        <button
-          class="icon-button"
-          type="button"
-          title="Close pane"
-          aria-label="Close pane"
-          @click="requestClose"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
-      </div>
-    </header>
+        <div class="pane-actions">
+          <button
+            v-if="freeform"
+            class="icon-button"
+            type="button"
+            title="Bring pane to front"
+            aria-label="Bring pane to front"
+            @click="emit('raise-pane')"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 13V3M4 7l4-4 4 4" />
+            </svg>
+          </button>
+          <button
+            v-if="freeform"
+            class="icon-button"
+            type="button"
+            title="Send pane to back"
+            aria-label="Send pane to back"
+            @click="emit('lower-pane')"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 3v10M4 9l4 4 4-4" />
+            </svg>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            :title="maximized ? 'Restore pane' : 'Maximize pane'"
+            :aria-label="maximized ? 'Restore pane' : 'Maximize pane'"
+            @click="emit('toggle-maximize')"
+          >
+            <svg v-if="maximized" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M6 3H3v3M10 3h3v3M6 13H3v-3M10 13h3v-3" />
+            </svg>
+            <svg v-else viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+            </svg>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            title="Pane actions"
+            aria-label="Pane actions"
+            @click="openMenu"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="3" cy="8" r="1.2" fill="currentColor" />
+              <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+              <circle cx="13" cy="8" r="1.2" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            title="Close pane"
+            aria-label="Close pane"
+            @click="requestClose"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
+      </header>
+    </div>
 
     <div class="pane-body">
       <div class="pane-content" :data-pane-content="pane.id">
@@ -373,23 +375,36 @@ function requestClose(): void {
   min-height: 0;
   background: var(--surface);
   overflow: hidden;
-  container-type: inline-size;
 }
 
 .pane-card-active {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.pane-header {
+.pane-header-shell {
+  position: relative;
   flex: none;
+  height: calc(32px * var(--pane-zoom, 1));
+  overflow: visible;
+}
+
+.pane-header {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   flex-wrap: nowrap;
   align-items: flex-start;
   gap: 0 4px;
+  width: var(--pane-world-width, 100%);
+  height: 32px;
   min-height: 32px;
   padding: 0 6px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  transform: scale(var(--pane-zoom, 1));
+  transform-origin: top left;
+  container-type: inline-size;
 }
 
 .pane-card-c .pane-header {

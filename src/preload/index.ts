@@ -63,7 +63,6 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.sendPaneToBack, paneId),
   showPaneMenu: (request: PaneMenuRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.showPaneMenu, request),
-  showThemeMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.showThemeMenu, request),
   setTheme: (theme) => ipcRenderer.invoke(IPC_CHANNELS.setTheme, theme),
   capturePaneSnapshots: () => ipcRenderer.invoke(IPC_CHANNELS.capturePaneSnapshots),
   setCanvasZoom: (zoom: number) => ipcRenderer.invoke(IPC_CHANNELS.setCanvasZoom, zoom),
@@ -111,6 +110,8 @@ const api: PaneFlowApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.canvasZoomActionRequested, wrapped)
     }
   },
+  setCanvasHandMode: (active) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setCanvasHandMode, active),
   onStateChanged: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: ShellState): void => {
       listener(state)

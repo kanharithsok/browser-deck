@@ -10,11 +10,13 @@ const props = withDefaults(
     showCanvasTools?: boolean
     fitAllDisabled?: boolean
     hasPanes?: boolean
+    variant?: 'bar' | 'toolbar'
   }>(),
   {
     showCanvasTools: false,
     fitAllDisabled: false,
-    hasPanes: true
+    hasPanes: true,
+    variant: 'bar'
   }
 )
 
@@ -33,6 +35,7 @@ const statusId = computed(() =>
 <template>
   <section
     class="global-pane-bar"
+    :class="{ 'global-pane-bar-toolbar': variant === 'toolbar' }"
     :aria-label="pane ? 'Active pane' : 'No active pane'"
   >
     <template v-if="pane">
@@ -99,6 +102,17 @@ const statusId = computed(() =>
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   container-type: inline-size;
+}
+
+.global-pane-bar-toolbar {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
 }
 
 .global-pane-context {
@@ -228,6 +242,12 @@ const statusId = computed(() =>
 
 @container (max-width: 700px) {
   .global-pane-profile {
+    display: none;
+  }
+}
+
+@container (max-width: 640px) {
+  .global-pane-bar-toolbar .global-pane-context {
     display: none;
   }
 }

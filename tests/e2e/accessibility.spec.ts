@@ -128,13 +128,26 @@ async function findZoomPage(app: ElectronApplication): Promise<Page> {
   const pages = await waitFor(
     async () => app.windows(),
     (windows) => windows.some((page) => page.url() === SHELL_ZOOM_URL),
-    'zoom bar page'
+    'canvas controls page'
   )
   const zoomPage = pages.find((page) => page.url() === SHELL_ZOOM_URL)
   if (!zoomPage) {
-    throw new Error('Zoom bar page is unavailable')
+    throw new Error('Canvas controls page is unavailable')
   }
   return zoomPage
+}
+
+async function clickAppMenuCommand(
+  app: ElectronApplication,
+  menuItemId: string
+): Promise<void> {
+  await app.evaluate(({ Menu }, id) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(id)
+    if (!item) {
+      throw new Error(`Menu item ${id} is unavailable`)
+    }
+    item.click()
+  }, menuItemId)
 }
 
 async function readFocus(page: Page): Promise<FocusInfo> {
@@ -258,25 +271,16 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       ).toBeVisible()
       await expect(shellPage.getByRole('main', { name: 'Browser workspace' })).toBeVisible()
 
-      const workspaceTrigger = banner.getByRole('button', {
-        name: 'Switch workspace, current Workspace'
-      })
-      await expect(workspaceTrigger).toHaveAccessibleName('Switch workspace, current Workspace')
-      await expect(workspaceTrigger).toHaveAttribute('aria-haspopup', 'dialog')
-      await expect(workspaceTrigger).toHaveAttribute('aria-expanded', 'false')
-
       await expect(banner.getByRole('group', { name: 'Layout mode' })).toHaveCount(0)
       await expect(banner.getByLabel('Grid columns')).toHaveCount(0)
       await expect(shellPage.locator('.workspace')).toHaveClass(/workspace-canvas/)
+      await expect(banner.locator('.global-pane-bar')).toHaveCount(1)
+      const addressInput = banner.locator('.global-pane-bar .address-input')
+      await expect(addressInput).toBeVisible()
+      expect(await addressInput.getAttribute('aria-label')).toMatch(/^Address for /)
 
-      const paneCount = banner.getByRole('status')
+      const paneCount = banner.locator('.pane-count')
       await expect(paneCount).toHaveText('2 panes')
-
-      const profilesTrigger = banner.getByRole('button', { name: 'Profiles' })
-      await expect(profilesTrigger).toHaveAccessibleName('Profiles')
-      await expect(profilesTrigger).toHaveAttribute('aria-haspopup', 'dialog')
-      await expect(profilesTrigger).toHaveAttribute('aria-expanded', 'false')
-      await expect(profilesTrigger).toHaveAttribute('title', 'Manage browser profiles')
 
       const addPaneButton = banner.getByRole('button', { name: 'Add pane', exact: true })
       await expect(addPaneButton).toBeEnabled()
@@ -285,16 +289,15 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       const reloadAll = banner.getByRole('button', { name: 'Reload all panes' })
       await expect(reloadAll).toHaveAccessibleName('Reload all panes')
       await expect(reloadAll).toHaveAttribute('title', 'Reload all panes')
-
-      const appearanceTrigger = banner.getByRole('button', { name: /^Appearance:/ })
-      await expect(appearanceTrigger).toHaveAccessibleName('Appearance: System')
-      await expect(appearanceTrigger).toHaveAttribute('aria-haspopup', 'menu')
-      await expect(appearanceTrigger).toHaveAttribute('aria-expanded', 'false')
+      await expect(banner.getByRole('button', { name: 'Profiles' })).toHaveCount(0)
+      await expect(banner.getByRole('button', { name: 'Hand tool' })).toHaveCount(0)
+      await expect(banner.getByRole('button', { name: /^Appearance:/ })).toHaveCount(0)
+      await expect(banner.locator('.workspace-switcher')).toHaveCount(0)
 
       await shellPage.evaluate(() => document.body.focus())
       await shellPage.keyboard.press('Tab')
       const tabFocus = await readFocus(shellPage)
-      expect(tabFocus.ariaLabel).toBe('Switch workspace, current Workspace')
+      expect(tabFocus.ariaLabel).toBe('Reload pane')
       expect(tabFocus.focusVisible).toBe(true)
       expect(tabFocus.outlineStyle).toBe('solid')
       expect(Number.parseFloat(tabFocus.outlineWidth)).toBeGreaterThanOrEqual(2)
@@ -302,23 +305,58 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain('banner:')
       expect(axPairs).toContain('main:Browser workspace')
-      expect(axPairs).toContain('button:Switch workspace, current Workspace')
-      expect(axPairs).toContain('button:Profiles')
+      expect(axPairs).toContain('button:Reload pane')
+      expect(axPairs).toContain('button:Fit all panes to view')
       expect(axPairs).toContain('button:Add pane')
       expect(axPairs).toContain('button:Reload all panes')
-      expect(axPairs).toContain('button:Appearance: System')
+      expect(axPairs.some((pair) => pair.startsWith('textbox:Address for '))).toBe(true)
     })
 
-    await test.step('bottom zoom bar exposes named controls and a keyboard menu', async () => {
+    await test.step('bottom canvas bar exposes named controls and keyboard menus', async () => {
       const zoomPage = await findZoomPage(app as ElectronApplication)
       await installAxe(zoomPage)
 
-      const bar = zoomPage.getByRole('region', { name: 'Canvas zoom controls' })
+      const bar = zoomPage.getByRole('region', { name: 'Canvas controls' })
       await expect(bar).toBeVisible()
+      await expect(zoomPage.getByRole('button', { name: 'Hand tool' })).toHaveAttribute(
+        'aria-pressed',
+        'false'
+      )
       await expect(zoomPage.getByRole('button', { name: 'Zoom out' })).toBeVisible()
       await expect(zoomPage.getByRole('button', { name: 'Choose zoom level' })).toBeVisible()
       await expect(zoomPage.getByRole('button', { name: 'Zoom in' })).toBeVisible()
-      expect(await auditWithAxe(zoomPage, '.zoom-bar')).toEqual([])
+      const appearanceTrigger = zoomPage.getByRole('button', { name: 'Appearance: System' })
+      await expect(appearanceTrigger).toHaveAttribute('aria-haspopup', 'menu')
+      expect(await auditWithAxe(zoomPage, '.canvas-bar')).toEqual([])
+
+      const hand = zoomPage.getByRole('button', { name: 'Hand tool' })
+      await hand.click()
+      await expect(hand).toHaveAttribute('aria-pressed', 'true')
+      await hand.click()
+      await expect(hand).toHaveAttribute('aria-pressed', 'false')
+
+      await appearanceTrigger.click()
+      const appearanceMenu = shellPage.getByRole('menu', { name: 'Appearance' })
+      await expect(appearanceMenu).toBeVisible()
+      await expect
+        .poll(() =>
+          shellPage.evaluate(
+            () => document.activeElement?.classList.contains('app-menu') ?? false
+          )
+        )
+        .toBe(true)
+      await shellPage.keyboard.press('ArrowDown')
+      const appearanceFocus = await shellPage.evaluate(() => {
+        const active = document.activeElement
+        return {
+          role: active?.getAttribute('role') ?? null,
+          text: (active?.textContent ?? '').trim()
+        }
+      })
+      expect(appearanceFocus.role).toBe('menuitemradio')
+      expect(appearanceFocus.text).toContain('System')
+      await shellPage.keyboard.press('Escape')
+      await expect(appearanceMenu).toHaveCount(0)
 
       await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
       const zoomMenu = shellPage.getByRole('menu', { name: 'Zoom' })
@@ -441,6 +479,12 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect((await readFocus(shellPage)).ariaLabel).toBe('Fit all panes to view')
 
       await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Reload all panes')
+
+      await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Add pane')
+
+      await shellPage.keyboard.press('Tab')
       const actionFocus = await readFocus(shellPage)
       expect(actionFocus.ariaLabel).toBe('Maximize pane')
       await expect(firstCard).toHaveAttribute('aria-current', 'true')
@@ -464,12 +508,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
     })
 
     await test.step('profile dialog names, focus trap, axe audit, and focus return', async () => {
-      const profilesTrigger = shellPage
-        .locator('.toolbar')
-        .getByRole('button', { name: 'Profiles' })
-      await profilesTrigger.focus()
-      await shellPage.keyboard.press('Enter')
-      await expect(profilesTrigger).toHaveAttribute('aria-expanded', 'true')
+      await clickAppMenuCommand(app as ElectronApplication, 'profiles-manage')
 
       const dialog = shellPage.getByRole('dialog', { name: 'Browser profiles' })
       await expect(dialog).toBeVisible()
@@ -533,18 +572,13 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       await shellPage.keyboard.press('Escape')
       await expect(dialog).toHaveCount(0)
-      await expect(profilesTrigger).toHaveAttribute('aria-expanded', 'false')
       const restoredFocus = await readFocus(shellPage)
-      expect(restoredFocus.ariaLabel).toBe('Profiles')
-      expect(restoredFocus.focusVisible).toBe(true)
-      expect(restoredFocus.outlineStyle).toBe('solid')
+      expect(restoredFocus.tagName).toBe('INPUT')
+      expect(restoredFocus.ariaLabel).toMatch(/^Address for /)
     })
 
     await test.step('workspace dialog names, focus trap, axe audit, and focus return', async () => {
-      const workspaceTrigger = shellPage.locator('.workspace-switcher')
-      await workspaceTrigger.focus()
-      await shellPage.keyboard.press('Enter')
-      await expect(workspaceTrigger).toHaveAttribute('aria-expanded', 'true')
+      await clickAppMenuCommand(app as ElectronApplication, 'workspace-manage')
 
       const dialog = shellPage.getByRole('dialog', { name: 'Workspaces' })
       await expect(dialog).toBeVisible()
@@ -622,11 +656,9 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       await shellPage.keyboard.press('Escape')
       await expect(dialog).toHaveCount(0)
-      await expect(workspaceTrigger).toHaveAttribute('aria-expanded', 'false')
       const restoredFocus = await readFocus(shellPage)
-      expect(restoredFocus.className).toContain('workspace-switcher')
-      expect(restoredFocus.focusVisible).toBe(true)
-      expect(restoredFocus.outlineStyle).toBe('solid')
+      expect(restoredFocus.tagName).toBe('INPUT')
+      expect(restoredFocus.ariaLabel).toMatch(/^Address for /)
     })
   } finally {
     if (app) {

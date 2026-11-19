@@ -32,7 +32,7 @@ const address = ref(displayAddress(props.pane.url))
 const addressError = ref<string | null>(null)
 const editing = ref(false)
 const selectedPreset = ref<ViewportPresetId>(props.pane.viewport.preset)
-const customOpen = ref(props.pane.viewport.preset === 'custom')
+const customOpen = ref(false)
 const customWidth = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.width : 800)
 const customHeight = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.height : 600)
 const customDeviceScaleFactor = ref(
@@ -62,13 +62,11 @@ watch(
   () => props.pane.viewport,
   (viewport) => {
     selectedPreset.value = viewport.preset
+    customOpen.value = false
     if (viewport.preset === 'custom') {
-      customOpen.value = true
       customWidth.value = viewport.width
       customHeight.value = viewport.height
       customDeviceScaleFactor.value = viewport.deviceScaleFactor
-    } else if (customOpen.value) {
-      customOpen.value = false
     }
   }
 )
@@ -105,6 +103,18 @@ function onPresetChange(event: Event): void {
   emit('set-viewport', viewportFromPreset(preset))
 }
 
+function openCustomEditor(): void {
+  const viewport = props.pane.viewport
+  if (viewport.preset === 'custom') {
+    customWidth.value = viewport.width
+    customHeight.value = viewport.height
+    customDeviceScaleFactor.value = viewport.deviceScaleFactor
+  }
+  viewportError.value = null
+  customOpen.value = true
+  emit('layout-changed')
+}
+
 function applyCustomViewport(): void {
   const parsed = parsePaneViewport({
     preset: 'custom',
@@ -119,7 +129,9 @@ function applyCustomViewport(): void {
   }
 
   viewportError.value = null
+  customOpen.value = false
   emit('set-viewport', parsed.viewport)
+  emit('layout-changed')
 }
 
 function cancelCustomViewport(): void {
@@ -130,8 +142,8 @@ function cancelCustomViewport(): void {
   customDeviceScaleFactor.value = viewport.preset === 'custom' ? viewport.deviceScaleFactor : 1
   viewportError.value = null
   const wasOpen = customOpen.value
-  customOpen.value = viewport.preset === 'custom'
-  if (wasOpen !== customOpen.value) {
+  customOpen.value = false
+  if (wasOpen) {
     emit('layout-changed')
   }
 }
@@ -196,82 +208,104 @@ function reload(): void {
 </script>
 
 <template>
-  <div class="pane-nav-row">
-    <button
-      class="icon-button nav-button"
-      type="button"
-      title="Back"
-      aria-label="Go back"
-      :disabled="!pane.canGoBack"
-      @click="goBack"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M9.5 3.5 5 8l4.5 4.5" />
-      </svg>
-    </button>
-    <button
-      class="icon-button nav-button"
-      type="button"
-      title="Forward"
-      aria-label="Go forward"
-      :disabled="!pane.canGoForward"
-      @click="goForward"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M6.5 3.5 11 8l-4.5 4.5" />
-      </svg>
-    </button>
-    <button
-      class="icon-button nav-button"
-      type="button"
-      title="Reload pane"
-      aria-label="Reload pane"
-      @click="reload"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M12.6 6.3A5 5 0 1 0 13 8" />
-        <path d="M12.8 3.3v3.2H9.6" />
-      </svg>
-    </button>
+  <div class="pane-nav-row" :class="{ 'pane-nav-row-editing': customOpen }">
+    <template v-if="!customOpen">
+      <button
+        class="icon-button nav-button"
+        type="button"
+        title="Back"
+        aria-label="Go back"
+        :disabled="!pane.canGoBack"
+        @click="goBack"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M9.5 3.5 5 8l4.5 4.5" />
+        </svg>
+      </button>
+      <button
+        class="icon-button nav-button"
+        type="button"
+        title="Forward"
+        aria-label="Go forward"
+        :disabled="!pane.canGoForward"
+        @click="goForward"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M6.5 3.5 11 8l-4.5 4.5" />
+        </svg>
+      </button>
+      <button
+        class="icon-button nav-button"
+        type="button"
+        title="Reload pane"
+        aria-label="Reload pane"
+        @click="reload"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M12.6 6.3A5 5 0 1 0 13 8" />
+          <path d="M12.8 3.3v3.2H9.6" />
+        </svg>
+      </button>
 
-    <form class="address-form" @submit.prevent="submitAddress">
-      <input
-        ref="addressInput"
-        v-model="address"
-        class="address-input"
-        :class="{ 'address-input-invalid': addressError }"
-        type="text"
-        inputmode="url"
-        autocomplete="off"
-        autocapitalize="off"
-        spellcheck="false"
-        :placeholder="pane.url === 'about:blank' ? 'Enter an address' : ''"
-        :aria-label="`Address for ${pane.title}`"
-        :aria-invalid="addressError ? 'true' : 'false'"
-        :aria-describedby="addressError ? statusId : undefined"
-        @input="setAddressError(null)"
-        @focus="editing = true"
-        @blur="handleBlur"
-        @keydown.esc.prevent="resetAddress"
-      />
-    </form>
+      <form class="address-form" @submit.prevent="submitAddress">
+        <input
+          ref="addressInput"
+          v-model="address"
+          class="address-input"
+          :class="{ 'address-input-invalid': addressError }"
+          type="text"
+          inputmode="url"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          :placeholder="pane.url === 'about:blank' ? 'Enter an address' : ''"
+          :aria-label="`Address for ${pane.title}`"
+          :aria-invalid="addressError ? 'true' : 'false'"
+          :aria-describedby="addressError ? statusId : undefined"
+          @input="setAddressError(null)"
+          @focus="editing = true"
+          @blur="handleBlur"
+          @keydown.esc.prevent="resetAddress"
+        />
+      </form>
 
-    <select
-      class="viewport-select"
-      :value="selectedPreset"
-      :aria-label="`Viewport preset for ${pane.title}`"
-      @change="onPresetChange"
+      <select
+        class="viewport-select"
+        :value="selectedPreset"
+        :aria-label="`Viewport preset for ${pane.title}`"
+        @change="onPresetChange"
+      >
+        <option value="responsive">Responsive</option>
+        <optgroup v-for="group in VIEWPORT_GROUPS" :key="group.category" :label="group.label">
+          <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
+            {{ preset.label }}
+          </option>
+        </optgroup>
+        <option value="custom">Custom…</option>
+      </select>
+
+      <button
+        v-if="selectedPreset === 'custom'"
+        class="icon-button custom-edit-button"
+        type="button"
+        title="Edit custom viewport"
+        aria-label="Edit custom viewport"
+        @click="openCustomEditor"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m3 11.5-.5 2 2-.5 7.8-7.8-1.5-1.5Z" />
+          <path d="m9.9 4.6 1.5 1.5" />
+        </svg>
+      </button>
+    </template>
+
+    <div
+      v-else
+      class="viewport-custom viewport-custom-inline"
+      :class="{ invalid: viewportError }"
+      @keydown.esc.prevent="cancelCustomViewport"
     >
-      <option value="responsive">Responsive</option>
-      <optgroup v-for="group in VIEWPORT_GROUPS" :key="group.category" :label="group.label">
-        <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
-          {{ preset.label }}
-        </option>
-      </optgroup>
-      <option value="custom">Custom…</option>
-    </select>
-
-    <div v-if="customOpen" class="viewport-custom">
+      <span class="custom-heading">Custom</span>
       <label class="custom-field">
         <span>W</span>
         <input
@@ -281,6 +315,8 @@ function reload(): void {
           max="7680"
           step="1"
           aria-label="Custom viewport width"
+          :aria-invalid="viewportError ? 'true' : 'false'"
+          :title="viewportError ?? undefined"
           @input="viewportError = null"
         />
       </label>
@@ -293,6 +329,8 @@ function reload(): void {
           max="7680"
           step="1"
           aria-label="Custom viewport height"
+          :aria-invalid="viewportError ? 'true' : 'false'"
+          :title="viewportError ?? undefined"
           @input="viewportError = null"
         />
       </label>
@@ -305,6 +343,8 @@ function reload(): void {
           max="4"
           step="0.1"
           aria-label="Custom device scale factor"
+          :aria-invalid="viewportError ? 'true' : 'false'"
+          :title="viewportError ?? undefined"
           @input="viewportError = null"
         />
       </label>
@@ -319,10 +359,9 @@ function reload(): void {
 .pane-nav-row {
   display: flex;
   flex: 1 1 320px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
-  row-gap: 4px;
   min-width: 0;
 }
 
@@ -419,14 +458,51 @@ function reload(): void {
   outline-offset: 1px;
 }
 
+.custom-edit-button {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
 .viewport-custom {
-  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  padding: 2px 2px 4px;
-  border-top: 1px solid var(--border);
+}
+
+.viewport-custom-inline {
+  position: relative;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border-top: 0;
+}
+
+.custom-heading {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.viewport-custom-inline .custom-field {
+  gap: 2px;
+}
+
+.viewport-custom-inline.invalid .custom-field input {
+  border-color: var(--danger);
+}
+
+.viewport-custom-inline .viewport-error {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .custom-field {

@@ -17,6 +17,7 @@ import {
   SHELL_MINIMAP_URL,
   SHELL_ZOOM_URL
 } from '../../src/shared/shell'
+import { CANVAS_ZOOM_BAR_WIDTH } from '../../src/shared/zoom'
 import type { PaneViewport } from '../../src/shared/viewports'
 import type { WorkspaceData } from '../../src/shared/workspace'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
@@ -750,7 +751,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       throw new Error('Startup zoom bar state is unavailable')
     }
     expect(startupZoom.loaded).toBe(true)
-    expect(startupZoom.bounds.width).toBe(204)
+    expect(startupZoom.bounds.width).toBe(CANVAS_ZOOM_BAR_WIDTH)
     expect(startupZoom.bounds.height).toBe(40)
     expect(startupZoom.bounds.x + startupZoom.bounds.width / 2).toBe(
       Math.round(initialContentBounds.width / 2)
@@ -760,11 +761,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await expect(zoomPage.locator('#value')).toContainText('%')
     const toolbarBorders = await shellPage.evaluate(() =>
-      Array.from(document.querySelectorAll<HTMLElement>('.toolbar .toolbar-icon')).map(
+      Array.from(document.querySelectorAll<HTMLElement>('.toolbar button')).map(
         (button) => getComputedStyle(button).borderTopWidth
       )
     )
-    expect(toolbarBorders).toEqual(['0px', '0px', '0px', '0px', '0px'])
+    expect(toolbarBorders.filter((width) => width !== '0px')).toEqual([])
     await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
     await waitForAlignedBounds(app)
 
@@ -1067,7 +1068,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => state.visible))
       .toBe(true)
 
-    const handTool = shellPage.getByRole('button', { name: 'Hand tool' })
+    const handTool = zoomPage.getByRole('button', { name: 'Hand tool' })
     await openCanvasContextMenu()
     await shellPage.getByRole('menuitemcheckbox', { name: 'Hand tool' }).click()
     await expect(handTool).toHaveAttribute('aria-pressed', 'true')
@@ -1232,6 +1233,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(customFitEmulation?.enabled).toBe(true)
     expect(customFitEmulation?.scale).toBeGreaterThan(0)
     expect(customFitEmulation?.scale).toBeLessThanOrEqual(1)
+    await expect(
+      shellPage.getByRole('button', { name: 'Edit custom viewport' })
+    ).toBeVisible()
+    await shellPage.getByRole('button', { name: 'Edit custom viewport' }).click()
+    await expect(customRow).toBeVisible()
+    await expect(customRow.getByLabel('Custom viewport width')).toHaveValue('500')
+    await customRow.getByRole('button', { name: 'Cancel' }).click()
+    await expect(customRow).toHaveCount(0)
 
     await aliceViewportSelect.selectOption('responsive')
     await waitFor(
@@ -1291,12 +1300,23 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
     await focusPane(shellPage, bobPaneId as string)
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes[0]?.viewport.preset === 'responsive' &&
+        state.panes[1]?.viewport.preset === 'responsive',
+      'responsive viewports before zoom emulation check'
+    )
     await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
     await waitForVisibleAlignedBounds(app)
 
     // Responsive panes scale their live views through canvas zoom. Returning
     // the canvas to 100% disables device emulation and restores the responsive
     // page viewport to the pane content rectangle.
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
+    await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
+    await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('80%')
     const responsiveEmulation = await getEmulationState(app, alicePaneId as string)
     expect(responsiveEmulation?.enabled).toBe(true)
     expect(responsiveEmulation?.scale).toBeGreaterThan(0)
@@ -2021,10 +2041,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitForVisibleAlignedBounds(restartApp)
 
     // Profile manager: usage, rename, clear, and safe delete.
-    await restartShell
-      .locator('.toolbar')
-      .getByRole('button', { name: 'Profiles' })
-      .click()
+    await clickAppMenuCommand(restartApp, 'profiles-manage')
     const profilesDialog = restartShell.getByRole('dialog', { name: 'Browser profiles' })
     await expect(profilesDialog).toBeVisible()
     await expect
@@ -2098,7 +2115,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'first shared-profile pane'
     )
 
-    await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
+    await clickAppMenuCommand(restartApp, 'profiles-manage')
     await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     const sharedState = await waitFor(
@@ -2141,7 +2158,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       )
     ).toBe('shared')
 
-    await restartShell.locator('.toolbar').getByRole('button', { name: 'Profiles' }).click()
+    await clickAppMenuCommand(restartApp, 'profiles-manage')
     await expect(sharedProfileRow).toContainText('2 panes:')
     await expect(sharedProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
     await expect(sharedProfileRow.getByRole('button', { name: /^Delete/ })).toBeEnabled()
@@ -2173,7 +2190,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       accelerator: 'CmdOrCtrl+Shift+[',
       enabled: false
     })
-    await restartShell.locator('.workspace-switcher').click()
+    await clickAppMenuCommand(restartApp, 'workspace-manage')
     const workspacesDialog = restartShell.getByRole('dialog', { name: 'Workspaces' })
     await expect(workspacesDialog).toBeVisible()
     await expect
@@ -2218,7 +2235,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await secondWorkspaceRow.getByRole('button', { name: /^Switch/ }).click()
     await expect(workspacesDialog).toHaveCount(0)
-    await expect(restartShell.locator('.workspace-switcher')).toContainText('Second Workspace')
     await expect(restartShell.locator('.empty-state')).toBeVisible()
     await waitFor(
       () => getSnapshot(restartApp),
@@ -2235,7 +2251,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const secondPane = populatedSecond.panes[0]
     expect(secondPane).toBeTruthy()
 
-    await restartShell.locator('.workspace-switcher').click()
+    await clickAppMenuCommand(restartApp, 'workspace-manage')
     await expect(workspacesDialog).toBeVisible()
     const renamedWorkspaceRow = workspaceRowById(secondWorkspaceId)
     await renamedWorkspaceRow.getByRole('button', { name: /^Rename/ }).click()
@@ -2243,9 +2259,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await renamedWorkspaceRow.getByRole('button', { name: 'Save' }).click()
     await expect(renamedWorkspaceRow.locator('.workspace-label-text')).toHaveText('Responsive QA')
     await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
-    await expect(restartShell.locator('.workspace-switcher')).toContainText('Responsive QA')
+    await expect
+      .poll(async () => (await getSnapshot(restartApp)).workspace.name)
+      .toBe('Responsive QA')
 
-    await restartShell.locator('.workspace-switcher').click()
+    await clickAppMenuCommand(restartApp, 'workspace-manage')
     await expect(workspacesDialog).toBeVisible()
     await workspaceRowById(secondWorkspaceId)
       .getByRole('button', { name: /^Duplicate/ })
@@ -2353,11 +2371,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitForAlignedBounds(restartApp)
     await expectWorkspaceMenuEnabled(true)
 
-    await restartShell.locator('.workspace-switcher').click()
+    await clickAppMenuCommand(restartApp, 'workspace-manage')
     await expect(workspacesDialog).toBeVisible()
     await originalWorkspaceRow.getByRole('button', { name: /^Switch/ }).click()
     await expect(workspacesDialog).toHaveCount(0)
-    await expect(restartShell.locator('.workspace-switcher')).toContainText('Workspace')
     const restoredOriginal = await waitFor(
       () => getSnapshot(restartApp),
       (state) =>
@@ -2373,7 +2390,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await readPersistedAppState(userDataDir))?.activeWorkspaceId)
       .toBe(originalWorkspaceId)
 
-    await restartShell.locator('.workspace-switcher').click()
+    await clickAppMenuCommand(restartApp, 'workspace-manage')
     await expect(workspacesDialog).toBeVisible()
     for (const id of [copyWorkspaceId, secondWorkspaceId]) {
       const row = workspaceRowById(id)

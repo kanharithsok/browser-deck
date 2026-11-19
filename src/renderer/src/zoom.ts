@@ -5,23 +5,46 @@ import {
   type CanvasZoomAction,
   type CanvasZoomState
 } from '../../shared/zoom'
+import type { ThemePreference } from '../../shared/workspace'
 
 const value = document.querySelector<HTMLElement>('#value')
 const percent = document.querySelector<HTMLButtonElement>('#percent')
 const out = document.querySelector<HTMLButtonElement>('#out')
 const zoomIn = document.querySelector<HTMLButtonElement>('#in')
+const hand = document.querySelector<HTMLButtonElement>('#hand')
+const appearance = document.querySelector<HTMLButtonElement>('#appearance')
 
-if (!value || !percent || !out || !zoomIn) {
-  throw new Error('Canvas zoom DOM is unavailable.')
+if (!value || !percent || !out || !zoomIn || !hand || !appearance) {
+  throw new Error('Canvas controls DOM is unavailable.')
 }
 
 const valueElement = value
 const percentButton = percent
 const outButton = out
 const inButton = zoomIn
+const handButton = hand
+const appearanceButton = appearance
+const themeIcons = Array.from(
+  appearanceButton.querySelectorAll<SVGElement>('[data-theme-icon]')
+)
+
+const THEME_LABELS: Record<ThemePreference, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark'
+}
 
 function send(action: CanvasZoomAction): void {
   void window.paneflow.sendCanvasZoomAction(action).catch(() => undefined)
+}
+
+function renderTheme(themePreference: ThemePreference): void {
+  const label = `Appearance: ${THEME_LABELS[themePreference]}`
+  appearanceButton.title = label
+  appearanceButton.setAttribute('aria-label', label)
+  for (const icon of themeIcons) {
+    icon.toggleAttribute('hidden', icon.dataset.themeIcon !== themePreference)
+  }
 }
 
 function render(state: CanvasZoomState): void {
@@ -29,6 +52,9 @@ function render(state: CanvasZoomState): void {
   valueElement.textContent = `${Math.round(state.zoom * 100)}%`
   outButton.disabled = state.zoom <= CANVAS_MIN_ZOOM
   inButton.disabled = state.zoom >= CANVAS_MAX_ZOOM
+  handButton.classList.toggle('active', state.handMode)
+  handButton.setAttribute('aria-pressed', String(state.handMode))
+  renderTheme(state.themePreference)
 }
 
 percentButton.addEventListener('click', () => {
@@ -41,6 +67,14 @@ outButton.addEventListener('click', () => {
 
 inButton.addEventListener('click', () => {
   send({ type: 'step', direction: 'in' })
+})
+
+handButton.addEventListener('click', () => {
+  send({ type: 'toggle-hand' })
+})
+
+appearanceButton.addEventListener('click', () => {
+  send({ type: 'appearance' })
 })
 
 window.paneflow.onCanvasZoomState((state) => {

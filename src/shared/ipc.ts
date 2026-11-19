@@ -42,7 +42,6 @@ export const IPC_CHANNELS = {
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
-  showThemeMenu: 'paneflow:show-theme-menu',
   setTheme: 'paneflow:set-theme',
   capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
   setCanvasZoom: 'paneflow:set-canvas-zoom',
@@ -54,6 +53,7 @@ export const IPC_CHANNELS = {
   canvasZoomState: 'paneflow:canvas-zoom-state',
   canvasZoomAction: 'paneflow:canvas-zoom-action',
   canvasZoomActionRequested: 'paneflow:canvas-zoom-action-requested',
+  setCanvasHandMode: 'paneflow:set-canvas-hand-mode',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneRenameRequested: 'paneflow:pane-rename-requested',
@@ -68,6 +68,8 @@ export type PaneCommand =
   | 'reload-pane'
   | 'reload-all'
   | 'toggle-maximize'
+  | 'open-profiles'
+  | 'open-workspaces'
 
 export type ScriptResult = { ok: true } | { ok: false; error: string }
 
@@ -132,11 +134,6 @@ export interface PaneMenuRequest {
   y: number
 }
 
-export interface ThemeMenuRequest {
-  x: number
-  y: number
-}
-
 export type PaneSnapshotsResult =
   | { ok: true; snapshots: Record<string, string> }
   | { ok: false; error: string }
@@ -172,7 +169,6 @@ export interface PaneFlowApi {
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
-  showThemeMenu(request: ThemeMenuRequest): Promise<ScriptResult>
   setTheme(theme: ThemePreference): Promise<ScriptResult>
   capturePaneSnapshots(): Promise<PaneSnapshotsResult>
   setCanvasZoom(zoom: number): Promise<ScriptResult>
@@ -184,6 +180,7 @@ export interface PaneFlowApi {
   sendCanvasZoomAction(action: CanvasZoomAction): Promise<ScriptResult>
   onCanvasZoomState(listener: (state: CanvasZoomState) => void): () => void
   onCanvasZoomAction(listener: (action: CanvasZoomAction) => void): () => void
+  setCanvasHandMode(active: boolean): Promise<ScriptResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void

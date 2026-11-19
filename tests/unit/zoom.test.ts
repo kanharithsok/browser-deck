@@ -20,12 +20,43 @@ describe('canvas zoom', () => {
   })
 
   it('validates the zoom bar state', () => {
-    expect(parseCanvasZoomState({ theme: 'dark', zoom: 0.5 })).toEqual({
+    expect(
+      parseCanvasZoomState({
+        theme: 'dark',
+        themePreference: 'system',
+        zoom: 0.5,
+        handMode: false
+      })
+    ).toEqual({
       theme: 'dark',
-      zoom: 0.5
+      themePreference: 'system',
+      zoom: 0.5,
+      handMode: false
     })
-    expect(parseCanvasZoomState({ theme: 'sepia', zoom: 1 })).toBeNull()
-    expect(parseCanvasZoomState({ theme: 'light', zoom: 0.1 })).toBeNull()
+    expect(
+      parseCanvasZoomState({
+        theme: 'sepia',
+        themePreference: 'system',
+        zoom: 1,
+        handMode: false
+      })
+    ).toBeNull()
+    expect(
+      parseCanvasZoomState({
+        theme: 'light',
+        themePreference: 'system',
+        zoom: 0.1,
+        handMode: false
+      })
+    ).toBeNull()
+    expect(
+      parseCanvasZoomState({
+        theme: 'light',
+        themePreference: 'sepia',
+        zoom: 1,
+        handMode: false
+      })
+    ).toBeNull()
   })
 
   it('validates every action', () => {
@@ -40,6 +71,12 @@ describe('canvas zoom', () => {
     expect(parseCanvasZoomAction({ type: 'fit' })).toEqual({ type: 'fit' })
     expect(parseCanvasZoomAction({ type: 'reset' })).toEqual({ type: 'reset' })
     expect(parseCanvasZoomAction({ type: 'menu' })).toEqual({ type: 'menu' })
+    expect(parseCanvasZoomAction({ type: 'toggle-hand' })).toEqual({
+      type: 'toggle-hand'
+    })
+    expect(parseCanvasZoomAction({ type: 'appearance' })).toEqual({
+      type: 'appearance'
+    })
     expect(parseCanvasZoomAction({ type: 'set', zoom: 3 })).toBeNull()
     expect(parseCanvasZoomAction({ type: 'step', direction: 'left' })).toBeNull()
     expect(parseCanvasZoomAction(null)).toBeNull()
