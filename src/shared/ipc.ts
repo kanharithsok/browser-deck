@@ -4,6 +4,7 @@ import type {
 } from './minimap'
 import type { ProfileSummary } from './profiles'
 import type { PaneViewport } from './viewports'
+import type { CanvasZoomAction, CanvasZoomState } from './zoom'
 import type {
   ThemePreference,
   WorkspaceLayout,
@@ -50,6 +51,9 @@ export const IPC_CHANNELS = {
   canvasMinimapState: 'paneflow:canvas-minimap-state',
   canvasMinimapAction: 'paneflow:canvas-minimap-action',
   canvasMinimapActionRequested: 'paneflow:canvas-minimap-action-requested',
+  canvasZoomState: 'paneflow:canvas-zoom-state',
+  canvasZoomAction: 'paneflow:canvas-zoom-action',
+  canvasZoomActionRequested: 'paneflow:canvas-zoom-action-requested',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneRenameRequested: 'paneflow:pane-rename-requested',
@@ -177,6 +181,9 @@ export interface PaneFlowApi {
   sendCanvasMinimapAction(action: CanvasMinimapAction): Promise<ScriptResult>
   onCanvasMinimapState(listener: (state: CanvasMinimapState) => void): () => void
   onCanvasMinimapAction(listener: (action: CanvasMinimapAction) => void): () => void
+  sendCanvasZoomAction(action: CanvasZoomAction): Promise<ScriptResult>
+  onCanvasZoomState(listener: (state: CanvasZoomState) => void): () => void
+  onCanvasZoomAction(listener: (action: CanvasZoomAction) => void): () => void
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void

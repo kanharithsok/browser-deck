@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas zoom</title>
+    <link rel="stylesheet" href="/src/assets/app.css" />
+    <link rel="stylesheet" href="/src/zoom.css" />
+  </head>
+  <body>
+    <section class="zoom-bar" aria-label="Canvas zoom controls">
+      <button id="out" class="icon-button" type="button" title="Zoom out" aria-label="Zoom out">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.2" />
+          <path d="m10.2 10.2 3 3M4.9 7h4.2" />
+        </svg>
+      </button>
+      <button
+        id="percent"
+        class="percent-button"
+        type="button"
+        title="Choose zoom level"
+        aria-label="Choose zoom level"
+        aria-haspopup="menu"
+      >
+        <span id="value">100%</span>
+        <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m4 6 4 4 4-4" />
+        </svg>
+      </button>
+      <button id="in" class="icon-button" type="button" title="Zoom in" aria-label="Zoom in">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.2" />
+          <path d="m10.2 10.2 3 3M4.9 7h4.2M7 4.9v4.2" />
+        </svg>
+      </button>
+    </section>
+
+    <script type="module" src="/src/zoom.ts"></script>
+  </body>
+</html>

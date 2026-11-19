@@ -23,6 +23,11 @@ export interface PaneflowTestHook {
     loaded: boolean
     collapsed: boolean
   } | null
+  zoomState: () => {
+    visible: boolean
+    bounds: PaneViewRect
+    loaded: boolean
+  } | null
 }
 
 /**

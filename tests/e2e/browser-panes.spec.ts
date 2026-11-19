@@ -12,7 +12,11 @@ import {
   type Page
 } from '@playwright/test'
 import { IPC_CHANNELS, type PaneViewRect, type ShellState } from '../../src/shared/ipc'
-import { SHELL_ENTRY_URL, SHELL_MINIMAP_URL } from '../../src/shared/shell'
+import {
+  SHELL_ENTRY_URL,
+  SHELL_MINIMAP_URL,
+  SHELL_ZOOM_URL
+} from '../../src/shared/shell'
 import type { PaneViewport } from '../../src/shared/viewports'
 import type { WorkspaceData } from '../../src/shared/workspace'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
@@ -33,6 +37,11 @@ interface TestHook {
     bounds: PaneViewRect
     loaded: boolean
     collapsed: boolean
+  } | null
+  zoomState(): {
+    visible: boolean
+    bounds: PaneViewRect
+    loaded: boolean
   } | null
 }
 
@@ -167,6 +176,31 @@ async function getWebContentsCount(app: ElectronApplication): Promise<number> {
     }
     return hook.webContentsCount()
   })
+}
+
+async function getZoomState(app: ElectronApplication): Promise<{
+  visible: boolean
+  bounds: PaneViewRect
+  loaded: boolean
+} | null> {
+  return app.evaluate(() => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    if (!hook) {
+      throw new Error('Test hook is not installed')
+    }
+    return hook.zoomState()
+  })
+}
+
+async function resetCanvasZoomFromBar(
+  shellPage: Page,
+  zoomPage: Page
+): Promise<void> {
+  await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
+  const menu = shellPage.getByRole('menu', { name: 'Zoom' })
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem', { name: 'Reset (100%)' }).click()
+  await expect(menu).toHaveCount(0)
 }
 
 async function getMinimapState(app: ElectronApplication): Promise<{
@@ -531,16 +565,18 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (windows) =>
         windows.some((page) => isShellPage(page.url())) &&
         windows.some((page) => page.url() === SHELL_MINIMAP_URL) &&
+        windows.some((page) => page.url() === SHELL_ZOOM_URL) &&
         windows.some((page) => page.url().includes('/pane/one')) &&
         windows.some((page) => page.url().includes('/pane/two')),
-      'shell, minimap, and native pane pages'
+      'shell, overlays, and native pane pages'
     )
     const shellPage = pages.find((page) => isShellPage(page.url()))
     const minimapPage = pages.find((page) => page.url() === SHELL_MINIMAP_URL)
+    const zoomPage = pages.find((page) => page.url() === SHELL_ZOOM_URL)
     const alicePage = pages.find((page) => page.url().includes('/pane/one'))
     const bobPage = pages.find((page) => page.url().includes('/pane/two'))
-    if (!shellPage || !minimapPage || !alicePage || !bobPage) {
-      throw new Error('Expected the shell, minimap, and both native pane pages')
+    if (!shellPage || !minimapPage || !zoomPage || !alicePage || !bobPage) {
+      throw new Error('Expected the shell, overlays, and both native pane pages')
     }
     expect(shellPage.url()).toBe(SHELL_ENTRY_URL)
 
@@ -687,6 +723,48 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(shellPage.locator('.workspace')).toHaveClass(/workspace-canvas/)
     await expect(shellPage.getByRole('group', { name: 'Layout mode' })).toHaveCount(0)
     await expect(shellPage.getByLabel('Grid columns')).toHaveCount(0)
+
+    // Canvas starts fitted to all panes, with a bottom-center zoom overlay.
+    await expect
+      .poll(async () => {
+        const workspaceBounds = await shellPage.locator('.workspace').boundingBox()
+        const cards = await shellPage.locator('.pane-card').evaluateAll((elements) =>
+          elements.map((element) => element.getBoundingClientRect().toJSON())
+        )
+        return Boolean(
+          workspaceBounds &&
+            cards.length === 2 &&
+            cards.every(
+              (card) =>
+                card.x >= workspaceBounds.x - 1 &&
+                card.y >= workspaceBounds.y - 1 &&
+                card.x + card.width <= workspaceBounds.x + workspaceBounds.width + 1 &&
+                card.y + card.height <= workspaceBounds.y + workspaceBounds.height + 1
+            )
+        )
+      })
+      .toBe(true)
+    await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(true)
+    const startupZoom = await getZoomState(app as ElectronApplication)
+    if (!startupZoom) {
+      throw new Error('Startup zoom bar state is unavailable')
+    }
+    expect(startupZoom.loaded).toBe(true)
+    expect(startupZoom.bounds.width).toBe(204)
+    expect(startupZoom.bounds.height).toBe(40)
+    expect(startupZoom.bounds.x + startupZoom.bounds.width / 2).toBe(
+      Math.round(initialContentBounds.width / 2)
+    )
+    expect(startupZoom.bounds.y + startupZoom.bounds.height).toBe(
+      initialContentBounds.height - 12
+    )
+    await expect(zoomPage.locator('#value')).toContainText('%')
+    const toolbarBorders = await shellPage.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('.toolbar .toolbar-icon')).map(
+        (button) => getComputedStyle(button).borderTopWidth
+      )
+    )
+    expect(toolbarBorders).toEqual(['0px', '0px', '0px', '0px', '0px'])
     await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
     await waitForAlignedBounds(app)
 
@@ -814,15 +892,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       wheelWorkspace.y + wheelWorkspace.height / 2
     )
     await shellPage.mouse.wheel(0, 220)
-    await expect
-      .poll(() => shellPage.locator('.canvas-zoom').textContent())
-      .not.toBe('100%')
+    await expect.poll(() => zoomPage.locator('#value').textContent()).not.toBe('100%')
     await shellPage.keyboard.up('Space')
     await waitForVisibleAlignedBounds(app)
     const zoomedEmulation = await getEmulationState(app, alicePaneId as string)
     expect(zoomedEmulation?.enabled).toBe(true)
     expect(zoomedEmulation?.scale ?? 1).toBeLessThan(1)
-    await shellPage.locator('.canvas-zoom').click()
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
     await waitForVisibleAlignedBounds(app)
     const resetEmulation = await getEmulationState(app, alicePaneId as string)
     expect(resetEmulation?.enabled).toBe(false)
@@ -1014,6 +1090,42 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'system theme from the canvas menu'
     )
     await waitForAlignedBounds(app)
+
+    // Bottom zoom bar: step controls and a percentage dropdown that can set
+    // exact levels or run Fit all / Reset.
+    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await waitForAlignedBounds(app)
+    const zoomLabelBeforeStep = await zoomPage.locator('#value').textContent()
+    await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
+    await expect
+      .poll(() => zoomPage.locator('#value').textContent())
+      .not.toBe(zoomLabelBeforeStep)
+    await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(true)
+    await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
+    const zoomMenu = shellPage.getByRole('menu', { name: 'Zoom' })
+    await expect(zoomMenu).toBeVisible()
+    await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(false)
+    await expect(zoomMenu.getByRole('menuitemradio')).toHaveCount(7)
+    await zoomMenu.getByRole('menuitemradio', { name: '50%', exact: true }).click()
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('50%')
+    await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(true)
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
+
+    // Clicking empty canvas clears the active pane and hides its global bar;
+    // clicking a pane restores the selection.
+    const deselectWorkspace = await shellPage.locator('.workspace').boundingBox()
+    if (!deselectWorkspace) {
+      throw new Error('Canvas deselect workspace bounds are unavailable')
+    }
+    await shellPage.mouse.click(deselectWorkspace.x + 6, deselectWorkspace.y + 6)
+    await expect.poll(() => shellPage.locator('.pane-card-active').count()).toBe(0)
+    await expect(shellPage.locator('.global-pane-bar')).toHaveCount(0)
+    await shellPage.locator('.pane-title').first().click()
+    await waitForVisibleAlignedBounds(app)
+    await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)
+    await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
+
     await handTool.click()
     await expect(handTool).toHaveAttribute('aria-pressed', 'true')
     await expect
@@ -1139,7 +1251,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(responsiveEmulation?.enabled).toBe(true)
     expect(responsiveEmulation?.scale).toBeGreaterThan(0)
     expect(responsiveEmulation?.scale).toBeLessThanOrEqual(1)
-    await shellPage.locator('.canvas-zoom').click()
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
     await expect
       .poll(async () => getEmulationState(app as ElectronApplication, alicePaneId as string))
       .toMatchObject({ enabled: false, scale: 0 })

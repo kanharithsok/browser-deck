@@ -227,7 +227,9 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
-- While the Hand tool is active, use the mouse wheel to zoom between 50% and 200% around the cursor. Show the zoom level with a reset control. Keep the page's CSS viewport stable while visually scaling native views through device emulation.
+- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center zoom bar with zoom-out and zoom-in buttons and a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%). Keep the page's CSS viewport stable while visually scaling native views through device emulation.
+- Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
+- Clicking empty canvas with the primary button and without dragging clears the active pane and hides its global bar. Interacting with a pane, its header, or the minimap restores selection.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
 - Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
@@ -236,10 +238,10 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
-- Provide a Fit all panes action in the Canvas global bar and in the overview. It must bring every pane back inside the workspace.
+- Provide a Fit all panes action in the Canvas global bar, in the overview, and in the zoom menu. It must bring every pane back inside the workspace.
 - Use the Canvas global bar for active-pane address, navigation, and viewport controls, with compact labels on each frame.
 - Provide the + device menu and right-click canvas context menu described in §7.3.
-- Persist canvas positions per workspace. Pan offset and zoom are viewport state and may reset.
+- Persist canvas positions per workspace. Pan offset, zoom, and a cleared active-pane selection are viewport state and may reset.
 - Device bezels and pane frame resizing are not required.
 
 ### 7.5 Canvas-only layout

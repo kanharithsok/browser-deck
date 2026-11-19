@@ -24,7 +24,8 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('src/renderer/index.html'),
-          minimap: resolve('src/renderer/minimap.html')
+          minimap: resolve('src/renderer/minimap.html'),
+          zoom: resolve('src/renderer/zoom.html')
         }
       }
     },

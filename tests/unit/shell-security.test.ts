@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   SHELL_ENTRY_URL,
   SHELL_MINIMAP_URL,
+  SHELL_ZOOM_URL,
   buildShellCsp,
   isTrustedMinimapDocumentUrl,
-  isTrustedShellDocumentUrl
+  isTrustedShellDocumentUrl,
+  isTrustedZoomDocumentUrl
 } from '../../src/shared/shell'
 
 describe('shell CSP', () => {
@@ -59,6 +61,30 @@ describe('trusted shell documents', () => {
       isTrustedShellDocumentUrl('https://example.com/', 'http://localhost:5173')
     ).toBe(false)
     expect(isTrustedShellDocumentUrl('http://localhost:5173/', 'not a url')).toBe(false)
+  })
+})
+
+describe('trusted zoom documents', () => {
+  it('accepts only the built zoom document in production', () => {
+    expect(isTrustedZoomDocumentUrl(SHELL_ZOOM_URL, null)).toBe(true)
+    expect(isTrustedZoomDocumentUrl(`${SHELL_ZOOM_URL}?theme=dark`, null)).toBe(true)
+    expect(isTrustedZoomDocumentUrl(SHELL_ENTRY_URL, null)).toBe(false)
+    expect(isTrustedZoomDocumentUrl(SHELL_MINIMAP_URL, null)).toBe(false)
+    expect(isTrustedZoomDocumentUrl('paneflow://shell/other.html', null)).toBe(false)
+    expect(isTrustedZoomDocumentUrl('paneflow://evil/zoom.html', null)).toBe(false)
+    expect(isTrustedZoomDocumentUrl('not a url', null)).toBe(false)
+  })
+
+  it('requires the zoom path on the validated development origin', () => {
+    expect(
+      isTrustedZoomDocumentUrl('http://localhost:5173/zoom.html', 'http://localhost:5173')
+    ).toBe(true)
+    expect(
+      isTrustedZoomDocumentUrl('http://localhost:5173/minimap.html', 'http://localhost:5173')
+    ).toBe(false)
+    expect(
+      isTrustedZoomDocumentUrl('https://example.com/zoom.html', 'http://localhost:5173')
+    ).toBe(false)
   })
 })
 

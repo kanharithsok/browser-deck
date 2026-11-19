@@ -29,6 +29,16 @@ import {
   type PaneViewport,
   type ViewportPresetId
 } from '../../shared/viewports'
+import {
+  CANVAS_MAX_ZOOM,
+  CANVAS_MIN_ZOOM,
+  CANVAS_ZOOM_BAR_HEIGHT,
+  CANVAS_ZOOM_MARGIN,
+  CANVAS_ZOOM_MENU_WIDTH,
+  CANVAS_ZOOM_PRESETS,
+  CANVAS_ZOOM_STEP,
+  type CanvasZoomAction
+} from '../../shared/zoom'
 import type {
   ThemePreference,
   WorkspaceLayout,
@@ -61,14 +71,15 @@ import {
 type LayoutMode = 'grid' | 'freeform' | 'canvas'
 type ProfileActionKind = 'clear' | 'delete'
 
-const CANVAS_MIN_ZOOM = 0.5
-const CANVAS_MAX_ZOOM = 2
 const CANVAS_FIT_PADDING = 24
 
 interface CanvasDragState {
   startX: number
   startY: number
   base: CanvasPosition
+  button: number
+  moved: boolean
+  empty: boolean
 }
 
 interface CanvasPaneDragState {
@@ -105,6 +116,7 @@ interface ProfileActionState {
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
+const paneSelectionCleared = ref(false)
 const paneRenameRequests = ref<Record<string, number>>({})
 const layoutMode = ref<LayoutMode>('canvas')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
@@ -128,8 +140,12 @@ const maximizedPaneId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
-const appMenuMode = ref<'add' | 'canvas' | null>(null)
-const appMenuAnchor = ref<{ x: number; y: number; align: 'start' | 'end' }>({
+const appMenuMode = ref<'add' | 'canvas' | 'zoom' | null>(null)
+const appMenuAnchor = ref<{
+  x: number
+  y: number
+  align: 'start' | 'end' | 'center'
+}>({
   x: 0,
   y: 0,
   align: 'start'
@@ -184,6 +200,7 @@ const isDragging = ref(false)
 
 let disposeStateListener: (() => void) | null = null
 let disposeMinimapActionListener: (() => void) | null = null
+let disposeZoomActionListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
@@ -344,6 +361,36 @@ const addPaneMenuModel = computed<AppMenuModel>(() => ({
   ]
 }))
 
+const zoomMenuModel = computed<AppMenuModel>(() => ({
+  label: 'Zoom',
+  sections: [
+    {
+      items: CANVAS_ZOOM_PRESETS.map((zoom) => ({
+        id: `zoom:${zoom}`,
+        label: `${Math.round(zoom * 100)}%`,
+        kind: 'radio' as const,
+        checked: Math.abs(canvasZoom.value - zoom) < 0.001
+      }))
+    },
+    {
+      items: [
+        {
+          id: 'zoom:fit',
+          label: 'Fit all',
+          icon: 'fit',
+          separatorBefore: true,
+          disabled: panes.value.length === 0
+        },
+        {
+          id: 'zoom:reset',
+          label: 'Reset (100%)',
+          icon: 'reset'
+        }
+      ]
+    }
+  ]
+}))
+
 const canvasMenuModel = computed<AppMenuModel>(() => ({
   label: 'Canvas menu',
   sections: [
@@ -363,7 +410,8 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
         {
           id: 'fit-all',
           label: 'Fit all panes',
-          icon: 'fit'
+          icon: 'fit',
+          disabled: panes.value.length === 0
         },
         {
           id: 'reset-zoom',
@@ -488,6 +536,7 @@ const paneGridHeight = computed(() =>
 )
 
 function focusPaneAddress(paneId: string): void {
+  selectPane(paneId)
   const input =
     document.querySelector<HTMLInputElement>(`[data-pane-id="${paneId}"] .address-input`) ??
     document.querySelector<HTMLInputElement>('.global-pane-bar .address-input')
@@ -499,7 +548,7 @@ function requestPaneRename(paneId: string): void {
   if (!panes.value.some((pane) => pane.id === paneId)) {
     return
   }
-  activePaneId.value = paneId
+  selectPane(paneId)
   paneRenameRequests.value = {
     ...paneRenameRequests.value,
     [paneId]: (paneRenameRequests.value[paneId] ?? 0) + 1
@@ -511,6 +560,20 @@ function blurActiveShellControl(): void {
   if (active instanceof HTMLElement && active !== document.body) {
     active.blur()
   }
+}
+
+function selectPane(paneId: string | null): void {
+  activePaneId.value = paneId
+  paneSelectionCleared.value = paneId === null
+}
+
+function clearPaneSelection(): void {
+  if (activePaneId.value === null) {
+    return
+  }
+  blurActiveShellControl()
+  selectPane(null)
+  void nextTick(scheduleMeasure)
 }
 
 function recoverFocus(): void {
@@ -845,7 +908,7 @@ function beginInteraction(state: DragState): void {
   window.addEventListener('pointercancel', finishDrag)
 }
 
-function beginCanvasPan(event: PointerEvent): void {
+function beginCanvasPan(event: PointerEvent, empty = true): void {
   if (canvasDrag.value || maximizedPaneId.value) {
     return
   }
@@ -862,7 +925,10 @@ function beginCanvasPan(event: PointerEvent): void {
   canvasDrag.value = {
     startX: event.clientX,
     startY: event.clientY,
-    base: { ...canvasPan.value }
+    base: { ...canvasPan.value },
+    button: event.button,
+    moved: false,
+    empty
   }
   guides.value = { vertical: [], horizontal: [] }
   isCanvasPanning.value = true
@@ -882,22 +948,34 @@ function onCanvasPointerMove(event: PointerEvent): void {
     return
   }
   event.preventDefault()
+  if (
+    Math.abs(event.clientX - drag.startX) > 3 ||
+    Math.abs(event.clientY - drag.startY) > 3
+  ) {
+    drag.moved = true
+  }
   canvasPan.value = {
     x: drag.base.x + (event.clientX - drag.startX),
     y: drag.base.y + (event.clientY - drag.startY)
   }
 }
 
-function finishCanvasPan(): void {
-  if (!canvasDrag.value) {
+function finishCanvasPan(event?: PointerEvent): void {
+  const drag = canvasDrag.value
+  if (!drag) {
     return
   }
+  const deselect =
+    drag.button === 0 && drag.empty && !drag.moved && event?.type !== 'pointercancel'
   canvasDrag.value = null
   isCanvasPanning.value = false
   document.body.classList.remove('paneflow-canvas-panning')
   window.removeEventListener('pointermove', onCanvasPointerMove)
   window.removeEventListener('pointerup', finishCanvasPan)
   window.removeEventListener('pointercancel', finishCanvasPan)
+  if (deselect) {
+    clearPaneSelection()
+  }
   void nextTick(async () => {
     await measurePanes()
     scheduleSnapshotRefresh()
@@ -914,7 +992,7 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
   }
 
   blurActiveShellControl()
-  activePaneId.value = paneId
+  selectPane(paneId)
   canvasPaneDrag.value = {
     paneId,
     startX: event.clientX,
@@ -1043,6 +1121,51 @@ function resetCanvasZoom(): void {
   setCanvasZoomAtPoint(1, rect.left + rect.width / 2, rect.top + rect.height / 2)
 }
 
+function zoomCanvasAtCenter(zoom: number): void {
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    return
+  }
+  const rect = workspace.getBoundingClientRect()
+  setCanvasZoomAtPoint(zoom, rect.left + rect.width / 2, rect.top + rect.height / 2)
+}
+
+function applyCanvasZoomAction(action: CanvasZoomAction): void {
+  if (action.type === 'menu') {
+    openCanvasZoomMenu()
+    return
+  }
+  switch (action.type) {
+    case 'step':
+      zoomCanvasAtCenter(
+        canvasZoom.value + (action.direction === 'in' ? CANVAS_ZOOM_STEP : -CANVAS_ZOOM_STEP)
+      )
+      break
+    case 'set':
+      zoomCanvasAtCenter(action.zoom)
+      break
+    case 'fit':
+      fitCanvasToPanes()
+      break
+    case 'reset':
+      zoomCanvasAtCenter(1)
+      break
+  }
+}
+
+function fitCanvasWhenReady(attempts = 5): void {
+  if (layoutMode.value !== 'canvas' || panes.value.length === 0) {
+    return
+  }
+  if (workspaceSize.value.width < 1 || workspaceSize.value.height < 1) {
+    if (attempts > 0) {
+      requestAnimationFrame(() => fitCanvasWhenReady(attempts - 1))
+    }
+    return
+  }
+  fitCanvasToPanes()
+}
+
 function beginCanvasWheelGesture(): void {
   if (canvasHandActive.value || isCanvasPanning.value || isCanvasPaneDragging.value) {
     return
@@ -1160,7 +1283,7 @@ function focusCanvasPane(paneId: string): void {
     x: Math.round((workspaceSize.value.width - screenWidth) / 2 - frame.x * zoom),
     y: Math.round((workspaceSize.value.height - screenHeight) / 2 - frame.y * zoom)
   }
-  activePaneId.value = paneId
+  selectPane(paneId)
   syncCanvasZoomToMain(zoom)
   void nextTick(scheduleMeasure)
   scheduleSnapshotRefresh(300)
@@ -1236,7 +1359,7 @@ function centerCanvasPane(paneId: string): void {
     x: Math.round((workspaceSize.value.width - screenWidth) / 2) - frame.x * canvasZoom.value,
     y: Math.round((workspaceSize.value.height - screenHeight) / 2) - frame.y * canvasZoom.value
   }
-  activePaneId.value = paneId
+  selectPane(paneId)
   void nextTick(scheduleMeasure)
 }
 
@@ -1415,6 +1538,7 @@ function applyState(state: ShellState): void {
     gridColumns.value = DEFAULT_GRID_COLUMNS
     maximizedPaneId.value = null
     activePaneId.value = null
+    paneSelectionCleared.value = false
     layoutRestored = false
     layoutPersistenceReady = false
     suspendedPaneIds.value = new Set()
@@ -1449,12 +1573,13 @@ function applyState(state: ShellState): void {
   }
   if (activePaneId.value && !nextIds.has(activePaneId.value)) {
     activePaneId.value = null
+    paneSelectionCleared.value = false
   }
   if (addedPane) {
-    activePaneId.value = addedPane.id
+    selectPane(addedPane.id)
   }
-  if (!activePaneId.value) {
-    activePaneId.value = state.panes[0]?.id ?? null
+  if (!activePaneId.value && !paneSelectionCleared.value) {
+    selectPane(state.panes[0]?.id ?? null)
   }
 
   panes.value = state.panes
@@ -1487,6 +1612,9 @@ function applyState(state: ShellState): void {
       recoverFocus()
     }
     scheduleMeasure()
+    if (workspaceChanged) {
+      requestAnimationFrame(() => fitCanvasWhenReady())
+    }
   })
 }
 
@@ -1526,8 +1654,8 @@ async function prepareMenuSnapshots(): Promise<void> {
 }
 
 async function openAppMenu(
-  mode: 'add' | 'canvas',
-  anchor: { x: number; y: number; align: 'start' | 'end' },
+  mode: 'add' | 'canvas' | 'zoom',
+  anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
   if (profilesOpen.value || workspacesOpen.value) {
@@ -1598,7 +1726,40 @@ async function applyMenuTheme(theme: ThemePreference): Promise<void> {
   }
 }
 
+function openCanvasZoomMenu(): void {
+  if (profilesOpen.value || workspacesOpen.value || layoutMode.value !== 'canvas') {
+    return
+  }
+  void openAppMenu(
+    'zoom',
+    {
+      x: window.innerWidth / 2,
+      y: window.innerHeight - CANVAS_ZOOM_MARGIN - CANVAS_ZOOM_BAR_HEIGHT - 6,
+      align: 'center'
+    },
+    null
+  )
+}
+
 function onAppMenuSelect(id: string): void {
+  if (id.startsWith('zoom:')) {
+    closeAppMenu(false)
+    const value = id.slice('zoom:'.length)
+    if (value === 'fit') {
+      fitCanvasToPanes()
+      return
+    }
+    if (value === 'reset') {
+      zoomCanvasAtCenter(1)
+      return
+    }
+    const zoom = Number(value)
+    if (Number.isFinite(zoom)) {
+      zoomCanvasAtCenter(zoom)
+    }
+    return
+  }
+
   if (id === 'open-add-menu') {
     appMenuBounds.value = null
     appMenuMode.value = 'add'
@@ -2360,7 +2521,7 @@ function onWorkspaceFocusIn(event: FocusEvent): void {
   }
   const paneId = target.closest<HTMLElement>('[data-pane-id]')?.dataset.paneId
   if (paneId) {
-    activePaneId.value = paneId
+    selectPane(paneId)
   }
 }
 
@@ -2455,14 +2616,14 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     }
     const canvasCard = target.closest('[data-pane-id]')
     if (canvasHandActive.value || !(canvasCard instanceof HTMLElement)) {
-      beginCanvasPan(event)
+      beginCanvasPan(event, !(canvasCard instanceof HTMLElement))
       return
     }
     const canvasPaneId = canvasCard.dataset.paneId
     if (!canvasPaneId) {
       return
     }
-    activePaneId.value = canvasPaneId
+    selectPane(canvasPaneId)
     const interactive = target.closest(
       'button, a, input, select, textarea, form, [role="button"]'
     )
@@ -2488,7 +2649,7 @@ function onWorkspacePointerDown(event: PointerEvent): void {
   if (!paneId) {
     return
   }
-  activePaneId.value = paneId
+  selectPane(paneId)
 
   if (layoutMode.value === 'freeform') {
     const resizeTarget = target.closest<HTMLElement>('[data-resize]')
@@ -2781,11 +2942,14 @@ onMounted(async () => {
   disposeMinimapActionListener = window.paneflow.onCanvasMinimapAction(
     onCanvasMinimapAction
   )
+  disposeZoomActionListener = window.paneflow.onCanvasZoomAction(
+    applyCanvasZoomAction
+  )
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
   disposeCommandListener = window.paneflow.onPaneCommand(handlePaneCommand)
   disposeFocusListener = window.paneflow.onPaneFocused((paneId) => {
     if (panes.value.some((pane) => pane.id === paneId)) {
-      activePaneId.value = paneId
+      selectPane(paneId)
     }
     if (appMenuMode.value !== null) {
       closeAppMenu(false)
@@ -2827,6 +2991,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   disposeStateListener?.()
   disposeMinimapActionListener?.()
+  disposeZoomActionListener?.()
   disposeMeasureListener?.()
 
   disposeCommandListener?.()
@@ -2910,19 +3075,10 @@ onBeforeUnmount(() => {
           <path d="M8 2.2v4.1M3.8 4.8l2.9 2.9M12.2 4.8 9.3 7.7M2.2 10.2l3.4 3.4h4.8l3.4-3.4" />
         </svg>
       </button>
-      <button
-        class="toolbar-button canvas-zoom"
-        type="button"
-        title="Reset canvas zoom"
-        @click="resetCanvasZoom"
-      >
-        {{ Math.round(canvasZoom * 100) }}%
-      </button>
-
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
       <button
         ref="profilesButtonEl"
-        class="toolbar-button toolbar-button-compact"
+        class="icon-button toolbar-icon"
         type="button"
         title="Manage browser profiles"
         aria-label="Profiles"
@@ -3481,8 +3637,16 @@ onBeforeUnmount(() => {
     <AppMenu
       v-if="appMenuMode"
       :key="appMenuMode"
-      :model="appMenuMode === 'add' ? addPaneMenuModel : canvasMenuModel"
+      :model="
+        appMenuMode === 'add'
+          ? addPaneMenuModel
+          : appMenuMode === 'zoom'
+            ? zoomMenuModel
+            : canvasMenuModel
+      "
       :anchor="appMenuAnchor"
+      :placement="appMenuMode === 'zoom' ? 'above' : 'below'"
+      :width="appMenuMode === 'zoom' ? CANVAS_ZOOM_MENU_WIDTH : undefined"
       @select="onAppMenuSelect"
       @close="closeAppMenu()"
       @bounds="onAppMenuBounds"
@@ -3546,13 +3710,6 @@ onBeforeUnmount(() => {
   color: var(--accent-strong);
 }
 
-.canvas-zoom {
-  min-width: 46px;
-  padding: 0 6px;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
 .toolbar-button {
   display: inline-flex;
   align-items: center;
@@ -3584,27 +3741,13 @@ onBeforeUnmount(() => {
 }
 
 .add-pane-button {
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface-raised);
   color: var(--text-muted);
-}
-
-.add-pane-button:hover:not(:disabled) {
-  background: var(--surface-inset);
-  color: var(--text);
 }
 
 .add-pane-button svg {
   width: 15px;
   height: 15px;
   stroke-width: 1.8;
-}
-
-.toolbar-button-compact {
-  width: 28px;
-  padding: 0;
-  justify-content: center;
 }
 
 .toolbar-button svg {
