@@ -61,7 +61,7 @@ export function parsePaneBounds(
   }
 
   if (!Array.isArray(input) || input.length > MAX_PANE_COUNT) {
-    return { ok: false, error: 'Invalid pane bounds payload.' }
+    return { ok: false, error: 'Invalid device bounds payload.' }
   }
 
   const seen = new Set<string>()
@@ -69,15 +69,15 @@ export function parsePaneBounds(
 
   for (const item of input) {
     if (!isRecord(item) || typeof item.paneId !== 'string' || !isRecord(item.rect)) {
-      return { ok: false, error: 'Invalid pane bounds entry.' }
+      return { ok: false, error: 'Invalid device bounds entry.' }
     }
     if (typeof item.visible !== 'boolean') {
-      return { ok: false, error: 'Invalid pane visibility.' }
+      return { ok: false, error: 'Invalid device visibility.' }
     }
 
     const paneId = item.paneId
     if (!knownPaneIds.has(paneId) || seen.has(paneId)) {
-      return { ok: false, error: 'Unknown or duplicate pane ID.' }
+      return { ok: false, error: 'Unknown or duplicate device ID.' }
     }
     seen.add(paneId)
 
@@ -91,10 +91,10 @@ export function parsePaneBounds(
     if (item.visible) {
       const rect = sanitizeRect(rawRect, canvas)
       if (!rect) {
-        return { ok: false, error: 'Invalid pane bounds rectangle.' }
+        return { ok: false, error: 'Invalid device bounds rectangle.' }
       }
       if (rect.width < MIN_PANE_VIEW_WIDTH || rect.height < MIN_PANE_VIEW_HEIGHT) {
-        return { ok: false, error: 'Pane view is below the minimum size.' }
+        return { ok: false, error: 'Device view is below the minimum size.' }
       }
       updates.push({ paneId, rect, visible: true })
       continue
@@ -108,7 +108,7 @@ export function parsePaneBounds(
       rawRect.width <= 0 ||
       rawRect.height <= 0
     ) {
-      return { ok: false, error: 'Invalid pane bounds rectangle.' }
+      return { ok: false, error: 'Invalid device bounds rectangle.' }
     }
 
     const hiddenRect = {
@@ -118,7 +118,7 @@ export function parsePaneBounds(
       height: Math.round(rawRect.height)
     }
     if (hiddenRect.width < MIN_PANE_VIEW_WIDTH || hiddenRect.height < MIN_PANE_VIEW_HEIGHT) {
-      return { ok: false, error: 'Pane view is below the minimum size.' }
+      return { ok: false, error: 'Device view is below the minimum size.' }
     }
     updates.push({ paneId, rect: hiddenRect, visible: false })
   }

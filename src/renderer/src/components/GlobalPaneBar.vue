@@ -36,7 +36,7 @@ const statusId = computed(() =>
   <section
     class="global-pane-bar"
     :class="{ 'global-pane-bar-toolbar': variant === 'toolbar' }"
-    :aria-label="pane ? 'Active pane' : 'No active pane'"
+    :aria-label="pane ? 'Active device' : 'No active device'"
   >
     <template v-if="pane">
       <div class="global-pane-context">
@@ -61,10 +61,10 @@ const statusId = computed(() =>
 
     <div v-else class="global-pane-empty" role="status">
       <span class="global-pane-empty-title">
-        {{ hasPanes ? 'No pane selected' : 'No panes' }}
+        {{ hasPanes ? 'No device selected' : 'No devices' }}
       </span>
       <span class="global-pane-empty-hint">
-        {{ hasPanes ? 'Click a pane to edit its address' : 'Add a pane to get started' }}
+        {{ hasPanes ? 'Click a device to edit its address' : 'Add a device to get started' }}
       </span>
     </div>
 
@@ -72,8 +72,8 @@ const statusId = computed(() =>
       <button
         class="global-canvas-tool"
         type="button"
-        title="Fit all panes to view"
-        aria-label="Fit all panes to view"
+        title="Fit all devices to view"
+        aria-label="Fit all devices to view"
         :disabled="fitAllDisabled"
         @click="emit('fit-all')"
       >

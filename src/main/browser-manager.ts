@@ -1,21 +1,34 @@
 import { randomUUID } from 'node:crypto'
-import { Menu, WebContentsView, type BaseWindow, type WebContents } from 'electron'
+import { writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import {
+  app,
+  dialog,
+  Menu,
+  WebContentsView,
+  type BaseWindow,
+  type WebContents
+} from 'electron'
 import {
   CANVAS_RESPONSIVE_HEIGHT,
   CANVAS_RESPONSIVE_WIDTH
 } from '../shared/canvas'
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
 import type {
+  PaneScreenshotResult,
   PaneState,
   PaneViewRect,
   ScriptResult,
   ShellSnapshot
 } from '../shared/ipc'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
+import { screenshotFileName } from '../shared/screenshot'
 import { MAX_URL_LENGTH, isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
 import {
   RESPONSIVE_VIEWPORT,
   parsePaneViewport,
+  toggleViewportRotation,
+  viewportContentSize,
   viewportDisplayScale,
   type PaneViewport
 } from '../shared/viewports'
@@ -69,12 +82,12 @@ export interface PaneInitialization {
 
 function fallbackTitle(url: string): string {
   if (url === 'about:blank' || !url) {
-    return 'New pane'
+    return 'New device'
   }
   try {
-    return new URL(url).hostname || 'New pane'
+    return new URL(url).hostname || 'New device'
   } catch {
-    return 'New pane'
+    return 'New device'
   }
 }
 
@@ -101,7 +114,7 @@ export class BrowserManager {
   async initialize(panes: PaneInitialization[]): Promise<void> {
     for (const pane of panes) {
       if (pane.id !== undefined && !isValidPaneId(pane.id)) {
-        throw new Error('Invalid pane ID in workspace.')
+        throw new Error('Invalid device ID in workspace.')
       }
       const normalized = normalizeAddress(pane.url)
       this.createPane(pane.profile, normalized.ok ? normalized.url : 'about:blank', {
@@ -137,7 +150,7 @@ export class BrowserManager {
   async duplicatePane(paneId: string): Promise<ScriptResult> {
     const source = this.requirePane(paneId)
     if (!source) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
     const profile = await this.profileStore.create()
     if (this.destroyed || this.window.isDestroyed()) {
@@ -153,7 +166,7 @@ export class BrowserManager {
   renamePane(paneId: string, title: unknown): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     const parsed = parsePaneTitle(title)
@@ -202,7 +215,7 @@ export class BrowserManager {
   closePane(paneId: string): ScriptResult {
     const record = this.panes.get(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
     this.destroyPane(record)
     return { ok: true }
@@ -224,7 +237,7 @@ export class BrowserManager {
   navigate(paneId: string, address: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     if (address.length > MAX_URL_LENGTH) {
@@ -243,7 +256,7 @@ export class BrowserManager {
   back(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     const history = record.view.webContents.navigationHistory
@@ -257,7 +270,7 @@ export class BrowserManager {
   forward(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     const history = record.view.webContents.navigationHistory
@@ -271,7 +284,7 @@ export class BrowserManager {
   reload(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     if (record.pendingUrl) {
@@ -305,7 +318,7 @@ export class BrowserManager {
   bringPaneToFront(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
     if (this.window.isDestroyed()) {
       return { ok: false, error: 'Window is not available.' }
@@ -320,7 +333,7 @@ export class BrowserManager {
   sendPaneToBack(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
     if (this.window.isDestroyed()) {
       return { ok: false, error: 'Window is not available.' }
@@ -401,7 +414,7 @@ export class BrowserManager {
   setViewport(paneId: string, input: unknown): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     const parsed = parsePaneViewport(input)
@@ -416,10 +429,67 @@ export class BrowserManager {
     return { ok: true }
   }
 
+  rotateViewport(paneId: string): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Device not found.' }
+    }
+
+    const next = toggleViewportRotation(record.viewport)
+    if (!next) {
+      return { ok: false, error: 'Responsive devices do not have a fixed orientation.' }
+    }
+
+    record.viewport = next
+    record.lastEmulationSignature = ''
+    this.applyEmulation(record)
+    this.emitState()
+    return { ok: true }
+  }
+
+  async captureScreenshot(paneId: string): Promise<PaneScreenshotResult> {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Device not found.' }
+    }
+    if (record.url === 'about:blank') {
+      return { ok: false, error: 'There is no page to capture yet.' }
+    }
+
+    try {
+      const image = await record.view.webContents.capturePage()
+      if (image.isEmpty()) {
+        return { ok: false, error: 'The page did not produce a screenshot.' }
+      }
+
+      const defaultPath = path.join(
+        app.getPath('pictures'),
+        screenshotFileName(record.url, new Date())
+      )
+      const result = await dialog.showSaveDialog(this.window, {
+        title: 'Save device screenshot',
+        buttonLabel: 'Save',
+        defaultPath,
+        filters: [{ name: 'PNG image', extensions: ['png'] }]
+      })
+      if (result.canceled || !result.filePath) {
+        return { ok: true, canceled: true }
+      }
+
+      const filePath = result.filePath.toLowerCase().endsWith('.png')
+        ? result.filePath
+        : `${result.filePath}.png`
+      await writeFile(filePath, image.toPNG())
+      return { ok: true, filePath }
+    } catch {
+      return { ok: false, error: 'Could not save the screenshot.' }
+    }
+  }
+
   showMenu(paneId: string, x: number, y: number): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Pane not found.' }
+      return { ok: false, error: 'Device not found.' }
     }
 
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
@@ -452,14 +522,34 @@ export class BrowserManager {
           this.reload(record.id)
         }
       },
+      { type: 'separator' },
       {
-        label: 'Duplicate Pane',
+        label: 'Rotate Viewport',
+        enabled: record.viewport.preset !== 'responsive',
+        click: () => {
+          this.rotateViewport(record.id)
+        }
+      },
+      {
+        label: 'Capture Screenshot…',
+        enabled: record.url !== 'about:blank',
+        click: () => {
+          void this.captureScreenshot(record.id).then((result) => {
+            if (!result.ok) {
+              dialog.showErrorBox('Screenshot failed', result.error)
+            }
+          })
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Duplicate Device',
         click: () => {
           void this.duplicatePane(record.id)
         }
       },
       {
-        label: 'Rename Pane…',
+        label: 'Rename Device…',
         click: () => {
           this.options.onPaneRenameRequested?.(record.id)
         }
@@ -475,7 +565,7 @@ export class BrowserManager {
       },
       { type: 'separator' },
       {
-        label: 'Close Pane',
+        label: 'Close Device',
         click: () => {
           this.closePane(record.id)
         }
@@ -940,12 +1030,14 @@ export class BrowserManager {
     }
 
     const available = record.view.getBounds()
+    const size = viewportContentSize(record.viewport)
     const scale = viewportDisplayScale(record.viewport, available)
     const signature = [
       record.viewport.preset,
       record.viewport.width,
       record.viewport.height,
       record.viewport.deviceScaleFactor,
+      record.viewport.rotated === true ? 'rotated' : 'upright',
       scale
     ].join(':')
     if (record.lastEmulationSignature === signature) {
@@ -957,10 +1049,10 @@ export class BrowserManager {
     // without a viewport meta tag, which would make the preset dimensions a lie.
     webContents.enableDeviceEmulation({
       screenPosition: 'desktop',
-      screenSize: { width: record.viewport.width, height: record.viewport.height },
+      screenSize: { width: size.width, height: size.height },
       viewPosition: { x: 0, y: 0 },
       deviceScaleFactor: record.viewport.deviceScaleFactor,
-      viewSize: { width: record.viewport.width, height: record.viewport.height },
+      viewSize: { width: size.width, height: size.height },
       scale
     })
     record.emulationEnabled = true

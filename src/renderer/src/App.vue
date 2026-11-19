@@ -209,7 +209,7 @@ let lastSavedLayoutKey = ''
 
 const paneCountLabel = computed(() => {
   const count = panes.value.length
-  return `${count} ${count === 1 ? 'pane' : 'panes'}`
+  return `${count} ${count === 1 ? 'device' : 'devices'}`
 })
 
 const orderedPanes = computed(() => {
@@ -321,16 +321,16 @@ const ADD_PANE_MENU_PRESET_IDS = new Set([
 ])
 
 const addPaneMenuModel = computed<AppMenuModel>(() => ({
-  label: 'Add pane',
+  label: 'Add device',
   sections: [
     {
-      label: 'New pane',
+      label: 'New device',
       items: [
         {
           id: 'preset:responsive',
           label: 'Responsive',
           icon: 'responsive',
-          detail: 'Fill pane'
+          detail: 'Fill frame'
         }
       ]
     },
@@ -420,7 +420,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
       items: [
         {
           id: 'open-add-menu',
-          label: 'Add pane',
+          label: 'Add device',
           icon: 'add',
           detail: 'Choose device'
         }
@@ -431,7 +431,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
       items: [
         {
           id: 'fit-all',
-          label: 'Fit all panes',
+          label: 'Fit all devices',
           icon: 'fit',
           disabled: panes.value.length === 0
         },
@@ -1660,7 +1660,7 @@ async function runAddPane(add: () => Promise<ScriptResult>): Promise<void> {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not add a pane.'
+    actionError.value = 'Could not add a device.'
   } finally {
     addingPane.value = false
   }
@@ -1862,7 +1862,7 @@ async function duplicatePane(paneId: string): Promise<void> {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not duplicate the pane.'
+    actionError.value = 'Could not duplicate the device.'
   }
 }
 
@@ -1874,7 +1874,7 @@ async function closePane(paneId: string): Promise<void> {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not close the pane.'
+    actionError.value = 'Could not close the device.'
   }
 }
 
@@ -1884,7 +1884,7 @@ function formatProfileDate(value: string): string {
 }
 
 function profilePaneTitles(profile: ProfileSummary): string {
-  const count = `${profile.paneIds.length} ${profile.paneIds.length === 1 ? 'pane' : 'panes'}`
+  const count = `${profile.paneIds.length} ${profile.paneIds.length === 1 ? 'device' : 'devices'}`
   const titles = profile.paneIds
     .map((paneId) => panes.value.find((pane) => pane.id === paneId)?.title)
     .filter((title): title is string => Boolean(title))
@@ -1962,7 +1962,7 @@ async function openPaneWithProfile(profile: ProfileSummary): Promise<void> {
     }
     closeProfiles()
   } catch {
-    profileError.value = 'Could not create a pane with this profile.'
+    profileError.value = 'Could not create a device with this profile.'
   } finally {
     profileBusy.value = false
   }
@@ -2056,7 +2056,7 @@ async function confirmProfileAction(profile: ProfileSummary): Promise<void> {
     }
 
     profileAction.value = null
-    const panesClosed = profile.inUse ? ' Closed its panes.' : ''
+    const panesClosed = profile.inUse ? ' Closed its devices.' : ''
     profileNotice.value =
       action.kind === 'clear'
         ? `Cleared browser data for “${profile.label}”.${panesClosed}`
@@ -2409,6 +2409,50 @@ function onWorkspacesKeydown(event: KeyboardEvent): void {
   }
 }
 
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  if (target.isContentEditable) {
+    return true
+  }
+  const tag = target.tagName
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.closest('[contenteditable="true"]') !== null
+  )
+}
+
+function onGlobalKeyDown(event: KeyboardEvent): void {
+  if (
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.repeat ||
+    profilesOpen.value ||
+    workspacesOpen.value ||
+    appMenuMode.value !== null
+  ) {
+    return
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+    return
+  }
+  if (event.key !== 'Delete' && event.key !== 'Backspace') {
+    return
+  }
+  if (isTextEntryTarget(event.target)) {
+    return
+  }
+  const pane = currentPane()
+  if (!pane) {
+    return
+  }
+  event.preventDefault()
+  void closePane(pane.id)
+}
+
 async function reloadAll(): Promise<void> {
   actionError.value = null
   try {
@@ -2417,7 +2461,7 @@ async function reloadAll(): Promise<void> {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not reload the panes.'
+    actionError.value = 'Could not reload the devices.'
   }
 }
 
@@ -2428,7 +2472,7 @@ async function openPaneMenu(paneId: string, position: { x: number; y: number }):
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not open the pane menu.'
+    actionError.value = 'Could not open the device menu.'
   }
 }
 
@@ -2823,7 +2867,7 @@ async function measurePanes(): Promise<void> {
   try {
     result = await window.paneflow.setPaneBounds(updates)
   } catch {
-    layoutError.value = 'Could not synchronize pane layout.'
+    layoutError.value = 'Could not synchronize device layout.'
     return
   }
 
@@ -2954,7 +2998,8 @@ watch(
           pane.isLoading,
           pane.viewport.preset,
           pane.viewport.width,
-          pane.viewport.height
+          pane.viewport.height,
+          pane.viewport.rotated === true ? 'rotated' : 'upright'
         ].join(':')
       )
       .join('|'),
@@ -3005,6 +3050,7 @@ onMounted(async () => {
     resizeObserver.observe(workspaceEl.value)
   }
   window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('keydown', onGlobalKeyDown)
   window.addEventListener('keydown', onCanvasSpaceDown)
   window.addEventListener('keyup', onCanvasSpaceUp)
   window.addEventListener('blur', onWindowBlur)
@@ -3022,7 +3068,7 @@ onMounted(async () => {
       scheduleSnapshotRefresh(200)
     }
   } catch {
-    actionError.value = 'Could not read pane state.'
+    actionError.value = 'Could not read device state.'
   } finally {
     focusManagementEnabled = true
   }
@@ -3039,6 +3085,7 @@ onBeforeUnmount(() => {
   disposeRenameListener?.()
   resizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('keydown', onGlobalKeyDown)
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', finishDrag)
   window.removeEventListener('pointercancel', finishDrag)
@@ -3101,8 +3148,8 @@ onBeforeUnmount(() => {
       <button
         class="icon-button toolbar-icon"
         type="button"
-        title="Reload all panes"
-        aria-label="Reload all panes"
+        title="Reload all devices"
+        aria-label="Reload all devices"
         :disabled="panes.length === 0"
         @click="reloadAll"
       >
@@ -3114,8 +3161,8 @@ onBeforeUnmount(() => {
       <button
         class="icon-button toolbar-icon add-pane-button"
         type="button"
-        title="Add pane"
-        aria-label="Add pane"
+        title="Add device"
+        aria-label="Add device"
         aria-haspopup="menu"
         :aria-expanded="appMenuMode === 'add'"
         :disabled="addingPane"
@@ -3170,7 +3217,6 @@ onBeforeUnmount(() => {
           <PaneCard
             :pane="pane"
             :freeform="layoutMode === 'freeform' && !maximizedPaneId"
-            :maximized="maximizedPaneId === pane.id"
             :suspended="suspendedPaneIds.has(pane.id)"
             :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
@@ -3180,7 +3226,6 @@ onBeforeUnmount(() => {
             :canvas="layoutMode === 'canvas'"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
-            @toggle-maximize="toggleMaximize(pane.id)"
             @raise-pane="raisePane(pane.id)"
             @lower-pane="lowerPane(pane.id)"
             @set-viewport="setPaneViewport(pane.id, $event)"
@@ -3204,14 +3249,14 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="empty-state">
-        <p class="empty-title">No browser panes</p>
+        <p class="empty-title">No devices</p>
         <p class="empty-detail">
-          Add a pane to open a real, isolated browser session in this workspace.
+          Add a device to open a real, isolated browser session in this workspace.
         </p>
         <button
           class="toolbar-button primary"
           type="button"
-          title="Add pane"
+          title="Add device"
           aria-haspopup="menu"
           :aria-expanded="appMenuMode === 'add'"
           :disabled="addingPane"
@@ -3220,7 +3265,7 @@ onBeforeUnmount(() => {
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M8 3v10M3 8h10" />
           </svg>
-          <span>Add pane</span>
+          <span>Add device</span>
         </button>
       </div>
     </main>
@@ -3240,8 +3285,8 @@ onBeforeUnmount(() => {
           <div>
             <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
             <p id="profiles-description" class="profiles-description">
-              Each profile keeps its own cookies and site storage. Open pane explicitly shares this
-              profile.
+              Each profile keeps its own cookies and site storage. Open device explicitly shares
+              this profile.
             </p>
           </div>
           <button
@@ -3266,7 +3311,7 @@ onBeforeUnmount(() => {
 
         <div v-if="profilesLoading" class="profiles-empty" role="status">Loading profiles…</div>
         <div v-else-if="profiles.length === 0" class="profiles-empty">
-          No browser profiles yet. Add a pane to create one.
+          No browser profiles yet. Add a device to create one.
         </div>
         <ul v-else class="profile-list">
           <li
@@ -3312,11 +3357,11 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="profileBusy"
-                title="Open a new pane using this profile and share its cookies/storage."
-                :aria-label="`Open pane with profile ${profile.label}`"
+                title="Open a new device using this profile and share its cookies/storage."
+                :aria-label="`Open device with profile ${profile.label}`"
                 @click="openPaneWithProfile(profile)"
               >
-                Open pane
+                Open device
               </button>
               <button
                 class="text-button"
@@ -3334,7 +3379,7 @@ onBeforeUnmount(() => {
                 :aria-label="`Clear browser data for profile ${profile.label}`"
                 :title="
                   profile.inUse
-                    ? 'Close its panes and clear cookies, storage, and cache.'
+                    ? 'Close its devices and clear cookies, storage, and cache.'
                     : 'Clear cookies, storage, and cache.'
                 "
                 @click="requestProfileAction('clear', profile)"
@@ -3348,7 +3393,7 @@ onBeforeUnmount(() => {
                 :aria-label="`Delete profile ${profile.label}`"
                 :title="
                   profile.inUse
-                    ? 'Close its panes and delete this profile and its browser data.'
+                    ? 'Close its devices and delete this profile and its browser data.'
                     : 'Delete this profile and its browser data.'
                 "
                 @click="requestProfileAction('delete', profile)"
@@ -3367,7 +3412,7 @@ onBeforeUnmount(() => {
                 {{
                   profile.inUse
                     ? `Close ${profile.paneIds.length} ${
-                      profile.paneIds.length === 1 ? 'pane' : 'panes'
+                      profile.paneIds.length === 1 ? 'device' : 'devices'
                     } using “${profile.label}” and ${
                       profileAction.kind === 'clear' ? 'clear its data' : 'delete it'
                     }?`
@@ -3385,8 +3430,8 @@ onBeforeUnmount(() => {
                 {{
                   profile.inUse
                     ? profileAction.kind === 'clear'
-                      ? 'Close panes & clear'
-                      : 'Close panes & delete'
+                      ? 'Close devices & clear'
+                      : 'Close devices & delete'
                     : profileAction.kind === 'clear'
                       ? 'Clear data'
                       : 'Delete profile'
@@ -3428,7 +3473,7 @@ onBeforeUnmount(() => {
           <div>
             <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
             <p id="workspaces-description" class="profiles-description">
-              Each workspace keeps its own panes, layout, URLs, and viewport settings.
+              Each workspace keeps its own devices, layout, URLs, and viewport settings.
             </p>
           </div>
           <button
@@ -3512,7 +3557,7 @@ onBeforeUnmount(() => {
                 <span v-if="workspace.active" class="workspace-badge">Active</span>
               </span>
               <span class="profile-meta">
-                {{ workspace.paneCount }} {{ workspace.paneCount === 1 ? 'pane' : 'panes' }} ·
+                {{ workspace.paneCount }} {{ workspace.paneCount === 1 ? 'device' : 'devices' }} ·
                 Updated {{ formatProfileDate(workspace.updatedAt) }}
               </span>
             </div>

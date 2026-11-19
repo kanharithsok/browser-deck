@@ -2,6 +2,7 @@ import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
 import {
   IPC_CHANNELS,
+  type PaneScreenshotResult,
   type PaneSnapshotsResult,
   type ProfileListResult,
   type ShellState,
@@ -72,7 +73,7 @@ interface IpcContext {
 }
 
 const unauthorized: ScriptResult = { ok: false, error: 'Unauthorized sender.' }
-const unavailable: ScriptResult = { ok: false, error: 'Pane manager is not ready.' }
+const unavailable: ScriptResult = { ok: false, error: 'Device manager is not ready.' }
 
 function isTrustedSender(event: IpcMainInvokeEvent, context: IpcContext): boolean {
   const shell = context.getShellWebContents()
@@ -169,7 +170,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     try {
       return await manager.addPane(payload)
     } catch {
-      return { ok: false, error: 'Could not create the pane.' }
+      return { ok: false, error: 'Could not create the device.' }
     }
   })
 
@@ -188,7 +189,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       try {
         return await manager.addPaneWithViewport(payload)
       } catch {
-        return { ok: false, error: 'Could not create the pane.' }
+        return { ok: false, error: 'Could not create the device.' }
       }
     }
   )
@@ -213,7 +214,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       try {
         return await manager.addPaneWithProfile(profileId, urlInput)
       } catch {
-        return { ok: false, error: 'Could not create the pane.' }
+        return { ok: false, error: 'Could not create the device.' }
       }
     }
   )
@@ -228,12 +229,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     const paneId = readString(payload, 100)
     if (!paneId) {
-      return { ok: false, error: 'Invalid pane ID.' }
+      return { ok: false, error: 'Invalid device ID.' }
     }
     try {
       return await manager.duplicatePane(paneId)
     } catch {
-      return { ok: false, error: 'Could not duplicate the pane.' }
+      return { ok: false, error: 'Could not duplicate the device.' }
     }
   })
 
@@ -246,7 +247,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       return unavailable
     }
     const paneId = readString(payload, 100)
-    return paneId ? manager.closePane(paneId) : { ok: false, error: 'Invalid pane ID.' }
+    return paneId ? manager.closePane(paneId) : { ok: false, error: 'Invalid device ID.' }
   })
 
   ipcMain.handle(
@@ -262,7 +263,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       const paneId = readString(paneIdInput, 100)
       const title = readString(titleInput, 400)
       if (!paneId || title === null) {
-        return { ok: false, error: 'Invalid pane title.' }
+        return { ok: false, error: 'Invalid device title.' }
       }
       return manager.renamePane(paneId, title)
     }
@@ -300,7 +301,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         return unavailable
       }
       const paneId = readString(payload, 100)
-      return paneId ? command(manager, paneId) : { ok: false, error: 'Invalid pane ID.' }
+      return paneId ? command(manager, paneId) : { ok: false, error: 'Invalid device ID.' }
     })
   }
 
@@ -338,9 +339,46 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const paneId = readString(paneIdInput, 100)
       if (!paneId) {
-        return { ok: false, error: 'Invalid pane ID.' }
+        return { ok: false, error: 'Invalid device ID.' }
       }
       return manager.setViewport(paneId, payload)
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.rotatePaneViewport,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const paneId = readString(payload, 100)
+      return paneId ? manager.rotateViewport(paneId) : { ok: false, error: 'Invalid device ID.' }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.capturePaneScreenshot,
+    async (event, payload: unknown): Promise<PaneScreenshotResult> => {
+      if (!isTrustedSender(event, context)) {
+        return { ok: false, error: 'Unauthorized sender.' }
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return { ok: false, error: 'Device manager is not ready.' }
+      }
+      const paneId = readString(payload, 100)
+      if (!paneId) {
+        return { ok: false, error: 'Invalid device ID.' }
+      }
+      try {
+        return await manager.captureScreenshot(paneId)
+      } catch {
+        return { ok: false, error: 'Could not capture the device screenshot.' }
+      }
     }
   )
 
@@ -504,7 +542,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       return unavailable
     }
     const paneId = readString(payload, 100)
-    return paneId ? manager.bringPaneToFront(paneId) : { ok: false, error: 'Invalid pane ID.' }
+    return paneId ? manager.bringPaneToFront(paneId) : { ok: false, error: 'Invalid device ID.' }
   })
 
   ipcMain.handle(IPC_CHANNELS.sendPaneToBack, (event, payload: unknown): ScriptResult => {
@@ -516,7 +554,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       return unavailable
     }
     const paneId = readString(payload, 100)
-    return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid pane ID.' }
+    return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid device ID.' }
   })
 
   ipcMain.handle(IPC_CHANNELS.setTheme, (event, payload: unknown): ScriptResult => {
@@ -538,12 +576,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const manager = context.getBrowserManager()
       if (!manager) {
-        return { ok: false, error: 'Pane manager is not ready.' }
+        return { ok: false, error: 'Device manager is not ready.' }
       }
       try {
         return { ok: true, snapshots: await manager.captureSnapshots() }
       } catch {
-        return { ok: false, error: 'Could not capture pane snapshots.' }
+        return { ok: false, error: 'Could not capture device snapshots.' }
       }
     }
   )

@@ -3,14 +3,13 @@ import { computed, nextTick, ref, watch } from 'vue'
 import PaneNavigation from './PaneNavigation.vue'
 import type { PaneChromeStyle } from '../../../shared/pane-chrome'
 import type { PaneState } from '../../../shared/ipc'
-import type { PaneViewport } from '../../../shared/viewports'
+import { viewportContentSize, type PaneViewport } from '../../../shared/viewports'
 import { MAX_PANE_TITLE_LENGTH } from '../../../shared/workspace'
 
 const props = withDefaults(
   defineProps<{
     pane: PaneState
     freeform?: boolean
-    maximized?: boolean
     suspended?: boolean
     active?: boolean
     profilePaneCount?: number
@@ -21,7 +20,6 @@ const props = withDefaults(
   }>(),
   {
     freeform: false,
-    maximized: false,
     suspended: false,
     active: false,
     profilePaneCount: 1,
@@ -35,7 +33,6 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: []
   menu: [position: { x: number; y: number }]
-  'toggle-maximize': []
   'raise-pane': []
   'lower-pane': []
   'set-viewport': [viewport: PaneViewport]
@@ -52,15 +49,17 @@ const statusId = `pane-status-${props.pane.id}`
 
 const profileLabelText = computed(() =>
   props.profilePaneCount > 1
-    ? `${props.pane.profileLabel} · ${props.profilePaneCount} panes`
+    ? `${props.pane.profileLabel} · ${props.profilePaneCount} devices`
     : props.pane.profileLabel
 )
 
 const viewportLabel = computed(() => {
   const viewport = props.pane.viewport
-  return viewport.preset === 'responsive'
-    ? 'Responsive'
-    : `${viewport.width} × ${viewport.height}`
+  if (viewport.preset === 'responsive') {
+    return 'Responsive'
+  }
+  const size = viewportContentSize(viewport)
+  return `${size.width} × ${size.height}`
 })
 
 const showNavigation = computed(
@@ -74,7 +73,7 @@ const showViewportBadge = computed(
 const titleTooltip = computed(() => {
   const title = props.pane.customTitle ?? props.pane.title
   return props.pane.customTitle
-    ? `${title} (custom pane name; double-click to rename; clear it to use the page title)`
+    ? `${title} (custom device name; double-click to rename; clear it to use the page title)`
     : `${title} (double-click to rename)`
 })
 
@@ -120,7 +119,7 @@ async function submitRename(): Promise<void> {
     renaming.value = false
     titleInput.value?.blur()
   } catch {
-    titleError.value = 'Could not rename the pane.'
+    titleError.value = 'Could not rename the device.'
     await nextTick()
     titleInput.value?.focus()
   } finally {
@@ -142,6 +141,18 @@ watch(
     }
   }
 )
+
+function goBack(): void {
+  if (props.pane.canGoBack) {
+    void window.paneflow.back(props.pane.id).catch(() => undefined)
+  }
+}
+
+function goForward(): void {
+  if (props.pane.canGoForward) {
+    void window.paneflow.forward(props.pane.id).catch(() => undefined)
+  }
+}
 
 function reload(): void {
   void window.paneflow.reload(props.pane.id).catch(() => undefined)
@@ -174,7 +185,7 @@ function requestClose(): void {
     ]"
     :data-pane-id="pane.id"
     :data-pane-chrome="chromeStyle"
-    :aria-label="`Browser pane: ${pane.title}`"
+    :aria-label="`Browser device: ${pane.title}`"
     :aria-current="active ? 'true' : undefined"
   >
     <div class="pane-header-shell">
@@ -198,7 +209,7 @@ function requestClose(): void {
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="Use page title"
-                :aria-label="`Pane name for ${pane.title}`"
+                :aria-label="`Device name for ${pane.title}`"
                 :aria-invalid="titleError ? 'true' : 'false'"
                 :aria-describedby="titleError ? statusId : undefined"
                 @input="titleError = null"
@@ -210,7 +221,7 @@ function requestClose(): void {
               class="pane-profile"
               :title="
                 profilePaneCount > 1
-                  ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} panes)`
+                  ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} devices)`
                   : `Browser profile: ${pane.profileLabel}`
               "
             >
@@ -255,8 +266,8 @@ function requestClose(): void {
             v-if="freeform"
             class="icon-button"
             type="button"
-            title="Bring pane to front"
-            aria-label="Bring pane to front"
+            title="Bring device to front"
+            aria-label="Bring device to front"
             @click="emit('raise-pane')"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -267,8 +278,8 @@ function requestClose(): void {
             v-if="freeform"
             class="icon-button"
             type="button"
-            title="Send pane to back"
-            aria-label="Send pane to back"
+            title="Send device to back"
+            aria-label="Send device to back"
             @click="emit('lower-pane')"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -278,22 +289,44 @@ function requestClose(): void {
           <button
             class="icon-button"
             type="button"
-            :title="maximized ? 'Restore pane' : 'Maximize pane'"
-            :aria-label="maximized ? 'Restore pane' : 'Maximize pane'"
-            @click="emit('toggle-maximize')"
+            title="Back"
+            aria-label="Go back"
+            :disabled="!pane.canGoBack"
+            @click="goBack"
           >
-            <svg v-if="maximized" viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M6 3H3v3M10 3h3v3M6 13H3v-3M10 13h3v-3" />
-            </svg>
-            <svg v-else viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M9.5 3.5 5 8l4.5 4.5" />
             </svg>
           </button>
           <button
             class="icon-button"
             type="button"
-            title="Pane actions"
-            aria-label="Pane actions"
+            title="Forward"
+            aria-label="Go forward"
+            :disabled="!pane.canGoForward"
+            @click="goForward"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M6.5 3.5 11 8l-4.5 4.5" />
+            </svg>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            title="Reload device"
+            aria-label="Reload device"
+            @click="reload"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M12.6 6.3A5 5 0 1 0 13 8" />
+              <path d="M12.8 3.3v3.2H9.6" />
+            </svg>
+          </button>
+          <button
+            class="icon-button"
+            type="button"
+            title="Device actions"
+            aria-label="Device actions"
             @click="openMenu"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -305,8 +338,8 @@ function requestClose(): void {
           <button
             class="icon-button"
             type="button"
-            title="Close pane"
-            aria-label="Close pane"
+            title="Close device (Delete)"
+            aria-label="Close device"
             @click="requestClose"
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -333,15 +366,15 @@ function requestClose(): void {
         </div>
         <div v-else-if="pane.url === 'about:blank' && !pane.isLoading" class="pane-message">
           <p class="message-title">No page loaded</p>
-          <p class="message-detail">Enter an address above to open a site in this pane.</p>
+          <p class="message-detail">Enter an address above to open a site in this device.</p>
         </div>
         <div v-else-if="suspended && !pane.isLoading && !snapshot" class="pane-message">
-          <p class="message-title">Pane hidden while off-screen</p>
+          <p class="message-title">Device hidden while off-screen</p>
           <p v-if="canvas" class="message-detail">
-            Select this pane to bring it fully into view.
+            Select this device to bring it fully into view.
           </p>
           <p v-else class="message-detail">
-            Scroll this pane fully into view to interact with the site.
+            Scroll this device fully into view to interact with the site.
           </p>
         </div>
         <div v-else-if="pane.isLoading && !snapshot" class="pane-message" aria-hidden="true">
@@ -613,6 +646,10 @@ function requestClose(): void {
 .icon-button:hover:not(:disabled) {
   background: var(--surface-inset);
   color: var(--text);
+}
+
+.icon-button:disabled {
+  opacity: 0.3;
 }
 
 .icon-button svg {

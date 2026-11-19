@@ -120,7 +120,8 @@ function applyCustomViewport(): void {
     preset: 'custom',
     width: Number(customWidth.value),
     height: Number(customHeight.value),
-    deviceScaleFactor: Number(customDeviceScaleFactor.value)
+    deviceScaleFactor: Number(customDeviceScaleFactor.value),
+    ...(props.pane.viewport.rotated ? { rotated: true } : {})
   })
 
   if (!parsed.ok) {
@@ -237,8 +238,8 @@ function reload(): void {
       <button
         class="icon-button nav-button"
         type="button"
-        title="Reload pane"
-        aria-label="Reload pane"
+        title="Reload device"
+        aria-label="Reload device"
         @click="reload"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -259,7 +260,7 @@ function reload(): void {
           autocapitalize="off"
           spellcheck="false"
           :placeholder="pane.url === 'about:blank' ? 'Enter an address' : ''"
-          :aria-label="`Address for ${pane.title}`"
+          :aria-label="`Address for device ${pane.title}`"
           :aria-invalid="addressError ? 'true' : 'false'"
           :aria-describedby="addressError ? statusId : undefined"
           @input="setAddressError(null)"
@@ -272,7 +273,7 @@ function reload(): void {
       <select
         class="viewport-select"
         :value="selectedPreset"
-        :aria-label="`Viewport preset for ${pane.title}`"
+        :aria-label="`Viewport preset for device ${pane.title}`"
         @change="onPresetChange"
       >
         <option value="responsive">Responsive</option>

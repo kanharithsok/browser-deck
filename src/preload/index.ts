@@ -35,6 +35,10 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.setPaneBounds, updates),
   setPaneViewport: (paneId: string, viewport: PaneViewport) =>
     ipcRenderer.invoke(IPC_CHANNELS.setPaneViewport, paneId, viewport),
+  rotatePaneViewport: (paneId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.rotatePaneViewport, paneId),
+  capturePaneScreenshot: (paneId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.capturePaneScreenshot, paneId),
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
     ipcRenderer.invoke(IPC_CHANNELS.saveWorkspaceLayout, layout),
   listProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.listProfiles),

@@ -26,6 +26,8 @@ export const IPC_CHANNELS = {
   reloadAll: 'paneflow:reload-all',
   setPaneBounds: 'paneflow:set-pane-bounds',
   setPaneViewport: 'paneflow:set-pane-viewport',
+  rotatePaneViewport: 'paneflow:rotate-pane-viewport',
+  capturePaneScreenshot: 'paneflow:capture-pane-screenshot',
   saveWorkspaceLayout: 'paneflow:save-workspace-layout',
   listProfiles: 'paneflow:list-profiles',
   renameProfile: 'paneflow:rename-profile',
@@ -138,6 +140,10 @@ export type PaneSnapshotsResult =
   | { ok: true; snapshots: Record<string, string> }
   | { ok: false; error: string }
 
+export type PaneScreenshotResult =
+  | { ok: true; canceled?: boolean; filePath?: string }
+  | { ok: false; error: string }
+
 export interface PaneFlowApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
@@ -153,6 +159,8 @@ export interface PaneFlowApi {
   reloadAll(): Promise<ScriptResult>
   setPaneBounds(updates: PaneBoundsUpdate[]): Promise<ScriptResult>
   setPaneViewport(paneId: string, viewport: PaneViewport): Promise<ScriptResult>
+  rotatePaneViewport(paneId: string): Promise<ScriptResult>
+  capturePaneScreenshot(paneId: string): Promise<PaneScreenshotResult>
   saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
   listProfiles(): Promise<ProfileListResult>
   renameProfile(profileId: string, label: string): Promise<ScriptResult>

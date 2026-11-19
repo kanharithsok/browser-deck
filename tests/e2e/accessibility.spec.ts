@@ -280,15 +280,15 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(await addressInput.getAttribute('aria-label')).toMatch(/^Address for /)
 
       const paneCount = banner.locator('.pane-count')
-      await expect(paneCount).toHaveText('2 panes')
+      await expect(paneCount).toHaveText('2 devices')
 
-      const addPaneButton = banner.getByRole('button', { name: 'Add pane', exact: true })
+      const addPaneButton = banner.getByRole('button', { name: 'Add device', exact: true })
       await expect(addPaneButton).toBeEnabled()
       await expect(addPaneButton).toHaveAttribute('aria-haspopup', 'menu')
       await expect(addPaneButton).toHaveAttribute('aria-expanded', 'false')
-      const reloadAll = banner.getByRole('button', { name: 'Reload all panes' })
-      await expect(reloadAll).toHaveAccessibleName('Reload all panes')
-      await expect(reloadAll).toHaveAttribute('title', 'Reload all panes')
+      const reloadAll = banner.getByRole('button', { name: 'Reload all devices' })
+      await expect(reloadAll).toHaveAccessibleName('Reload all devices')
+      await expect(reloadAll).toHaveAttribute('title', 'Reload all devices')
       await expect(banner.getByRole('button', { name: 'Profiles' })).toHaveCount(0)
       await expect(banner.getByRole('button', { name: 'Hand tool' })).toHaveCount(0)
       await expect(banner.getByRole('button', { name: /^Appearance:/ })).toHaveCount(0)
@@ -297,7 +297,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await shellPage.evaluate(() => document.body.focus())
       await shellPage.keyboard.press('Tab')
       const tabFocus = await readFocus(shellPage)
-      expect(tabFocus.ariaLabel).toBe('Reload pane')
+      expect(tabFocus.ariaLabel).toBe('Reload device')
       expect(tabFocus.focusVisible).toBe(true)
       expect(tabFocus.outlineStyle).toBe('solid')
       expect(Number.parseFloat(tabFocus.outlineWidth)).toBeGreaterThanOrEqual(2)
@@ -305,10 +305,10 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain('banner:')
       expect(axPairs).toContain('main:Browser workspace')
-      expect(axPairs).toContain('button:Reload pane')
-      expect(axPairs).toContain('button:Fit all panes to view')
-      expect(axPairs).toContain('button:Add pane')
-      expect(axPairs).toContain('button:Reload all panes')
+      expect(axPairs).toContain('button:Reload device')
+      expect(axPairs).toContain('button:Fit all devices to view')
+      expect(axPairs).toContain('button:Add device')
+      expect(axPairs).toContain('button:Reload all devices')
       expect(axPairs.some((pair) => pair.startsWith('textbox:Address for '))).toBe(true)
     })
 
@@ -385,7 +385,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
     await test.step('canvas add menu exposes menu semantics and keyboard close', async () => {
       const addButton = shellPage.locator('.toolbar .add-pane-button')
       await addButton.click()
-      const menu = shellPage.getByRole('menu', { name: 'Add pane' })
+      const menu = shellPage.getByRole('menu', { name: 'Add device' })
       await expect(menu).toBeVisible()
       await expect(addButton).toHaveAttribute('aria-expanded', 'true')
       await expect
@@ -412,10 +412,10 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
     await test.step('pane cards expose named controls and a logical focus order', async () => {
       const firstCard = shellPage.getByRole('article', {
-        name: `Browser pane: ${firstPane.title}`
+        name: `Browser device: ${firstPane.title}`
       })
       const secondCard = shellPage.getByRole('article', {
-        name: `Browser pane: ${secondPane.title}`
+        name: `Browser device: ${secondPane.title}`
       })
       await expect(firstCard).toHaveAttribute('data-pane-id', firstPane.id)
       await expect(secondCard).toHaveAttribute('data-pane-id', secondPane.id)
@@ -425,79 +425,81 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(secondCard).not.toHaveAttribute('aria-current', 'true')
       const globalBar = shellPage.locator('.global-pane-bar')
       const firstAddress = globalBar.getByRole('textbox', {
-        name: `Address for ${firstPane.title}`
+        name: `Address for device ${firstPane.title}`
       })
       await firstAddress.focus()
 
       for (const card of [firstCard, secondCard]) {
-        await expect(card.getByRole('button', { name: 'Maximize pane' })).toHaveAttribute(
+        await expect(card.getByRole('button', { name: 'Go back' })).toBeDisabled()
+        await expect(card.getByRole('button', { name: 'Go forward' })).toBeDisabled()
+        await expect(card.getByRole('button', { name: 'Reload device' })).toHaveAttribute(
           'title',
-          'Maximize pane'
+          'Reload device'
         )
-        await expect(card.getByRole('button', { name: 'Pane actions' })).toHaveAttribute(
+        await expect(card.getByRole('button', { name: 'Device actions' })).toHaveAttribute(
           'title',
-          'Pane actions'
+          'Device actions'
         )
-        await expect(card.getByRole('button', { name: 'Close pane' })).toHaveAttribute(
+        await expect(card.getByRole('button', { name: 'Close device' })).toHaveAttribute(
           'title',
-          'Close pane'
+          'Close device (Delete)'
         )
       }
       await expect(globalBar.getByRole('button', { name: 'Go back' })).toBeDisabled()
       await expect(globalBar.getByRole('button', { name: 'Go forward' })).toBeDisabled()
-      await expect(globalBar.getByRole('button', { name: 'Reload pane' })).toHaveAttribute(
+      await expect(globalBar.getByRole('button', { name: 'Reload device' })).toHaveAttribute(
         'title',
-        'Reload pane'
+        'Reload device'
       )
       await expect(
-        globalBar.getByRole('combobox', { name: `Viewport preset for ${firstPane.title}` })
+        globalBar.getByRole('combobox', { name: `Viewport preset for device ${firstPane.title}` })
       ).toHaveValue('responsive')
 
       const axPairs = await readAccessibilityTree(shellPage)
-      expect(axPairs).toContain(`article:Browser pane: ${firstPane.title}`)
-      expect(axPairs).toContain(`textbox:Address for ${firstPane.title}`)
-      expect(axPairs).toContain(`combobox:Viewport preset for ${firstPane.title}`)
+      expect(axPairs).toContain(`article:Browser device: ${firstPane.title}`)
+      expect(axPairs).toContain(`textbox:Address for device ${firstPane.title}`)
+      expect(axPairs).toContain(`combobox:Viewport preset for device ${firstPane.title}`)
 
       await firstAddress.focus()
       await shellPage.keyboard.press('Shift+Tab')
       const previousFocus = await readFocus(shellPage)
-      expect(previousFocus.ariaLabel).toBe('Reload pane')
+      expect(previousFocus.ariaLabel).toBe('Reload device')
       expect(previousFocus.focusVisible).toBe(true)
       expect(previousFocus.outlineStyle).toBe('solid')
 
       await shellPage.keyboard.press('Tab')
       const addressFocus = await readFocus(shellPage)
-      expect(addressFocus.ariaLabel).toBe(`Address for ${firstPane.title}`)
+      expect(addressFocus.ariaLabel).toBe(`Address for device ${firstPane.title}`)
 
       await shellPage.keyboard.press('Tab')
       const viewportFocus = await readFocus(shellPage)
-      expect(viewportFocus.ariaLabel).toBe(`Viewport preset for ${firstPane.title}`)
+      expect(viewportFocus.ariaLabel).toBe(`Viewport preset for device ${firstPane.title}`)
       expect(viewportFocus.focusVisible).toBe(true)
       expect(viewportFocus.outlineStyle).toBe('solid')
 
       await shellPage.keyboard.press('Tab')
-      expect((await readFocus(shellPage)).ariaLabel).toBe('Fit all panes to view')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Fit all devices to view')
 
       await shellPage.keyboard.press('Tab')
-      expect((await readFocus(shellPage)).ariaLabel).toBe('Reload all panes')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Reload all devices')
 
       await shellPage.keyboard.press('Tab')
-      expect((await readFocus(shellPage)).ariaLabel).toBe('Add pane')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Add device')
 
       await shellPage.keyboard.press('Tab')
       const actionFocus = await readFocus(shellPage)
-      expect(actionFocus.ariaLabel).toBe('Maximize pane')
+      expect(actionFocus.ariaLabel).toBe('Reload device')
       await expect(firstCard).toHaveAttribute('aria-current', 'true')
 
       await shellPage.keyboard.press('Tab')
-      expect((await readFocus(shellPage)).ariaLabel).toBe('Pane actions')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Device actions')
 
       await shellPage.keyboard.press('Tab')
-      expect((await readFocus(shellPage)).ariaLabel).toBe('Close pane')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Close device')
 
       await shellPage.keyboard.press('Tab')
       const nextCardFocus = await readFocus(shellPage)
-      expect(nextCardFocus.ariaLabel).toBe('Maximize pane')
+      expect(nextCardFocus.ariaLabel).toBe('Reload device')
       await expect(secondCard).toHaveAttribute('aria-current', 'true')
       await expect(firstCard).not.toHaveAttribute('aria-current', 'true')
       await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)
@@ -539,8 +541,8 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
         const label = (await row.locator('.profile-label').innerText()).trim()
         labels.push(label)
         await expect(
-          row.getByRole('button', { name: `Open pane with profile ${label}` })
-        ).toHaveText('Open pane')
+          row.getByRole('button', { name: `Open device with profile ${label}` })
+        ).toHaveText('Open device')
         await expect(
           row.getByRole('button', { name: `Rename profile ${label}` })
         ).toHaveText('Rename')
@@ -567,7 +569,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain('dialog:Browser profiles')
-      expect(axPairs).toContain(`button:Open pane with profile ${labels[0]}`)
+      expect(axPairs).toContain(`button:Open device with profile ${labels[0]}`)
       expect(axPairs).toContain(`button:Rename profile ${labels[1]}`)
 
       await shellPage.keyboard.press('Escape')
@@ -584,7 +586,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(dialog).toBeVisible()
       await expect(dialog).toHaveAttribute('aria-modal', 'true')
       await expect(dialog).toHaveAccessibleName('Workspaces')
-      await expect(dialog).toHaveAccessibleDescription(/Each workspace keeps its own panes/)
+      await expect(dialog).toHaveAccessibleDescription(/Each workspace keeps its own devices/)
 
       const dialogFocus = await readFocus(shellPage)
       expect(dialogFocus.tagName).toBe('SECTION')

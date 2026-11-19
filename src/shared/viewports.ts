@@ -26,6 +26,8 @@ export interface PaneViewport {
   width: number
   height: number
   deviceScaleFactor: number
+  /** Fixed viewports can be shown in the opposite orientation. */
+  rotated?: boolean
 }
 
 export interface ViewportPreset {
@@ -219,6 +221,37 @@ export function viewportFromPreset(preset: ViewportPresetId): PaneViewport {
   }
 }
 
+function withRotation(viewport: PaneViewport, rotated: boolean): PaneViewport {
+  const upright = {
+    preset: viewport.preset,
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: viewport.deviceScaleFactor
+  }
+  return rotated ? { ...upright, rotated: true } : upright
+}
+
+/** Effective emulated width and height after applying the orientation toggle. */
+export function viewportContentSize(viewport: PaneViewport): {
+  width: number
+  height: number
+} {
+  if (viewport.preset === 'responsive') {
+    return { width: 0, height: 0 }
+  }
+  return viewport.rotated
+    ? { width: viewport.height, height: viewport.width }
+    : { width: viewport.width, height: viewport.height }
+}
+
+/** Rotates a fixed viewport, or returns null when there is nothing to rotate. */
+export function toggleViewportRotation(viewport: PaneViewport): PaneViewport | null {
+  if (viewport.preset === 'responsive') {
+    return null
+  }
+  return withRotation(viewport, viewport.rotated !== true)
+}
+
 function isValidDimension(value: number): boolean {
   return (
     Number.isInteger(value) &&
@@ -246,6 +279,10 @@ export function parsePaneViewport(
   if (!isViewportPresetId(record.preset)) {
     return { ok: false, error: 'Unknown viewport preset.' }
   }
+  if (record.rotated !== undefined && typeof record.rotated !== 'boolean') {
+    return { ok: false, error: 'Invalid viewport rotation.' }
+  }
+  const rotated = record.rotated === true
 
   if (record.preset === 'responsive') {
     return { ok: true, viewport: { ...RESPONSIVE_VIEWPORT } }
@@ -253,7 +290,7 @@ export function parsePaneViewport(
 
   if (record.preset !== 'custom') {
     const preset = viewportFromPreset(record.preset)
-    return { ok: true, viewport: preset }
+    return { ok: true, viewport: withRotation(preset, rotated) }
   }
 
   const width = record.width
@@ -287,7 +324,8 @@ export function parsePaneViewport(
       preset: 'custom',
       width,
       height,
-      deviceScaleFactor
+      deviceScaleFactor,
+      ...(rotated ? { rotated: true } : {})
     }
   }
 }
@@ -306,6 +344,7 @@ export function viewportDisplayScale(viewport: PaneViewport, available: Size): n
     return 1
   }
 
-  const scale = Math.min(available.width / viewport.width, available.height / viewport.height)
+  const size = viewportContentSize(viewport)
+  const scale = Math.min(available.width / size.width, available.height / size.height)
   return Math.max(0.1, Math.min(4, Math.round(scale * 1000) / 1000))
 }

@@ -151,23 +151,27 @@ The initial interface should contain:
 1. **Top toolbar:** brand, the active pane's address/navigation/viewport controls, Fit all, reload-all, and the compact **+** add-pane control with its device menu. Keep this a stable single row.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
 3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, and appearance.
-4. **Pane chrome:** compact single-row title and actions, with lower-priority actions in the contextual menu.
-5. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
+4. **Pane chrome:** compact single-row title and actions, with back, forward, reload, contextual actions, and close visible; lower-priority actions such as rotate and screenshot live in the contextual menu.
+5. **Empty state:** one clear action to add the first browser device. Never show fake sample websites as if they were live pages.
 6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
 Workspace and profile management live in the native menu bar, not the top toolbar. Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
 
 ### 6.3 Pane controls
 
-Each pane exposes a compact title, loading/error status, contextual menu, and close action. The active Canvas pane additionally exposes address, back, forward, reload, and viewport controls in the top toolbar.
+Each device exposes a compact title, loading/error status, back, forward, reload, contextual menu, and close action. The active Canvas device additionally exposes address and viewport controls in the top toolbar. The native Device menu keeps maximize available.
 
-When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep the maximize, contextual-menu, and close actions available at every zoom level; hide lower-priority metadata such as the profile or viewport badge before hiding actions.
+When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep back, forward, reload, contextual-menu, and close available at every zoom level; hide lower-priority metadata such as the profile or viewport badge before hiding actions.
 
-Supported pane actions:
+User-facing copy calls each browser frame a **device**. The internal model and APIs may continue to use **pane**.
+
+Supported device actions:
 
 - Add, close, rename, and duplicate.
 - Navigate to a URL, back, forward, and reload.
-- Reload all panes from the workspace toolbar.
+- Rotate a fixed viewport between portrait and landscape.
+- Capture a screenshot of one device to a user-selected PNG file.
+- Reload all devices from the workspace toolbar.
 - Change viewport preset or custom dimensions.
 - Maximize/focus and restore.
 - Open DevTools for an individual pane when native-view composition supports it cleanly; this may follow the first stable MVP slice.
@@ -189,10 +193,11 @@ Closing a pane destroys its active native view and `webContents`, but does not a
 Use standard platform conventions and document the final shortcuts. At minimum, plan for:
 
 - Add pane.
-- Close focused pane.
+- Duplicate selected pane (`Cmd/Ctrl+D`).
+- Close selected pane, including `Delete`/`Backspace` from shell chrome.
 - Reload focused pane.
 - Reload all panes.
-- Focus/maximize and restore pane.
+- Focus/maximize and restore pane from the native Device menu.
 - Switch workspace.
 
 Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and tested before being shown in menus.
