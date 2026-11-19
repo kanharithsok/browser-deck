@@ -61,7 +61,7 @@ describe('WorkspaceStore', () => {
     expect(reloaded.hasStoredWorkspace()).toBe(true)
     expect(reloaded.paneDefinitions()).toEqual(panes)
     expect(reloaded.layout()).toMatchObject({
-      mode: 'grid',
+      mode: 'canvas',
       columns: 2,
       gridOrder: [PANE_A],
       freeformOrder: [PANE_A]
@@ -186,7 +186,7 @@ describe('WorkspaceStore', () => {
     await reloaded.load()
     expect(reloaded.paneDefinitions()).toHaveLength(2)
     expect(reloaded.layout()).toEqual({
-      mode: 'freeform',
+      mode: 'canvas',
       columns: 5,
       gridOrder: [PANE_B, PANE_A],
       freeform: {

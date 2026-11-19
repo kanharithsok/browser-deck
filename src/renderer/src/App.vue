@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import AppMenu from './components/AppMenu.vue'
 import GlobalPaneBar from './components/GlobalPaneBar.vue'
 import PaneCard from './components/PaneCard.vue'
+import type { AppMenuModel } from './menu'
 import {
   CANVAS_GAP,
   CANVAS_HEADER_HEIGHT,
   CANVAS_ORIGIN,
+  CANVAS_SNAP_THRESHOLD,
   defaultCanvasPositions,
   canvasFrameSize,
+  snapCanvasRect,
   type CanvasPosition
 } from '../../shared/canvas'
 import type {
@@ -18,6 +22,9 @@ import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrom
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
 import {
+  VIEWPORT_CATEGORY_LABELS,
+  VIEWPORT_PRESETS,
+  isViewportPresetId,
   viewportFromPreset,
   type PaneViewport,
   type ViewportPresetId
@@ -99,7 +106,7 @@ const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
 const paneRenameRequests = ref<Record<string, number>>({})
-const layoutMode = ref<LayoutMode>('grid')
+const layoutMode = ref<LayoutMode>('canvas')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
 const canvasPositions = ref<Record<string, CanvasPosition>>({})
@@ -121,7 +128,14 @@ const maximizedPaneId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
-const addPaneMenuOpen = ref(false)
+const appMenuMode = ref<'add' | 'canvas' | null>(null)
+const appMenuAnchor = ref<{ x: number; y: number; align: 'start' | 'end' }>({
+  x: 0,
+  y: 0,
+  align: 'start'
+})
+const appMenuBounds = ref<Rect | null>(null)
+let appMenuReturnFocus: HTMLElement | null = null
 const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
 const profilesOpen = ref(false)
 const profiles = ref<ProfileSummary[]>([])
@@ -284,6 +298,132 @@ const profilePaneCounts = computed(() => {
 const paneLayoutKey = computed(() => orderedPanes.value.map((pane) => pane.id).join('|'))
 const errorMessage = computed(() => actionError.value ?? layoutError.value)
 
+const ADD_PANE_MENU_PRESET_IDS = new Set([
+  'iphone-15-pro',
+  'iphone-se',
+  'galaxy-s24',
+  'pixel-8',
+  'ipad-pro-12-9',
+  'ipad-air',
+  'galaxy-tab-s9',
+  'desktop',
+  'macbook-air'
+])
+
+const addPaneMenuModel = computed<AppMenuModel>(() => ({
+  label: 'Add pane',
+  sections: [
+    {
+      label: 'New pane',
+      items: [
+        {
+          id: 'preset:responsive',
+          label: 'Responsive',
+          icon: 'responsive',
+          detail: 'Fill pane'
+        }
+      ]
+    },
+    ...(['phone', 'tablet', 'desktop'] as const).map((category) => ({
+      label: VIEWPORT_CATEGORY_LABELS[category],
+      items: VIEWPORT_PRESETS.filter(
+        (preset) =>
+          preset.category === category && ADD_PANE_MENU_PRESET_IDS.has(preset.id)
+      ).map((preset) => ({
+        id: `preset:${preset.id}`,
+        label: preset.label.split(' — ')[0] ?? preset.label,
+        icon:
+          category === 'phone'
+            ? ('phone' as const)
+            : category === 'tablet'
+              ? ('tablet' as const)
+              : ('desktop' as const),
+        detail: `${preset.width} × ${preset.height}`
+      }))
+    }))
+  ]
+}))
+
+const canvasMenuModel = computed<AppMenuModel>(() => ({
+  label: 'Canvas menu',
+  sections: [
+    {
+      items: [
+        {
+          id: 'open-add-menu',
+          label: 'Add pane',
+          icon: 'add',
+          detail: 'Choose device'
+        }
+      ]
+    },
+    {
+      label: 'View',
+      items: [
+        {
+          id: 'fit-all',
+          label: 'Fit all panes',
+          icon: 'fit'
+        },
+        {
+          id: 'reset-zoom',
+          label: 'Reset zoom',
+          icon: 'reset',
+          detail: '100%'
+        },
+        {
+          id: 'toggle-hand',
+          label: 'Hand tool',
+          icon: 'hand',
+          kind: 'checkbox',
+          checked: canvasHandActive.value
+        }
+      ]
+    },
+    {
+      label: 'Manage',
+      items: [
+        {
+          id: 'open-profiles',
+          label: 'Profiles…',
+          icon: 'profiles'
+        },
+        {
+          id: 'open-workspaces',
+          label: 'Workspaces…',
+          icon: 'workspaces'
+        }
+      ]
+    },
+    {
+      label: 'Appearance',
+      items: [
+        {
+          id: 'theme:system',
+          label: 'System',
+          icon: 'system',
+          kind: 'radio',
+          checked: themePreference.value === 'system'
+        },
+        {
+          id: 'theme:light',
+          label: 'Light',
+          icon: 'sun',
+          kind: 'radio',
+          checked: themePreference.value === 'light'
+        },
+        {
+          id: 'theme:dark',
+          label: 'Dark',
+          icon: 'moon',
+          kind: 'radio',
+          checked: themePreference.value === 'dark'
+        }
+      ]
+    }
+  ]
+}))
+
 const gridLayout = computed<GridLayout | null>(() => {
   if (
     orderedPanes.value.length === 0 ||
@@ -347,20 +487,6 @@ const paneGridHeight = computed(() =>
       : workspaceSize.value.height
 )
 
-const gridNotice = computed(() => {
-  if (layoutMode.value !== 'grid' || maximizedPaneId.value) {
-    return null
-  }
-  const layout = gridLayout.value
-  if (!layout) {
-    return null
-  }
-  if (layout.columnTooNarrow) {
-    return 'Columns are narrower than the recommended pane width. Widen the window or use fewer columns.'
-  }
-  return null
-})
-
 function focusPaneAddress(paneId: string): void {
   const input =
     document.querySelector<HTMLInputElement>(`[data-pane-id="${paneId}"] .address-input`) ??
@@ -385,11 +511,6 @@ function blurActiveShellControl(): void {
   if (active instanceof HTMLElement && active !== document.body) {
     active.blur()
   }
-}
-
-function selectCanvasLayout(): void {
-  layoutMode.value = 'canvas'
-  blurActiveShellControl()
 }
 
 function recoverFocus(): void {
@@ -631,33 +752,6 @@ function ensureCanvasPositions(): void {
   }
 }
 
-function tidyFreeform(): void {
-  if (layoutMode.value !== 'freeform' || workspaceSize.value.width < 1) {
-    return
-  }
-
-  const result = layoutGrid(
-    orderedPanes.value.map((pane) => pane.id),
-    workspaceSize.value,
-    { columns: gridColumns.value, padding: 8, gap: 8 }
-  )
-  if (!result.ok) {
-    return
-  }
-
-  const next: Record<string, NormalizedRect> = {}
-  for (const placement of result.layout.placements) {
-    const normalized = rectToNormalized(placement.rect, workspaceSize.value)
-    if (normalized) {
-      next[placement.paneId] = normalized
-    }
-  }
-  freeformGeometries.value = next
-  freeformOrder.value = orderedPanes.value.map((pane) => pane.id)
-  guides.value = { vertical: [], horizontal: [] }
-  void nextTick(scheduleMeasure)
-}
-
 function raisePane(paneId: string): void {
   if (layoutMode.value !== 'freeform') {
     return
@@ -770,6 +864,7 @@ function beginCanvasPan(event: PointerEvent): void {
     startY: event.clientY,
     base: { ...canvasPan.value }
   }
+  guides.value = { vertical: [], horizontal: [] }
   isCanvasPanning.value = true
   document.body.classList.add('paneflow-canvas-panning')
   void nextTick(scheduleMeasure)
@@ -818,17 +913,8 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
     return
   }
 
-  event.preventDefault()
   blurActiveShellControl()
   activePaneId.value = paneId
-  const captureTarget = event.currentTarget
-  if (captureTarget instanceof Element) {
-    try {
-      captureTarget.setPointerCapture(event.pointerId)
-    } catch {
-      // Pointer capture is best-effort; window listeners still handle the drag.
-    }
-  }
   canvasPaneDrag.value = {
     paneId,
     startX: event.clientX,
@@ -837,6 +923,7 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
   }
   isCanvasPaneDragging.value = true
   document.body.classList.add('paneflow-canvas-pane-dragging')
+  guides.value = { vertical: [], horizontal: [] }
   void nextTick(scheduleMeasure)
   window.addEventListener('pointermove', onCanvasPanePointerMove)
   window.addEventListener('pointerup', finishCanvasPaneDrag)
@@ -849,12 +936,38 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
     return
   }
   event.preventDefault()
+  const frame = canvasFrames.value.get(drag.paneId)
+  if (!frame) {
+    return
+  }
+
+  const rawX = drag.base.x + (event.clientX - drag.startX) / canvasZoom.value
+  const rawY = drag.base.y + (event.clientY - drag.startY) / canvasZoom.value
+  const neighbors = [...canvasFrames.value.entries()].flatMap(([paneId, other]) =>
+    paneId === drag.paneId
+      ? []
+      : [{ x: other.x, y: other.y, width: other.width, height: other.height }]
+  )
+  const snapped = snapCanvasRect(
+    { x: rawX, y: rawY, width: frame.width, height: frame.height },
+    neighbors,
+    CANVAS_SNAP_THRESHOLD / canvasZoom.value
+  )
+
   canvasPositions.value = {
     ...canvasPositions.value,
     [drag.paneId]: {
-      x: Math.round(drag.base.x + (event.clientX - drag.startX) / canvasZoom.value),
-      y: Math.round(drag.base.y + (event.clientY - drag.startY) / canvasZoom.value)
+      x: snapped.x,
+      y: snapped.y
     }
+  }
+  guides.value = {
+    vertical: snapped.guides.vertical.map(
+      (guide) => canvasPan.value.x + guide * canvasZoom.value
+    ),
+    horizontal: snapped.guides.horizontal.map(
+      (guide) => canvasPan.value.y + guide * canvasZoom.value
+    )
   }
 }
 
@@ -864,6 +977,7 @@ function finishCanvasPaneDrag(): void {
   }
   canvasPaneDrag.value = null
   isCanvasPaneDragging.value = false
+  guides.value = { vertical: [], horizontal: [] }
   document.body.classList.remove('paneflow-canvas-pane-dragging')
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
@@ -1080,7 +1194,10 @@ function scheduleCanvasMinimapState(delay = 40): void {
 
 function syncCanvasMinimapVisibility(): void {
   const visible =
-    layoutMode.value === 'canvas' && !profilesOpen.value && !workspacesOpen.value
+    layoutMode.value === 'canvas' &&
+    !profilesOpen.value &&
+    !workspacesOpen.value &&
+    appMenuMode.value === null
   void window.paneflow
     .setCanvasMinimapVisible(visible)
     .catch(() => undefined)
@@ -1210,7 +1327,7 @@ function buildWorkspaceLayout(): WorkspaceLayout {
     })
   )
   return {
-    mode: layoutMode.value,
+    mode: 'canvas',
     columns: gridColumns.value,
     gridOrder: paneOrder.value.filter((paneId) => ids.has(paneId)),
     freeform,
@@ -1250,8 +1367,7 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
     return [...retained, ...idsInOrder.filter((paneId) => !retainedSet.has(paneId))]
   }
 
-  layoutMode.value =
-    layout.mode === 'freeform' || layout.mode === 'canvas' ? layout.mode : 'grid'
+  layoutMode.value = 'canvas'
   gridColumns.value = Math.min(
     GRID_MAX_COLUMNS,
     Math.max(GRID_MIN_COLUMNS, Math.round(layout.columns) || DEFAULT_GRID_COLUMNS)
@@ -1295,7 +1411,7 @@ function applyState(state: ShellState): void {
     document.body.classList.remove('paneflow-canvas-panning')
     document.body.classList.remove('paneflow-canvas-pane-dragging')
     paneSnapshots.value = {}
-    layoutMode.value = 'grid'
+    layoutMode.value = 'canvas'
     gridColumns.value = DEFAULT_GRID_COLUMNS
     maximizedPaneId.value = null
     activePaneId.value = null
@@ -1356,12 +1472,16 @@ function applyState(state: ShellState): void {
     if (layoutMode.value === 'canvas') {
       ensureCanvasPositions()
     }
+    syncCanvasMinimapVisibility()
     if (workspaceChanged) {
       // The target workspace already has persisted layout state. Re-enable
       // saves without writing it back during the switch.
       layoutPersistenceReady = true
     }
     if (addedPane) {
+      if (layoutMode.value === 'canvas') {
+        focusCanvasPane(addedPane.id)
+      }
       focusPaneAddress(addedPane.id)
     } else if (removedPane && document.activeElement === document.body) {
       recoverFocus()
@@ -1396,40 +1516,135 @@ async function addPaneWithViewport(preset: ViewportPresetId): Promise<void> {
   await runAddPane(() => window.paneflow.addPaneWithViewport(viewportFromPreset(preset)))
 }
 
-async function openAddPaneMenu(event: MouseEvent): Promise<void> {
-  if (addingPane.value || addPaneMenuOpen.value) {
+async function prepareMenuSnapshots(): Promise<void> {
+  if (layoutMode.value !== 'canvas' || panes.value.length === 0) {
+    return
+  }
+  if (Object.keys(paneSnapshots.value).length === 0) {
+    await refreshPaneSnapshots().catch(() => undefined)
+  }
+}
+
+async function openAppMenu(
+  mode: 'add' | 'canvas',
+  anchor: { x: number; y: number; align: 'start' | 'end' },
+  returnFocus: Element | null
+): Promise<void> {
+  if (profilesOpen.value || workspacesOpen.value) {
+    return
+  }
+  await prepareMenuSnapshots()
+  actionError.value = null
+  appMenuReturnFocus = returnFocus instanceof HTMLElement ? returnFocus : null
+  appMenuAnchor.value = anchor
+  appMenuBounds.value = null
+  appMenuMode.value = mode
+  syncCanvasMinimapVisibility()
+  void nextTick(scheduleMeasure)
+}
+
+async function openAddMenu(event: MouseEvent): Promise<void> {
+  if (addingPane.value) {
     return
   }
   const button = event.currentTarget
   if (!(button instanceof HTMLElement)) {
     return
   }
-
   const rect = button.getBoundingClientRect()
-  addPaneMenuOpen.value = true
+  const inToolbar = button.closest('.toolbar') !== null
+  await openAppMenu(
+    'add',
+    {
+      x: inToolbar ? rect.right : rect.left,
+      y: rect.bottom + 6,
+      align: inToolbar ? 'end' : 'start'
+    },
+    button
+  )
+}
+
+function closeAppMenu(restoreFocus = true): void {
+  if (!appMenuMode.value) {
+    return
+  }
+  appMenuMode.value = null
+  appMenuBounds.value = null
+  const target = appMenuReturnFocus
+  appMenuReturnFocus = null
+  syncCanvasMinimapVisibility()
+  void nextTick(() => {
+    scheduleMeasure()
+    if (restoreFocus) {
+      target?.focus()
+    }
+  })
+}
+
+function onAppMenuBounds(bounds: Rect): void {
+  appMenuBounds.value = bounds
+  void nextTick(scheduleMeasure)
+}
+
+async function applyMenuTheme(theme: ThemePreference): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.showAddPaneMenu({
-      x: rect.right - 2,
-      y: rect.bottom + 2,
-      paneChrome: effectivePaneChrome.value,
-      showPaneChromePreview: layoutMode.value !== 'canvas'
-    })
+    const result = await window.paneflow.setTheme(theme)
     if (!result.ok) {
       actionError.value = result.error
-      return
-    }
-    if (result.paneChrome) {
-      paneChrome.value = result.paneChrome
-      return
-    }
-    if (result.preset) {
-      await addPaneWithViewport(result.preset)
     }
   } catch {
-    actionError.value = 'Could not open the pane size menu.'
-  } finally {
-    addPaneMenuOpen.value = false
+    actionError.value = 'Could not apply the theme.'
+  }
+}
+
+function onAppMenuSelect(id: string): void {
+  if (id === 'open-add-menu') {
+    appMenuBounds.value = null
+    appMenuMode.value = 'add'
+    syncCanvasMinimapVisibility()
+    void nextTick(scheduleMeasure)
+    return
+  }
+
+  if (id.startsWith('preset:')) {
+    const preset = id.slice('preset:'.length)
+    if (!isViewportPresetId(preset)) {
+      return
+    }
+    closeAppMenu(false)
+    void addPaneWithViewport(preset)
+    return
+  }
+
+  const opensDialog = id === 'open-profiles' || id === 'open-workspaces'
+  closeAppMenu(!opensDialog)
+
+  switch (id) {
+    case 'fit-all':
+      fitCanvasToPanes()
+      break
+    case 'reset-zoom':
+      resetCanvasZoom()
+      break
+    case 'toggle-hand':
+      toggleCanvasHand()
+      break
+    case 'open-profiles':
+      openProfiles()
+      break
+    case 'open-workspaces':
+      openWorkspaces()
+      break
+    case 'theme:system':
+      void applyMenuTheme('system')
+      break
+    case 'theme:light':
+      void applyMenuTheme('light')
+      break
+    case 'theme:dark':
+      void applyMenuTheme('dark')
+      break
   }
 }
 
@@ -2029,6 +2244,34 @@ async function openPaneMenu(paneId: string, position: { x: number; y: number }):
   }
 }
 
+async function openCanvasMenu(event: MouseEvent): Promise<void> {
+  if (profilesOpen.value || workspacesOpen.value) {
+    return
+  }
+
+  event.preventDefault()
+  const target = event.target
+  if (target instanceof Element) {
+    const paneId = target.closest<HTMLElement>('[data-pane-id]')?.dataset.paneId
+    if (paneId) {
+      await openPaneMenu(paneId, { x: event.clientX, y: event.clientY })
+      return
+    }
+  }
+
+  if (layoutMode.value !== 'canvas') {
+    return
+  }
+
+  const previous = document.activeElement
+  blurActiveShellControl()
+  await openAppMenu(
+    'canvas',
+    { x: event.clientX, y: event.clientY, align: 'start' },
+    previous
+  )
+}
+
 async function setPaneViewport(paneId: string, viewport: PaneViewport): Promise<void> {
   actionError.value = null
   try {
@@ -2106,9 +2349,6 @@ function handlePaneCommand(command: PaneCommand): void {
       if (pane) {
         toggleMaximize(pane.id)
       }
-      break
-    case 'toggle-layout':
-      layoutMode.value = layoutMode.value === 'grid' ? 'freeform' : 'grid'
       break
   }
 }
@@ -2312,6 +2552,15 @@ function scheduleMeasure(): void {
   })
 }
 
+function rectsOverlap(a: DOMRect, b: Rect): boolean {
+  return (
+    a.left < b.x + b.width &&
+    a.right > b.x &&
+    a.top < b.y + b.height &&
+    a.bottom > b.y
+  )
+}
+
 async function measurePanes(): Promise<void> {
   const workspace = workspaceEl.value
   if (!workspace) {
@@ -2323,6 +2572,8 @@ async function measurePanes(): Promise<void> {
     return
   }
 
+  const menuOpen = appMenuMode.value !== null
+  const menuRect = appMenuBounds.value
   const updates: Array<{
     paneId: string
     rect: { x: number; y: number; width: number; height: number }
@@ -2339,13 +2590,16 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
+    const menuCovers =
+      menuOpen && (menuRect === null || rectsOverlap(rect, menuRect))
     const nativeViewsHidden =
       isDragging.value ||
       profilesOpen.value ||
       workspacesOpen.value ||
       isCanvasPanning.value ||
       isCanvasPaneDragging.value ||
-      canvasHandActive.value
+      canvasHandActive.value ||
+      menuCovers
     const visible =
       !nativeViewsHidden &&
       (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
@@ -2533,6 +2787,9 @@ onMounted(async () => {
     if (panes.value.some((pane) => pane.id === paneId)) {
       activePaneId.value = paneId
     }
+    if (appMenuMode.value !== null) {
+      closeAppMenu(false)
+    }
   })
   disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
 
@@ -2556,6 +2813,9 @@ onMounted(async () => {
     if (initialState.panes.length > 0 || initialState.layout.gridOrder.length === 0) {
       layoutPersistenceReady = true
       await saveWorkspaceLayout()
+    }
+    if (layoutMode.value === 'canvas') {
+      scheduleSnapshotRefresh(200)
     }
   } catch {
     actionError.value = 'Could not read pane state.'
@@ -2637,35 +2897,7 @@ onBeforeUnmount(() => {
 
       <span class="toolbar-spacer"></span>
 
-      <div class="layout-switch" role="group" aria-label="Layout mode">
-        <button
-          type="button"
-          :class="{ active: layoutMode === 'grid' }"
-          :aria-pressed="layoutMode === 'grid'"
-          @click="layoutMode = 'grid'"
-        >
-          Grid
-        </button>
-        <button
-          type="button"
-          :class="{ active: layoutMode === 'freeform' }"
-          :aria-pressed="layoutMode === 'freeform'"
-          @click="layoutMode = 'freeform'"
-        >
-          Freeform
-        </button>
-        <button
-          type="button"
-          :class="{ active: layoutMode === 'canvas' }"
-          :aria-pressed="layoutMode === 'canvas'"
-          @click="selectCanvasLayout"
-        >
-          Canvas
-        </button>
-      </div>
-
       <button
-        v-if="layoutMode === 'canvas'"
         class="icon-button toolbar-icon hand-tool"
         :class="{ active: canvasHandActive }"
         type="button"
@@ -2679,33 +2911,12 @@ onBeforeUnmount(() => {
         </svg>
       </button>
       <button
-        v-if="layoutMode === 'canvas'"
         class="toolbar-button canvas-zoom"
         type="button"
         title="Reset canvas zoom"
         @click="resetCanvasZoom"
       >
         {{ Math.round(canvasZoom * 100) }}%
-      </button>
-
-      <label v-if="panes.length > 0 && layoutMode === 'grid'" class="grid-control">
-        <select
-          v-model.number="gridColumns"
-          class="grid-select"
-          aria-label="Grid columns"
-          title="Grid columns"
-        >
-          <option v-for="column in 5" :key="column" :value="column">{{ column }}</option>
-        </select>
-      </label>
-
-      <button
-        v-if="panes.length > 0 && layoutMode === 'freeform'"
-        class="toolbar-button"
-        type="button"
-        @click="tidyFreeform"
-      >
-        Tidy
       </button>
 
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
@@ -2745,33 +2956,6 @@ onBeforeUnmount(() => {
           <path d="M5.5 13h5M8 11v2" />
         </svg>
       </button>
-      <div class="add-pane-group">
-        <button
-          class="toolbar-button primary add-pane-main"
-          type="button"
-          :disabled="addingPane || addPaneMenuOpen"
-          @click="addPane"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 3v10M3 8h10" />
-          </svg>
-          Add pane
-        </button>
-        <button
-          class="toolbar-button primary add-pane-menu"
-          type="button"
-          title="Add pane with device size"
-          aria-label="Add pane with device size"
-          aria-haspopup="menu"
-          :aria-expanded="addPaneMenuOpen"
-          :disabled="addingPane || addPaneMenuOpen"
-          @click="openAddPaneMenu"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </button>
-      </div>
       <button
         class="icon-button toolbar-icon"
         type="button"
@@ -2785,6 +2969,20 @@ onBeforeUnmount(() => {
           <path d="M13.4 3.2v3.4H10" />
         </svg>
       </button>
+      <button
+        class="icon-button toolbar-icon add-pane-button"
+        type="button"
+        title="Add pane"
+        aria-label="Add pane"
+        aria-haspopup="menu"
+        :aria-expanded="appMenuMode === 'add'"
+        :disabled="addingPane"
+        @click="openAddMenu"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 3v10M3 8h10" />
+        </svg>
+      </button>
     </header>
 
     <div v-if="errorMessage" class="error-banner" role="status">
@@ -2794,9 +2992,6 @@ onBeforeUnmount(() => {
           <path d="M4 4l8 8M12 4l-8 8" />
         </svg>
       </button>
-    </div>
-    <div v-else-if="gridNotice" class="grid-notice" role="status">
-      {{ gridNotice }}
     </div>
 
     <GlobalPaneBar
@@ -2822,6 +3017,7 @@ onBeforeUnmount(() => {
       @scroll.passive="scheduleMeasure"
       @pointerdown="onWorkspacePointerDown"
       @focusin="onWorkspaceFocusIn"
+      @contextmenu.prevent="openCanvasMenu"
       @wheel="onWorkspaceWheel"
     >
       <div
@@ -2880,33 +3076,20 @@ onBeforeUnmount(() => {
         <p class="empty-detail">
           Add a pane to open a real, isolated browser session in this workspace.
         </p>
-        <div class="add-pane-group">
-          <button
-            class="toolbar-button primary add-pane-main"
-            type="button"
-            :disabled="addingPane || addPaneMenuOpen"
-            @click="addPane"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-            Add pane
-          </button>
-          <button
-            class="toolbar-button primary add-pane-menu"
-            type="button"
-            title="Add pane with device size"
-            aria-label="Add pane with device size"
-            aria-haspopup="menu"
-            :aria-expanded="addPaneMenuOpen"
-            :disabled="addingPane || addPaneMenuOpen"
-            @click="openAddPaneMenu"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
-        </div>
+        <button
+          class="toolbar-button primary"
+          type="button"
+          title="Add pane"
+          aria-haspopup="menu"
+          :aria-expanded="appMenuMode === 'add'"
+          :disabled="addingPane"
+          @click="openAddMenu"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+          <span>Add pane</span>
+        </button>
       </div>
     </main>
 
@@ -3294,6 +3477,16 @@ onBeforeUnmount(() => {
         </footer>
       </section>
     </div>
+
+    <AppMenu
+      v-if="appMenuMode"
+      :key="appMenuMode"
+      :model="appMenuMode === 'add' ? addPaneMenuModel : canvasMenuModel"
+      :anchor="appMenuAnchor"
+      @select="onAppMenuSelect"
+      @close="closeAppMenu()"
+      @bounds="onAppMenuBounds"
+    />
   </div>
 </template>
 
@@ -3324,8 +3517,6 @@ onBeforeUnmount(() => {
 
 .app-shell.mac-titlebar .toolbar button,
 .app-shell.mac-titlebar .toolbar select,
-.app-shell.mac-titlebar .toolbar .layout-switch,
-.app-shell.mac-titlebar .toolbar .grid-control,
 .app-shell.mac-titlebar .toolbar .workspace-switcher {
   -webkit-app-region: no-drag;
 }
@@ -3348,55 +3539,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.grid-control {
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.grid-select {
-  height: 26px;
-  min-width: 44px;
-  padding: 0 4px;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  background: var(--surface-inset);
-  color: var(--text);
-  font-size: 11.5px;
-}
-
-.grid-select:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.layout-switch {
-  display: inline-flex;
-  height: 26px;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--surface-inset);
-}
-
-.layout-switch button {
-  padding: 0 8px;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.layout-switch button:hover {
-  color: var(--text);
-}
-
-.layout-switch button.active {
-  background: var(--surface-raised);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .hand-tool.active {
@@ -3441,24 +3583,22 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent-soft) 82%, var(--accent) 18%);
 }
 
-.add-pane-group {
-  display: inline-flex;
-  align-items: stretch;
+.add-pane-button {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
 }
 
-.add-pane-group .add-pane-main {
-  border-radius: 6px 0 0 6px;
+.add-pane-button:hover:not(:disabled) {
+  background: var(--surface-inset);
+  color: var(--text);
 }
 
-.add-pane-group .add-pane-menu {
-  padding: 0 6px;
-  border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 0 6px 6px 0;
-}
-
-.add-pane-group .add-pane-menu svg {
-  width: 11px;
-  height: 11px;
+.add-pane-button svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
 }
 
 .toolbar-button-compact {
@@ -3520,15 +3660,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.grid-notice {
-  flex: none;
-  padding: 5px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-inset);
-  color: var(--text-muted);
-  font-size: 12px;
 }
 
 .dismiss-button {

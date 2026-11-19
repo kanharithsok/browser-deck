@@ -861,7 +861,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-029 — Add-pane device picker uses a native menu and validated viewport creation
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-037
 - **Date:** 2026-11-19
 - **Context:** The add-pane action always created a responsive pane. Users want to create a pane directly at a common device/viewport size. A DOM dropdown anchored to the toolbar would extend over native `WebContentsView` content, where the shell cannot draw or receive clicks. A permanent select would add unnecessary chrome and duplicate the primary add action.
 
@@ -1045,8 +1045,99 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Evidence / verification:**
   - Unit tests cover frame projection, viewport inclusion, far-away viewport bounds, adaptive panel sizing, state validation, and every action payload.
-  - E2e verifies the minimap is already visible after entering Canvas, sits at the bottom-right margin, renders two frame buttons and the viewport, recenters from the map, fits all panes, collapses and expands with a resized native view, returns focus to the shell, and hides in Grid mode.
+  - E2e verifies the minimap is already visible in Canvas, sits at the bottom-right margin, renders two frame buttons and the viewport, recenters from the map, fits all panes, collapses and expands with a resized native view, returns focus to the shell, and hides while a custom menu or dialog is open.
   - Existing Canvas pan/zoom/drag/content tests continue to pass.
+
+## ADR-035 — Canvas is the only workspace layout
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** PaneFlow originally exposed Grid, Freeform, and Canvas modes with separate arrangements. The product direction is now a single infinite Canvas: one mental model for arranging panes, one set of controls, and one persistence path. Keeping mode controls and separate arrangements adds cognitive load and prevents the custom Canvas menu from becoming the primary workspace surface.
+
+- **Decision:**
+  1. Remove the Grid/Freeform/Canvas mode switcher, grid-column selector, Freeform Tidy action, and the native grid/freeform toggle command.
+  2. Start every window in Canvas. `applyPersistedLayout` and workspace resets always select Canvas.
+  3. Default and normalize workspace layout mode to Canvas. Keep legacy `columns`, `gridOrder`, `freeform`, and `freeformOrder` fields readable for migration, but never expose or actively edit them.
+  4. Persist Canvas positions, pane order, viewport settings, and URLs. If a migrated workspace has no Canvas position for a pane, use the deterministic default arrangement.
+  5. Keep pure Grid/Freeform helpers only for legacy validation/migration and historical tests; they are not part of the current UI.
+
+- **Alternatives considered:**
+  - **Keep modes hidden in a menu.** Rejected; two arrangements and mode state would still complicate persistence, recovery, and tests.
+  - **Delete legacy fields from the schema immediately.** Rejected; old workspace files would lose readable data and migration would be harder.
+  - **Convert old layouts geometrically into Canvas positions.** Deferred; current migration uses saved Canvas positions when present and otherwise falls back to the default arrangement.
+
+- **Consequences:**
+  - One layout model, one set of controls, and simpler user flows.
+  - Existing Grid/Freeform arrangements are not visually recreated; their panes open on the Canvas.
+  - Legacy fields remain in JSON/transfer schema for compatibility.
+  - Code paths in `layout.ts` and `App.vue` for Grid/Freeform are no longer user-reachable and can be removed incrementally.
+
+- **Evidence / verification:**
+  - Unit tests verify default Canvas mode, legacy mode normalization, Canvas default placement, and canvas position validation.
+  - E2e verifies Canvas-only startup, no layout switch/grid-column controls, pane dragging with snapping, workspace restart, and the active-pane/focus flows without any mode switch.
+
+## ADR-036 — Canvas pane dragging snaps in world space with visible guides
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** In a free canvas, panes are easy to misalign. Users need the precision of edge/center alignment without a separate freeform mode. Native pane views hide during a pane drag, so shell-rendered guides remain visible if the snap calculation is pure and screen-coordinate independent.
+
+- **Decision:**
+  1. Add `snapCanvasRect` in `src/shared/canvas.ts`. It checks the dragged frame's leading, center, and trailing edge on each axis against the same three edges of every other frame.
+  2. Use an 8 screen-pixel threshold divided by canvas zoom for world-space comparisons.
+  3. Return snapped world coordinates plus at most one vertical and one horizontal guide target.
+  4. The renderer applies snapped positions during `onCanvasPanePointerMove`, converts guide targets to screen coordinates, renders 1px guides, and clears them on release/cancel.
+  5. Do not snap to the dragged frame itself. Do not add grid/origin snapping in this slice.
+  6. Keep the existing native-view hiding during pane drags so guides and snapshots are visible.
+
+- **Alternatives considered:**
+  - **Reuse the freeform `snapRect` helper.** Rejected for Canvas; it clamps to a canvas and uses screen-space assumptions that do not fit an infinite world.
+  - **Snap to a fixed world grid.** Rejected; pane-to-pane alignment is the useful default for comparing layouts.
+  - **Only snap to pane edges, not centers.** Rejected; center alignment is common for screenshots and responsive comparison.
+  - **Show guides permanently.** Rejected; guides are interaction feedback, not workspace decoration.
+
+- **Consequences:**
+  - Small movements can snap to a neighboring edge; users can move beyond the 8px threshold to break the snap.
+  - Guides are visible only during pane drags and clear on release.
+  - Overlapping panes can still be aligned; but overlapping headers can hide controls.
+  - The threshold feels consistent at every zoom.
+
+- **Evidence / verification:**
+  - Unit tests cover edge, center, threshold, invalid-input, and no-snap cases.
+  - E2e drags a pane near another, verifies at least one `.alignment-guide` appears during the drag, verifies the guide clears on release, and asserts the snapped edges are flush.
+
+## ADR-037 — Canvas add and context menus are custom in-shell menus
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Native menus do not match the product's compact design language, and the Canvas needs a quiet **+** add control plus a right-click background menu. The shell is a `WebContentsView` beneath native pane views, so a DOM menu cannot simply float above pane content.
+
+- **Decision:**
+  1. Replace the native add-pane menu with a custom in-shell menu component used by a quiet toolbar **+** button. Group presets into Phones, Tablets, and Desktop; show dimensions as muted metadata; include Responsive.
+  2. Add a right-click menu on empty Canvas with Add pane, Fit all panes, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance.
+  3. Keep the menu compact and Herdr-inspired: rounded surface, sections, monochrome icons, 32px items, muted details, checked/radio states, visible focus, shadow, and light/dark tokens.
+  4. When a menu opens, measure its panel rectangle in viewport coordinates. Hide only native pane views whose content rectangles intersect the panel and show their snapshots; keep uncovered panes live. Hide the native minimap while any custom menu is open.
+  5. Support ArrowUp/Down, Home/End, Enter/Space activation, Escape, Tab-to-close, and click-outside dismissal. Return focus to the trigger on close unless a dialog or pane is taking focus.
+  6. Validate the selected preset through the existing `addPaneWithViewport` path. Add a validated `paneflow:set-theme` call for the custom Appearance items.
+  7. Keep native menus for pane actions and app-level commands; only Canvas add/context menus use the custom component.
+
+- **Alternatives considered:**
+  - **Native menus for both add and context actions.** Rejected; system menu styling cannot match the requested compact design.
+  - **A dedicated native `WebContentsView` menu.** Rejected for this slice; it adds another IPC surface and dynamic sizing without a clear user benefit over intersection-hiding.
+  - **Hide all native panes while a menu is open.** Rejected; uncovered panes can remain live with only intersecting views hidden.
+  - **Draw the menu in the remote page.** Rejected; remote pages are hostile and have no app bridge.
+  - **Leave the toolbar split button.** Rejected; the user asked for a quiet single **+** control.
+
+- **Consequences:**
+  - Menus are fully styleable and keyboard-accessible in the shell.
+  - Panes under a menu show snapshots, not live content, while the menu is open.
+  - The minimap is temporarily hidden during menus.
+  - Custom menus require their own focus/keyboard handling and intersection bookkeeping.
+  - The pane action menu remains a native system menu.
+
+- **Evidence / verification:**
+  - Unit tests cover the viewport preset catalog and device/selection metadata.
+  - E2e verifies the **+** control has only a plus, opens the 10-item Add menu, shows section headings, creates an iPhone 15 Pro pane, closes with Escape, restores the minimap, opens the right-click menu, switches to Add pane, toggles Hand mode, and changes appearance. Accessibility e2e verifies menu semantics, ArrowDown focus, and Escape close.
 
 ## ADR template
 

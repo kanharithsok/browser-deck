@@ -247,18 +247,9 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(workspaceTrigger).toHaveAttribute('aria-haspopup', 'dialog')
       await expect(workspaceTrigger).toHaveAttribute('aria-expanded', 'false')
 
-      const layoutGroup = banner.getByRole('group', { name: 'Layout mode' })
-      await expect(layoutGroup).toBeVisible()
-      const gridButton = layoutGroup.getByRole('button', { name: 'Grid' })
-      const freeformButton = layoutGroup.getByRole('button', { name: 'Freeform' })
-      const canvasButton = layoutGroup.getByRole('button', { name: 'Canvas' })
-      await expect(gridButton).toHaveAttribute('aria-pressed', 'true')
-      await expect(freeformButton).toHaveAttribute('aria-pressed', 'false')
-      await expect(canvasButton).toHaveAttribute('aria-pressed', 'false')
-
-      const columnSelect = banner.getByRole('combobox', { name: 'Grid columns' })
-      await expect(columnSelect).toBeVisible()
-      await expect(columnSelect).toHaveValue('2')
+      await expect(banner.getByRole('group', { name: 'Layout mode' })).toHaveCount(0)
+      await expect(banner.getByLabel('Grid columns')).toHaveCount(0)
+      await expect(shellPage.locator('.workspace')).toHaveClass(/workspace-canvas/)
 
       const paneCount = banner.getByRole('status')
       await expect(paneCount).toHaveText('2 panes')
@@ -269,15 +260,10 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(profilesTrigger).toHaveAttribute('aria-expanded', 'false')
       await expect(profilesTrigger).toHaveAttribute('title', 'Manage browser profiles')
 
-      await expect(
-        banner.getByRole('button', { name: 'Add pane', exact: true })
-      ).toBeEnabled()
-      const addPaneDeviceButton = banner.getByRole('button', {
-        name: 'Add pane with device size'
-      })
-      await expect(addPaneDeviceButton).toBeEnabled()
-      await expect(addPaneDeviceButton).toHaveAttribute('aria-haspopup', 'menu')
-      await expect(addPaneDeviceButton).toHaveAttribute('aria-expanded', 'false')
+      const addPaneButton = banner.getByRole('button', { name: 'Add pane', exact: true })
+      await expect(addPaneButton).toBeEnabled()
+      await expect(addPaneButton).toHaveAttribute('aria-haspopup', 'menu')
+      await expect(addPaneButton).toHaveAttribute('aria-expanded', 'false')
       const reloadAll = banner.getByRole('button', { name: 'Reload all panes' })
       await expect(reloadAll).toHaveAccessibleName('Reload all panes')
       await expect(reloadAll).toHaveAttribute('title', 'Reload all panes')
@@ -298,15 +284,32 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain('banner:')
       expect(axPairs).toContain('main:Browser workspace')
-      expect(axPairs).toContain('group:Layout mode')
-      expect(axPairs).toContain('button:Canvas')
       expect(axPairs).toContain('button:Switch workspace, current Workspace')
       expect(axPairs).toContain('button:Profiles')
       expect(axPairs).toContain('button:Add pane')
-      expect(axPairs).toContain('button:Add pane with device size')
       expect(axPairs).toContain('button:Reload all panes')
       expect(axPairs).toContain('button:Appearance: System')
-      expect(axPairs).toContain('combobox:Grid columns')
+    })
+
+    await test.step('canvas add menu exposes menu semantics and keyboard close', async () => {
+      const addButton = shellPage.locator('.toolbar .add-pane-button')
+      await addButton.click()
+      const menu = shellPage.getByRole('menu', { name: 'Add pane' })
+      await expect(menu).toBeVisible()
+      await expect(addButton).toHaveAttribute('aria-expanded', 'true')
+      await shellPage.keyboard.press('ArrowDown')
+      const focusedItem = await shellPage.evaluate(() => {
+        const active = document.activeElement
+        return {
+          role: active?.getAttribute('role') ?? null,
+          text: active?.textContent?.trim() ?? ''
+        }
+      })
+      expect(focusedItem.role).toBe('menuitem')
+      expect(focusedItem.text).toContain('Responsive')
+      await shellPage.keyboard.press('Escape')
+      await expect(menu).toHaveCount(0)
+      await expect(addButton).toHaveAttribute('aria-expanded', 'false')
     })
 
     await test.step('pane cards expose named controls and a logical focus order', async () => {
@@ -319,17 +322,16 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(firstCard).toHaveAttribute('data-pane-id', firstPane.id)
       await expect(secondCard).toHaveAttribute('data-pane-id', secondPane.id)
       await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)
-      const firstAddress = firstCard.getByRole('textbox', {
+      await firstCard.locator('.pane-title').click()
+      await expect(firstCard).toHaveAttribute('aria-current', 'true')
+      await expect(secondCard).not.toHaveAttribute('aria-current', 'true')
+      const globalBar = shellPage.locator('.global-pane-bar')
+      const firstAddress = globalBar.getByRole('textbox', {
         name: `Address for ${firstPane.title}`
       })
       await firstAddress.focus()
-      await expect(firstCard).toHaveAttribute('aria-current', 'true')
-      await expect(secondCard).not.toHaveAttribute('aria-current', 'true')
 
-      for (const [card, pane] of [
-        [firstCard, firstPane],
-        [secondCard, secondPane]
-      ] as const) {
+      for (const card of [firstCard, secondCard]) {
         await expect(card.getByRole('button', { name: 'Maximize pane' })).toHaveAttribute(
           'title',
           'Maximize pane'
@@ -342,19 +344,16 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
           'title',
           'Close pane'
         )
-        await expect(card.getByRole('button', { name: 'Go back' })).toBeDisabled()
-        await expect(card.getByRole('button', { name: 'Go forward' })).toBeDisabled()
-        await expect(card.getByRole('button', { name: 'Reload pane' })).toHaveAttribute(
-          'title',
-          'Reload pane'
-        )
-        await expect(
-          card.getByRole('textbox', { name: `Address for ${pane.title}` })
-        ).toBeVisible()
-        await expect(
-          card.getByRole('combobox', { name: `Viewport preset for ${pane.title}` })
-        ).toHaveValue('responsive')
       }
+      await expect(globalBar.getByRole('button', { name: 'Go back' })).toBeDisabled()
+      await expect(globalBar.getByRole('button', { name: 'Go forward' })).toBeDisabled()
+      await expect(globalBar.getByRole('button', { name: 'Reload pane' })).toHaveAttribute(
+        'title',
+        'Reload pane'
+      )
+      await expect(
+        globalBar.getByRole('combobox', { name: `Viewport preset for ${firstPane.title}` })
+      ).toHaveValue('responsive')
 
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain(`article:Browser pane: ${firstPane.title}`)
@@ -379,6 +378,9 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(viewportFocus.outlineStyle).toBe('solid')
 
       await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Fit all panes to view')
+
+      await shellPage.keyboard.press('Tab')
       const actionFocus = await readFocus(shellPage)
       expect(actionFocus.ariaLabel).toBe('Maximize pane')
       await expect(firstCard).toHaveAttribute('aria-current', 'true')
@@ -391,7 +393,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       await shellPage.keyboard.press('Tab')
       const nextCardFocus = await readFocus(shellPage)
-      expect(nextCardFocus.ariaLabel).toBe('Reload pane')
+      expect(nextCardFocus.ariaLabel).toBe('Maximize pane')
       await expect(secondCard).toHaveAttribute('aria-current', 'true')
       await expect(firstCard).not.toHaveAttribute('aria-current', 'true')
       await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)

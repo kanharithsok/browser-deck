@@ -25,7 +25,7 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
 </script>
 
 <template>
-  <div class="global-pane-bar">
+  <section class="global-pane-bar" aria-label="Active pane">
     <div class="global-pane-context">
       <span
         v-if="pane.isLoading"
@@ -62,7 +62,7 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
     <span :id="statusId" class="global-pane-status" role="status" aria-live="polite">
       {{ addressError ?? (pane.error ? 'Load failed' : '') }}
     </span>
-  </div>
+  </section>
 </template>
 
 <style scoped>

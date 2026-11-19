@@ -12,17 +12,44 @@ import {
 } from '../../src/shared/viewports'
 
 describe('viewport presets', () => {
-  it('exposes common viewport classes without device-brand names', () => {
+  it('exposes popular phone, tablet, and desktop presets', () => {
     expect(VIEWPORT_PRESETS.map((preset) => preset.id)).toEqual([
       'mobile',
+      'iphone-15-pro',
+      'iphone-15-pro-max',
+      'iphone-se',
+      'galaxy-s24',
+      'galaxy-s24-ultra',
+      'pixel-8',
+      'pixel-8-pro',
       'tablet',
+      'ipad-pro-12-9',
+      'ipad-air',
+      'galaxy-tab-s9',
       'laptop',
+      'macbook-air',
       'desktop'
     ])
+    expect(
+      VIEWPORT_PRESETS.filter((preset) => preset.category === 'phone').map((preset) => preset.label)
+    ).toEqual(expect.arrayContaining([expect.stringContaining('iPhone 15 Pro')]))
+    expect(
+      VIEWPORT_PRESETS.filter((preset) => preset.category === 'phone').map((preset) => preset.label)
+    ).toEqual(expect.arrayContaining([expect.stringContaining('Samsung Galaxy S24')]))
+    expect(
+      VIEWPORT_PRESETS.filter((preset) => preset.category === 'phone').map((preset) => preset.label)
+    ).toEqual(expect.arrayContaining([expect.stringContaining('Google Pixel 8')]))
+    expect(
+      VIEWPORT_PRESETS.filter((preset) => preset.category === 'tablet').map((preset) => preset.label)
+    ).toEqual(expect.arrayContaining([expect.stringContaining('iPad Pro')]))
+    expect(
+      VIEWPORT_PRESETS.filter((preset) => preset.category === 'tablet').map((preset) => preset.label)
+    ).toEqual(expect.arrayContaining([expect.stringContaining('Galaxy Tab S9')]))
     for (const preset of VIEWPORT_PRESETS) {
-      expect(preset.label).not.toMatch(/iphone|ipad|pixel|galaxy/i)
       expect(preset.width).toBeGreaterThanOrEqual(MIN_VIEWPORT_DIMENSION)
       expect(preset.height).toBeGreaterThanOrEqual(MIN_VIEWPORT_DIMENSION)
+      expect(preset.deviceScaleFactor).toBeGreaterThanOrEqual(MIN_DEVICE_SCALE_FACTOR)
+      expect(preset.deviceScaleFactor).toBeLessThanOrEqual(MAX_DEVICE_SCALE_FACTOR)
     }
   })
 
@@ -32,6 +59,12 @@ describe('viewport presets', () => {
       width: 390,
       height: 844,
       deviceScaleFactor: 3
+    })
+    expect(viewportFromPreset('pixel-8')).toEqual({
+      preset: 'pixel-8',
+      width: 412,
+      height: 915,
+      deviceScaleFactor: 2.625
     })
     expect(viewportFromPreset('responsive')).toEqual(RESPONSIVE_VIEWPORT)
   })
@@ -53,6 +86,15 @@ describe('parsePaneViewport', () => {
         deviceScaleFactor: 2
       })
     }
+    expect(parsePaneViewport({ preset: 'iphone-15-pro' })).toEqual({
+      ok: true,
+      viewport: {
+        preset: 'iphone-15-pro',
+        width: 393,
+        height: 852,
+        deviceScaleFactor: 3
+      }
+    })
   })
 
   it('ignores legacy display scale values and always uses fit', () => {

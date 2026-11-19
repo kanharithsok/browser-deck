@@ -2,9 +2,8 @@ import type {
   CanvasMinimapAction,
   CanvasMinimapState
 } from './minimap'
-import type { PaneChromeStyle } from './pane-chrome'
 import type { ProfileSummary } from './profiles'
-import type { PaneViewport, ViewportPresetId } from './viewports'
+import type { PaneViewport } from './viewports'
 import type {
   ThemePreference,
   WorkspaceLayout,
@@ -42,8 +41,8 @@ export const IPC_CHANNELS = {
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
-  showAddPaneMenu: 'paneflow:show-add-pane-menu',
   showThemeMenu: 'paneflow:show-theme-menu',
+  setTheme: 'paneflow:set-theme',
   capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
   setCanvasZoom: 'paneflow:set-canvas-zoom',
   updateCanvasMinimap: 'paneflow:update-canvas-minimap',
@@ -65,7 +64,6 @@ export type PaneCommand =
   | 'reload-pane'
   | 'reload-all'
   | 'toggle-maximize'
-  | 'toggle-layout'
 
 export type ScriptResult = { ok: true } | { ok: false; error: string }
 
@@ -130,17 +128,6 @@ export interface PaneMenuRequest {
   y: number
 }
 
-export interface AddPaneMenuRequest {
-  x: number
-  y: number
-  paneChrome: PaneChromeStyle
-  showPaneChromePreview: boolean
-}
-
-export type AddPaneMenuResult =
-  | { ok: true; preset: ViewportPresetId | null; paneChrome?: PaneChromeStyle }
-  | { ok: false; error: string }
-
 export interface ThemeMenuRequest {
   x: number
   y: number
@@ -181,8 +168,8 @@ export interface PaneFlowApi {
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
-  showAddPaneMenu(request: AddPaneMenuRequest): Promise<AddPaneMenuResult>
   showThemeMenu(request: ThemeMenuRequest): Promise<ScriptResult>
+  setTheme(theme: ThemePreference): Promise<ScriptResult>
   capturePaneSnapshots(): Promise<PaneSnapshotsResult>
   setCanvasZoom(zoom: number): Promise<ScriptResult>
   updateCanvasMinimap(state: CanvasMinimapState): Promise<ScriptResult>

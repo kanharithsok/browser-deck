@@ -2,12 +2,19 @@
 import { ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
 import {
-  VIEWPORT_PRESETS,
+  VIEWPORT_CATEGORY_LABELS,
   parsePaneViewport,
   viewportFromPreset,
+  viewportPresetsInCategory,
   type PaneViewport,
   type ViewportPresetId
 } from '../../../shared/viewports'
+
+const VIEWPORT_GROUPS = (['phone', 'tablet', 'desktop'] as const).map((category) => ({
+  category,
+  label: VIEWPORT_CATEGORY_LABELS[category],
+  presets: viewportPresetsInCategory(category)
+}))
 
 const props = defineProps<{
   pane: PaneState
@@ -256,9 +263,11 @@ function reload(): void {
       @change="onPresetChange"
     >
       <option value="responsive">Responsive</option>
-      <option v-for="preset in VIEWPORT_PRESETS" :key="preset.id" :value="preset.id">
-        {{ preset.label }}
-      </option>
+      <optgroup v-for="group in VIEWPORT_GROUPS" :key="group.category" :label="group.label">
+        <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
+          {{ preset.label }}
+        </option>
+      </optgroup>
       <option value="custom">Custom…</option>
     </select>
 
