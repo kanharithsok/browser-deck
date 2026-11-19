@@ -11,8 +11,17 @@ import {
   type WorkspaceListResult,
   type WorkspaceTransferResult
 } from '../shared/ipc'
+import {
+  parseCanvasMinimapAction,
+  parseCanvasMinimapState,
+  type CanvasMinimapAction,
+  type CanvasMinimapState
+} from '../shared/minimap'
 import { isPaneChromeStyle } from '../shared/pane-chrome'
-import { isTrustedShellDocumentUrl } from '../shared/shell'
+import {
+  isTrustedMinimapDocumentUrl,
+  isTrustedShellDocumentUrl
+} from '../shared/shell'
 import {
   DEFAULT_WORKSPACE_ID,
   DEFAULT_WORKSPACE_NAME,
@@ -25,6 +34,7 @@ import type { BrowserManager } from './browser-manager'
 interface IpcContext {
   getBrowserManager: () => BrowserManager | null
   getShellWebContents: () => WebContents | null
+  getMinimapWebContents: () => WebContents | null
   getDevServerUrl: () => string | null
   getCanvasSize: () => CanvasSize
   getWorkspaceLayout: () => WorkspaceLayout
@@ -32,6 +42,10 @@ interface IpcContext {
   getThemePreference: () => ThemePreference
   getResolvedTheme: () => 'light' | 'dark'
   showThemeMenu: (x: number, y: number) => Promise<ScriptResult>
+  updateCanvasMinimapState: (state: CanvasMinimapState) => void
+  setCanvasMinimapVisible: (visible: boolean) => void
+  setCanvasMinimapCollapsed: (collapsed: boolean) => void
+  forwardCanvasMinimapAction: (action: CanvasMinimapAction) => void
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
@@ -60,6 +74,21 @@ function isTrustedSender(event: IpcMainInvokeEvent, context: IpcContext): boolea
     return false
   }
   return isTrustedShellDocumentUrl(frame.url, context.getDevServerUrl())
+}
+
+function isTrustedMinimapSender(
+  event: IpcMainInvokeEvent,
+  context: IpcContext
+): boolean {
+  const minimap = context.getMinimapWebContents()
+  if (!minimap || minimap.isDestroyed() || event.sender !== minimap) {
+    return false
+  }
+  const frame = event.senderFrame
+  if (!frame || frame !== minimap.mainFrame) {
+    return false
+  }
+  return isTrustedMinimapDocumentUrl(frame.url, context.getDevServerUrl())
 }
 
 function emptyShellState(resolvedTheme: 'light' | 'dark'): ShellState {
@@ -554,6 +583,54 @@ export function registerIpcHandlers(context: IpcContext): void {
     manager.setCanvasZoom(payload)
     return { ok: true }
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.updateCanvasMinimap,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const state = parseCanvasMinimapState(payload)
+      if (!state) {
+        return { ok: false, error: 'Invalid canvas minimap state.' }
+      }
+      context.updateCanvasMinimapState(state)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.setCanvasMinimapVisible,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      if (typeof payload !== 'boolean') {
+        return { ok: false, error: 'Invalid canvas minimap visibility.' }
+      }
+      context.setCanvasMinimapVisible(payload)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.canvasMinimapAction,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedMinimapSender(event, context)) {
+        return unauthorized
+      }
+      const action = parseCanvasMinimapAction(payload)
+      if (!action) {
+        return { ok: false, error: 'Invalid canvas minimap action.' }
+      }
+      if (action.type === 'collapse') {
+        context.setCanvasMinimapCollapsed(action.collapsed)
+        return { ok: true }
+      }
+      context.forwardCanvasMinimapAction(action)
+      return { ok: true }
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.showPaneMenu, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {

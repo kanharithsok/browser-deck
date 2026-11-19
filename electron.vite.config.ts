@@ -22,7 +22,10 @@ export default defineConfig({
     root: resolve('src/renderer'),
     build: {
       rollupOptions: {
-        input: resolve('src/renderer/index.html')
+        input: {
+          index: resolve('src/renderer/index.html'),
+          minimap: resolve('src/renderer/minimap.html')
+        }
       }
     },
     plugins: [vue()]

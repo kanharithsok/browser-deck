@@ -8,6 +8,10 @@ import {
   type PaneMenuRequest,
   type ShellState
 } from '../shared/ipc'
+import type {
+  CanvasMinimapAction,
+  CanvasMinimapState
+} from '../shared/minimap'
 import type { PaneViewport } from '../shared/viewports'
 import type { WorkspaceLayout } from '../shared/workspace'
 
@@ -64,6 +68,30 @@ const api: PaneFlowApi = {
   showThemeMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.showThemeMenu, request),
   capturePaneSnapshots: () => ipcRenderer.invoke(IPC_CHANNELS.capturePaneSnapshots),
   setCanvasZoom: (zoom: number) => ipcRenderer.invoke(IPC_CHANNELS.setCanvasZoom, zoom),
+  updateCanvasMinimap: (state) =>
+    ipcRenderer.invoke(IPC_CHANNELS.updateCanvasMinimap, state),
+  setCanvasMinimapVisible: (visible: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setCanvasMinimapVisible, visible),
+  sendCanvasMinimapAction: (action) =>
+    ipcRenderer.invoke(IPC_CHANNELS.canvasMinimapAction, action),
+  onCanvasMinimapState: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, state: CanvasMinimapState): void => {
+      listener(state)
+    }
+    ipcRenderer.on(IPC_CHANNELS.canvasMinimapState, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.canvasMinimapState, wrapped)
+    }
+  },
+  onCanvasMinimapAction: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, action: CanvasMinimapAction): void => {
+      listener(action)
+    }
+    ipcRenderer.on(IPC_CHANNELS.canvasMinimapActionRequested, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.canvasMinimapActionRequested, wrapped)
+    }
+  },
   onStateChanged: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: ShellState): void => {
       listener(state)

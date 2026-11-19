@@ -250,6 +250,10 @@ Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and t
 - Keep pages live as native views when their content rectangle is fully inside the workspace.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
 - Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.
+- Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
+- Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
+- Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
+- Provide a Fit all panes action in the Canvas global bar and in the overview. It must bring every pane back inside the workspace.
 - Use a workspace-level address and navigation bar for the active pane, with compact labels on each frame.
 - Persist canvas positions per workspace. Pan offset and zoom are viewport state and may reset.
 - Device bezels and freeform frame resizing are not required for the first Canvas slice.

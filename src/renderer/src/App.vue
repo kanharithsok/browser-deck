@@ -10,6 +10,10 @@ import {
   canvasFrameSize,
   type CanvasPosition
 } from '../../shared/canvas'
+import type {
+  CanvasMinimapAction,
+  CanvasMinimapState
+} from '../../shared/minimap'
 import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrome'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
@@ -52,6 +56,7 @@ type ProfileActionKind = 'clear' | 'delete'
 
 const CANVAS_MIN_ZOOM = 0.5
 const CANVAS_MAX_ZOOM = 2
+const CANVAS_FIT_PADDING = 24
 
 interface CanvasDragState {
   startX: number
@@ -164,6 +169,7 @@ const dropTargetId = ref<string | null>(null)
 const isDragging = ref(false)
 
 let disposeStateListener: (() => void) | null = null
+let disposeMinimapActionListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
@@ -222,6 +228,46 @@ const canvasWorkspaceStyle = computed(() =>
     ? { backgroundPosition: `${canvasPan.value.x}px ${canvasPan.value.y}px` }
     : undefined
 )
+
+const canvasMinimapViewport = computed(() => {
+  const zoom = canvasZoom.value
+  if (zoom <= 0) {
+    return null
+  }
+  return {
+    x: -canvasPan.value.x / zoom,
+    y: -canvasPan.value.y / zoom,
+    width: workspaceSize.value.width / zoom,
+    height: workspaceSize.value.height / zoom
+  }
+})
+
+const canvasMinimapState = computed<CanvasMinimapState>(() => ({
+  theme: resolvedTheme.value,
+  zoom: canvasZoom.value,
+  panes: orderedPanes.value.flatMap((pane) => {
+    const frame = canvasFrames.value.get(pane.id)
+    return frame
+      ? [
+          {
+            id: pane.id,
+            title: pane.title,
+            active: activePaneId.value === pane.id,
+            x: frame.x,
+            y: frame.y,
+            width: frame.width,
+            height: frame.height
+          }
+        ]
+      : []
+  }),
+  viewport: canvasMinimapViewport.value ?? {
+    x: 0,
+    y: 0,
+    width: Math.max(1, workspaceSize.value.width),
+    height: Math.max(1, workspaceSize.value.height)
+  }
+}))
 
 const showGlobalPaneBar = computed(
   () => effectivePaneChrome.value === 'c' && activePane.value !== null
@@ -507,6 +553,7 @@ function ensureFreeformGeometry(): void {
 let snapshotRequest = 0
 let snapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let canvasWheelEndTimer: ReturnType<typeof setTimeout> | null = null
+let minimapStateTimer: ReturnType<typeof setTimeout> | null = null
 
 async function refreshPaneSnapshots(): Promise<void> {
   if (layoutMode.value !== 'canvas' || panes.value.length === 0) {
@@ -938,6 +985,128 @@ function onWorkspaceWheel(event: WheelEvent): void {
   scheduleCanvasWheelEnd()
 }
 
+function fitCanvasToPanes(): void {
+  if (canvasFrames.value.size === 0 || workspaceSize.value.width < 1) {
+    return
+  }
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const frame of canvasFrames.value.values()) {
+    minX = Math.min(minX, frame.x)
+    minY = Math.min(minY, frame.y)
+    maxX = Math.max(maxX, frame.x + frame.width)
+    maxY = Math.max(maxY, frame.y + frame.height)
+  }
+  const worldWidth = Math.max(1, maxX - minX)
+  const worldHeight = Math.max(1, maxY - minY)
+  const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
+  const availableHeight = Math.max(1, workspaceSize.value.height - CANVAS_FIT_PADDING * 2)
+  const zoom = Math.min(
+    CANVAS_MAX_ZOOM,
+    Math.max(
+      CANVAS_MIN_ZOOM,
+      Math.min(availableWidth / worldWidth, availableHeight / worldHeight, 1)
+    )
+  )
+  canvasZoom.value = zoom
+  canvasPan.value = {
+    x: Math.round(workspaceSize.value.width / 2 - (minX + worldWidth / 2) * zoom),
+    y: Math.round(workspaceSize.value.height / 2 - (minY + worldHeight / 2) * zoom)
+  }
+  syncCanvasZoomToMain(zoom)
+  void nextTick(scheduleMeasure)
+  scheduleSnapshotRefresh(300)
+}
+
+function focusCanvasPane(paneId: string): void {
+  const frame = canvasFrames.value.get(paneId)
+  if (!frame) {
+    return
+  }
+  const contentHeight = frame.height - CANVAS_HEADER_HEIGHT
+  const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
+  const availableHeight = Math.max(
+    1,
+    workspaceSize.value.height - CANVAS_FIT_PADDING * 2 - CANVAS_HEADER_HEIGHT
+  )
+  const fitZoom = Math.min(
+    CANVAS_MAX_ZOOM,
+    Math.max(
+      CANVAS_MIN_ZOOM,
+      Math.min(availableWidth / frame.width, availableHeight / contentHeight, 1)
+    )
+  )
+  const zoom = Math.min(canvasZoom.value, fitZoom)
+  const screenWidth = frame.width * zoom
+  const screenHeight = contentHeight * zoom + CANVAS_HEADER_HEIGHT
+  canvasZoom.value = zoom
+  canvasPan.value = {
+    x: Math.round((workspaceSize.value.width - screenWidth) / 2 - frame.x * zoom),
+    y: Math.round((workspaceSize.value.height - screenHeight) / 2 - frame.y * zoom)
+  }
+  activePaneId.value = paneId
+  syncCanvasZoomToMain(zoom)
+  void nextTick(scheduleMeasure)
+  scheduleSnapshotRefresh(300)
+}
+
+function recenterCanvasAt(worldX: number, worldY: number): void {
+  canvasPan.value = {
+    x: Math.round(workspaceSize.value.width / 2 - worldX * canvasZoom.value),
+    y: Math.round(workspaceSize.value.height / 2 - worldY * canvasZoom.value)
+  }
+  void nextTick(scheduleMeasure)
+}
+
+function scheduleCanvasMinimapState(delay = 40): void {
+  if (layoutMode.value !== 'canvas') {
+    return
+  }
+  if (minimapStateTimer !== null) {
+    clearTimeout(minimapStateTimer)
+  }
+  minimapStateTimer = setTimeout(() => {
+    minimapStateTimer = null
+    if (layoutMode.value !== 'canvas') {
+      return
+    }
+    void window.paneflow
+      .updateCanvasMinimap(canvasMinimapState.value)
+      .catch(() => undefined)
+  }, delay)
+}
+
+function syncCanvasMinimapVisibility(): void {
+  const visible =
+    layoutMode.value === 'canvas' && !profilesOpen.value && !workspacesOpen.value
+  void window.paneflow
+    .setCanvasMinimapVisible(visible)
+    .catch(() => undefined)
+  if (visible) {
+    scheduleCanvasMinimapState(0)
+  }
+}
+
+function onCanvasMinimapAction(action: CanvasMinimapAction): void {
+  if (layoutMode.value !== 'canvas') {
+    return
+  }
+  if (action.type === 'focus') {
+    focusCanvasPane(action.paneId)
+    return
+  }
+  if (action.type === 'recenter') {
+    recenterCanvasAt(action.x, action.y)
+    return
+  }
+  if (action.type === 'collapse') {
+    return
+  }
+  fitCanvasToPanes()
+}
+
 function centerCanvasPane(paneId: string): void {
   const frame = canvasFrames.value.get(paneId)
   if (!frame) {
@@ -1116,6 +1285,7 @@ function applyState(state: ShellState): void {
     canvasPan.value = { x: 0, y: 0 }
     canvasZoom.value = 1
     syncCanvasZoomToMain(1)
+    syncCanvasMinimapVisibility()
     canvasHandMode.value = false
     spaceHandMode.value = false
     isCanvasPanning.value = false
@@ -2266,6 +2436,7 @@ watch(layoutMode, (mode) => {
   } else {
     syncCanvasZoomToMain(canvasZoom.value)
   }
+  syncCanvasMinimapVisibility()
 
   void nextTick(() => {
     if (mode === 'freeform') {
@@ -2286,11 +2457,13 @@ watch(isDragging, (dragging) => {
   }
 })
 
-watch(profilesOpen, () => {
+watch(workspacesOpen, () => {
+  syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
 })
 
-watch(workspacesOpen, () => {
+watch(profilesOpen, () => {
+  syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
 })
 
@@ -2308,6 +2481,14 @@ watch(paneChrome, (style) => {
   persistPaneChromePreference(style)
   void nextTick(scheduleMeasure)
 })
+
+watch(
+  () => JSON.stringify(canvasMinimapState.value),
+  () => {
+    scheduleCanvasMinimapState()
+  },
+  { flush: 'post' }
+)
 
 watch(
   () =>
@@ -2343,6 +2524,9 @@ watch(resolvedTheme, () => {
 
 onMounted(async () => {
   disposeStateListener = window.paneflow.onStateChanged(applyState)
+  disposeMinimapActionListener = window.paneflow.onCanvasMinimapAction(
+    onCanvasMinimapAction
+  )
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
   disposeCommandListener = window.paneflow.onPaneCommand(handlePaneCommand)
   disposeFocusListener = window.paneflow.onPaneFocused((paneId) => {
@@ -2382,7 +2566,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposeStateListener?.()
+  disposeMinimapActionListener?.()
   disposeMeasureListener?.()
+
   disposeCommandListener?.()
   disposeFocusListener?.()
   disposeRenameListener?.()
@@ -2412,6 +2598,11 @@ onBeforeUnmount(() => {
     clearTimeout(canvasWheelEndTimer)
     canvasWheelEndTimer = null
   }
+  if (minimapStateTimer !== null) {
+    clearTimeout(minimapStateTimer)
+    minimapStateTimer = null
+  }
+  void window.paneflow.setCanvasMinimapVisible(false).catch(() => undefined)
   if (measureFrame !== 0) {
     window.cancelAnimationFrame(measureFrame)
   }
@@ -2612,8 +2803,10 @@ onBeforeUnmount(() => {
       v-if="showGlobalPaneBar && activePane"
       :key="activePane.id"
       :pane="activePane"
+      :show-canvas-tools="layoutMode === 'canvas'"
       @set-viewport="setPaneViewport(activePane.id, $event)"
       @layout-changed="onPaneLayoutChanged"
+      @fit-all="fitCanvasToPanes"
     />
 
     <main

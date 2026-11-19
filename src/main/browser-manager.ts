@@ -69,6 +69,7 @@ interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
   onPaneRenameRequested?: (paneId: string) => void
+  onPaneLayerChanged?: () => void
   getColorScheme: () => PaneColorScheme
 }
 
@@ -326,6 +327,7 @@ export class BrowserManager {
 
     // Re-adding an existing child moves it to the top of the native stack.
     this.window.contentView.addChildView(record.view)
+    this.options.onPaneLayerChanged?.()
     return { ok: true }
   }
 
@@ -790,6 +792,7 @@ export class BrowserManager {
 
     try {
       this.window.contentView.addChildView(view)
+      this.options.onPaneLayerChanged?.()
     } catch (error) {
       if (!view.webContents.isDestroyed()) {
         view.webContents.close()

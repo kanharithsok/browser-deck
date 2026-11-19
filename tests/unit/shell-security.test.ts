@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   SHELL_ENTRY_URL,
+  SHELL_MINIMAP_URL,
   buildShellCsp,
+  isTrustedMinimapDocumentUrl,
   isTrustedShellDocumentUrl
 } from '../../src/shared/shell'
 
@@ -57,5 +59,32 @@ describe('trusted shell documents', () => {
       isTrustedShellDocumentUrl('https://example.com/', 'http://localhost:5173')
     ).toBe(false)
     expect(isTrustedShellDocumentUrl('http://localhost:5173/', 'not a url')).toBe(false)
+  })
+})
+
+describe('trusted minimap documents', () => {
+  it('accepts only the built minimap document in production', () => {
+    expect(isTrustedMinimapDocumentUrl(SHELL_MINIMAP_URL, null)).toBe(true)
+    expect(isTrustedMinimapDocumentUrl(`${SHELL_MINIMAP_URL}?theme=dark`, null)).toBe(true)
+    expect(isTrustedMinimapDocumentUrl(SHELL_ENTRY_URL, null)).toBe(false)
+    expect(isTrustedMinimapDocumentUrl('paneflow://shell/other.html', null)).toBe(false)
+    expect(isTrustedMinimapDocumentUrl('paneflow://evil/minimap.html', null)).toBe(false)
+    expect(isTrustedMinimapDocumentUrl('file:///tmp/minimap.html', null)).toBe(false)
+    expect(isTrustedMinimapDocumentUrl('not a url', null)).toBe(false)
+  })
+
+  it('requires the minimap path on the validated development origin', () => {
+    expect(
+      isTrustedMinimapDocumentUrl('http://localhost:5173/minimap.html', 'http://localhost:5173')
+    ).toBe(true)
+    expect(
+      isTrustedMinimapDocumentUrl('http://localhost:5173/', 'http://localhost:5173')
+    ).toBe(false)
+    expect(
+      isTrustedMinimapDocumentUrl('https://example.com/minimap.html', 'http://localhost:5173')
+    ).toBe(false)
+    expect(isTrustedMinimapDocumentUrl('http://localhost:5173/minimap.html', 'not a url')).toBe(
+      false
+    )
   })
 })

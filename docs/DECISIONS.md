@@ -1015,6 +1015,39 @@ Record material technical decisions here. Keep entries short but include context
   - E2e wheel-pans and verifies visible native bounds realign with the DOM after the gesture.
   - Existing content-interaction, pane-header drag, background pan, and Hand-tool checks continue to pass.
 
+## ADR-034 — Canvas overview is a persistent native minimap
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Users can pan or zoom far enough to lose every pane. The shell is a `WebContentsView` beneath live pane views, so ordinary DOM cannot float above them. A modal overview is safe but requires a reveal action and temporarily hides live pages.
+
+- **Decision:**
+  1. Add a small trusted `WebContentsView` rendered from `minimap.html` and pinned to the bottom-right above pane views. Show it whenever Canvas mode is active; no reveal button. Hide it while the Profiles or Workspaces dialog is open.
+  2. Include both pane bounds and viewport bounds in the projection, so distant panes remain visible after panning far away. Draw the viewport as a dashed outline.
+  3. Selecting a frame centers and focuses that pane; selecting empty map space recenters the world point there. Add **Fit all panes** to the minimap header and keep it in the Canvas global bar.
+  4. Adapt the panel width between 168 and 208 px as the window narrows. Let the panel collapse to a compact header and expand again; the collapsed header stays visible.
+  5. Keep the minimap above native views through the native child order. Do not hide covered pane views or swap them for snapshots; pane content remains live outside the minimap rectangle.
+  6. Validate the shell and minimap senders separately. Projection state flows shell → main → minimap; focus/recenter/fit actions flow minimap → main → shell. Main returns focus to the shell after an action so Space and other shell shortcuts keep working.
+  7. Keep viewport pan/zoom transient. The collapse state is session-local and no persistence format changes.
+
+- **Alternatives considered:**
+  - **DOM overlay plus hiding intersecting native views.** Rejected; it loses live content under the panel and adds snapshot bookkeeping to a persistent control.
+  - **Modal overview.** Rejected; recovery takes an extra action and the live pages disappear.
+  - **Persistent side dock.** Rejected for the minimal layout; it shrinks the canvas and shifts every pane.
+  - **Native menu listing panes.** Rejected; it provides no spatial preview.
+  - **Fit-only control with no map.** Rejected; users still need to understand where panes went.
+
+- **Consequences:**
+  - The panel occupies a small bottom-right area and intercepts input there; panes remain live elsewhere.
+  - The window owns one extra persistent webContents that is not part of pane lifecycle or workspace persistence.
+  - Fit all may change pan and zoom; it does not modify world positions.
+  - The minimap must be handled separately during window close, resize, and theme changes.
+
+- **Evidence / verification:**
+  - Unit tests cover frame projection, viewport inclusion, far-away viewport bounds, adaptive panel sizing, state validation, and every action payload.
+  - E2e verifies the minimap is already visible after entering Canvas, sits at the bottom-right margin, renders two frame buttons and the viewport, recenters from the map, fits all panes, collapses and expands with a resized native view, returns focus to the shell, and hides in Grid mode.
+  - Existing Canvas pan/zoom/drag/content tests continue to pass.
+
 ## ADR template
 
 ### ADR-NNN — Title
