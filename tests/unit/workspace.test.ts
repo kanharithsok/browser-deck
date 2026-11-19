@@ -70,7 +70,7 @@ describe('workspace data validation', () => {
       viewport: { preset: 'mobile', width: 390, height: 844, deviceScaleFactor: 3 }
     })
     expect(parsed.data.layout).toMatchObject({
-      mode: 'freeform',
+      mode: 'canvas',
       columns: 3,
       gridOrder: [PANE_B, PANE_A],
       freeformOrder: [PANE_A, PANE_B]
@@ -189,7 +189,7 @@ describe('workspace layout normalization', () => {
       [PANE_A, PANE_B]
     )
 
-    expect(layout.mode).toBe('freeform')
+    expect(layout.mode).toBe('canvas')
     expect(layout.columns).toBe(2)
     expect(layout.gridOrder).toEqual([PANE_A, PANE_B])
     expect(layout.freeformOrder).toEqual([PANE_A, PANE_B])

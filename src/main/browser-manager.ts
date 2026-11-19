@@ -1,37 +1,23 @@
 import { randomUUID } from 'node:crypto'
-import {
-  Menu,
-  WebContentsView,
-  type BaseWindow,
-  type MenuItemConstructorOptions,
-  type WebContents
-} from 'electron'
+import { Menu, WebContentsView, type BaseWindow, type WebContents } from 'electron'
 import {
   CANVAS_RESPONSIVE_HEIGHT,
   CANVAS_RESPONSIVE_WIDTH
 } from '../shared/canvas'
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
 import type {
-  AddPaneMenuResult,
   PaneState,
   PaneViewRect,
   ScriptResult,
   ShellSnapshot
 } from '../shared/ipc'
-import {
-  PANE_CHROME_STYLES,
-  paneChromeLabel,
-  type PaneChromeStyle
-} from '../shared/pane-chrome'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
 import { MAX_URL_LENGTH, isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
 import {
   RESPONSIVE_VIEWPORT,
-  VIEWPORT_PRESETS,
   parsePaneViewport,
   viewportDisplayScale,
-  type PaneViewport,
-  type ViewportPresetId
+  type PaneViewport
 } from '../shared/viewports'
 import {
   isValidPaneId,
@@ -424,72 +410,6 @@ export class BrowserManager {
     this.applyEmulation(record)
     this.emitState()
     return { ok: true }
-  }
-
-  showAddPaneMenu(
-    x: number,
-    y: number,
-    currentPaneChrome: PaneChromeStyle,
-    showPaneChromePreview: boolean
-  ): Promise<AddPaneMenuResult> {
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      return Promise.resolve({ ok: false, error: 'Invalid menu position.' })
-    }
-
-    if (this.window.isDestroyed()) {
-      return Promise.resolve({ ok: false, error: 'Window is not available.' })
-    }
-
-    return new Promise((resolve) => {
-      let selected: ViewportPresetId | null = null
-      let selectedPaneChrome: PaneChromeStyle | undefined
-      const template: MenuItemConstructorOptions[] = [
-        {
-          label: 'Responsive',
-          click: () => {
-            selected = 'responsive'
-          }
-        },
-        { type: 'separator' },
-        ...VIEWPORT_PRESETS.map((preset) => ({
-          label: preset.label,
-          click: () => {
-            selected = preset.id
-          }
-        })),
-        ...(showPaneChromePreview
-          ? [
-              { type: 'separator' as const },
-              { label: 'Pane chrome preview (all panes)', enabled: false },
-              ...PANE_CHROME_STYLES.map((style) => ({
-                label: paneChromeLabel(style),
-                type: 'radio' as const,
-                checked: style === currentPaneChrome,
-                click: () => {
-                  selectedPaneChrome = style
-                }
-              }))
-            ]
-          : [])
-      ]
-
-      const menu = Menu.buildFromTemplate(template)
-      try {
-        menu.popup({
-          window: this.window,
-          x: Math.max(0, Math.round(x)),
-          y: Math.max(0, Math.round(y)),
-          callback: () =>
-            resolve({
-              ok: true,
-              preset: selected,
-              ...(selectedPaneChrome ? { paneChrome: selectedPaneChrome } : {})
-            })
-        })
-      } catch {
-        resolve({ ok: false, error: 'Could not open the pane size menu.' })
-      }
-    })
   }
 
   showMenu(paneId: string, x: number, y: number): ScriptResult {

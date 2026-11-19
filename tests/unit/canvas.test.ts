@@ -6,7 +6,8 @@ import {
   canvasContentSize,
   canvasFrameSize,
   defaultCanvasPositions,
-  isValidCanvasPosition
+  isValidCanvasPosition,
+  snapCanvasRect
 } from '../../src/shared/canvas'
 import { normalizeWorkspaceLayout } from '../../src/shared/workspace'
 
@@ -43,6 +44,64 @@ describe('canvas layout helpers', () => {
     expect(isValidCanvasPosition({ x: Number.NaN, y: 0 })).toBe(false)
     expect(isValidCanvasPosition({ x: 0 })).toBe(false)
     expect(isValidCanvasPosition(null)).toBe(false)
+  })
+
+  it('snaps a dragged frame to neighboring edges and centers', () => {
+    const target = { x: 600, y: 40, width: 400, height: 800 }
+
+    expect(
+      snapCanvasRect({ x: 596, y: 100, width: 300, height: 500 }, [target], 8)
+    ).toMatchObject({
+      x: 600,
+      y: 100,
+      snappedX: true,
+      snappedY: false,
+      guides: { vertical: [600], horizontal: [] }
+    })
+
+    expect(
+      snapCanvasRect({ x: 720, y: 836, width: 100, height: 500 }, [target], 8)
+    ).toMatchObject({
+      x: 720,
+      y: 840,
+      snappedX: false,
+      snappedY: true,
+      guides: { vertical: [], horizontal: [840] }
+    })
+  })
+
+  it('snaps centers without moving beyond the threshold', () => {
+    const target = { x: 100, y: 100, width: 400, height: 300 }
+    const snapped = snapCanvasRect(
+      { x: 700, y: 208, width: 100, height: 80 },
+      [target],
+      4
+    )
+    expect(snapped.x).toBe(700)
+    expect(snapped.y).toBe(210)
+    expect(snapped.guides).toEqual({ vertical: [], horizontal: [250] })
+
+    expect(
+      snapCanvasRect({ x: 700, y: 700, width: 100, height: 80 }, [target], 8)
+    ).toEqual({
+      x: 700,
+      y: 700,
+      guides: { vertical: [], horizontal: [] },
+      snappedX: false,
+      snappedY: false
+    })
+  })
+
+  it('returns the original frame for invalid input', () => {
+    expect(
+      snapCanvasRect({ x: 10, y: 20, width: 0, height: 100 }, [], 8)
+    ).toEqual({
+      x: 10,
+      y: 20,
+      guides: { vertical: [], horizontal: [] },
+      snappedX: false,
+      snappedY: false
+    })
   })
 
   it('normalizes canvas mode and drops unknown or invalid positions', () => {

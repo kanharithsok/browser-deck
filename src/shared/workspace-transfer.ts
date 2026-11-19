@@ -122,7 +122,7 @@ export function serializeWorkspaceTransfer(workspace: WorkspaceData): WorkspaceT
       ...(pane.title ? { title: pane.title } : {})
     })),
     layout: {
-      mode: workspace.layout.mode,
+      mode: 'canvas',
       columns: workspace.layout.columns,
       gridOrder: mapOrder(workspace.layout.gridOrder),
       freeform,
@@ -187,12 +187,8 @@ export function parseWorkspaceTransfer(
     return { ok: false, error: 'Workspace import layout is invalid.' }
   }
   const layoutRecord = record.layout as Record<string, unknown>
-  const mode: WorkspaceLayoutMode =
-    layoutRecord.mode === 'freeform' ||
-    layoutRecord.mode === 'grid' ||
-    layoutRecord.mode === 'canvas'
-      ? layoutRecord.mode
-      : 'grid'
+  // Older exports may contain Grid or Freeform; imports open in Canvas.
+  const mode: WorkspaceLayoutMode = 'canvas'
   const columns =
     typeof layoutRecord.columns === 'number' &&
     Number.isInteger(layoutRecord.columns) &&
@@ -312,7 +308,7 @@ export function materializeWorkspaceTransfer(
     name,
     panes,
     layout: {
-      mode: transfer.layout.mode,
+      mode: 'canvas',
       columns: transfer.layout.columns,
       gridOrder: mapOrder(transfer.layout.gridOrder),
       freeform,

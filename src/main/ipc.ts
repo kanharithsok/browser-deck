@@ -2,7 +2,6 @@ import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
 import {
   IPC_CHANNELS,
-  type AddPaneMenuResult,
   type PaneSnapshotsResult,
   type ProfileListResult,
   type ShellState,
@@ -17,7 +16,6 @@ import {
   type CanvasMinimapAction,
   type CanvasMinimapState
 } from '../shared/minimap'
-import { isPaneChromeStyle } from '../shared/pane-chrome'
 import {
   isTrustedMinimapDocumentUrl,
   isTrustedShellDocumentUrl
@@ -26,6 +24,7 @@ import {
   DEFAULT_WORKSPACE_ID,
   DEFAULT_WORKSPACE_NAME,
   defaultWorkspaceLayout,
+  isThemePreference,
   type ThemePreference,
   type WorkspaceLayout
 } from '../shared/workspace'
@@ -42,6 +41,7 @@ interface IpcContext {
   getThemePreference: () => ThemePreference
   getResolvedTheme: () => 'light' | 'dark'
   showThemeMenu: (x: number, y: number) => Promise<ScriptResult>
+  setThemePreference: (theme: ThemePreference) => void
   updateCanvasMinimapState: (state: CanvasMinimapState) => void
   setCanvasMinimapVisible: (visible: boolean) => void
   setCanvasMinimapCollapsed: (collapsed: boolean) => void
@@ -494,38 +494,16 @@ export function registerIpcHandlers(context: IpcContext): void {
     return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid pane ID.' }
   })
 
-  ipcMain.handle(
-    IPC_CHANNELS.showAddPaneMenu,
-    async (event, payload: unknown): Promise<AddPaneMenuResult> => {
-      if (!isTrustedSender(event, context)) {
-        return { ok: false, error: 'Unauthorized sender.' }
-      }
-      const manager = context.getBrowserManager()
-      if (!manager) {
-        return { ok: false, error: 'Pane manager is not ready.' }
-      }
-
-      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-        return { ok: false, error: 'Invalid menu request.' }
-      }
-
-      const request = payload as Record<string, unknown>
-      const x = readFiniteNumber(request.x)
-      const y = readFiniteNumber(request.y)
-      const paneChrome = request.paneChrome
-      const showPaneChromePreview = request.showPaneChromePreview
-      if (
-        x === null ||
-        y === null ||
-        !isPaneChromeStyle(paneChrome) ||
-        typeof showPaneChromePreview !== 'boolean'
-      ) {
-        return { ok: false, error: 'Invalid menu request.' }
-      }
-
-      return manager.showAddPaneMenu(x, y, paneChrome, showPaneChromePreview)
+  ipcMain.handle(IPC_CHANNELS.setTheme, (event, payload: unknown): ScriptResult => {
+    if (!isTrustedSender(event, context)) {
+      return unauthorized
     }
-  )
+    if (!isThemePreference(payload)) {
+      return { ok: false, error: 'Invalid theme preference.' }
+    }
+    context.setThemePreference(payload)
+    return { ok: true }
+  })
 
   ipcMain.handle(IPC_CHANNELS.showThemeMenu, async (event, payload: unknown): Promise<ScriptResult> => {
     if (!isTrustedSender(event, context)) {

@@ -1,6 +1,25 @@
 import type { Size } from './layout'
 
-export type ViewportPresetId = 'responsive' | 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'custom'
+export type ViewportPresetId =
+  | 'responsive'
+  | 'mobile'
+  | 'iphone-15-pro'
+  | 'iphone-15-pro-max'
+  | 'iphone-se'
+  | 'galaxy-s24'
+  | 'galaxy-s24-ultra'
+  | 'pixel-8'
+  | 'pixel-8-pro'
+  | 'tablet'
+  | 'ipad-pro-12-9'
+  | 'ipad-air'
+  | 'galaxy-tab-s9'
+  | 'laptop'
+  | 'macbook-air'
+  | 'desktop'
+  | 'custom'
+
+export type ViewportPresetCategory = 'phone' | 'tablet' | 'desktop'
 
 export interface PaneViewport {
   preset: ViewportPresetId
@@ -12,6 +31,7 @@ export interface PaneViewport {
 export interface ViewportPreset {
   id: Exclude<ViewportPresetId, 'responsive' | 'custom'>
   label: string
+  category: ViewportPresetCategory
   width: number
   height: number
   deviceScaleFactor: number
@@ -29,25 +49,152 @@ export const RESPONSIVE_VIEWPORT: PaneViewport = {
   deviceScaleFactor: 1
 }
 
+export const VIEWPORT_CATEGORY_LABELS: Record<ViewportPresetCategory, string> = {
+  phone: 'Phones',
+  tablet: 'Tablets',
+  desktop: 'Desktop'
+}
+
 export const VIEWPORT_PRESETS: readonly ViewportPreset[] = [
-  { id: 'mobile', label: 'Mobile 390 × 844', width: 390, height: 844, deviceScaleFactor: 3 },
-  { id: 'tablet', label: 'Tablet 820 × 1180', width: 820, height: 1180, deviceScaleFactor: 2 },
-  { id: 'laptop', label: 'Laptop 1280 × 800', width: 1280, height: 800, deviceScaleFactor: 1 },
-  { id: 'desktop', label: 'Desktop 1440 × 900', width: 1440, height: 900, deviceScaleFactor: 1 }
+  {
+    id: 'mobile',
+    label: 'Generic phone — 390 × 844',
+    category: 'phone',
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3
+  },
+  {
+    id: 'iphone-15-pro',
+    label: 'iPhone 15 Pro — 393 × 852',
+    category: 'phone',
+    width: 393,
+    height: 852,
+    deviceScaleFactor: 3
+  },
+  {
+    id: 'iphone-15-pro-max',
+    label: 'iPhone 15 Pro Max — 430 × 932',
+    category: 'phone',
+    width: 430,
+    height: 932,
+    deviceScaleFactor: 3
+  },
+  {
+    id: 'iphone-se',
+    label: 'iPhone SE — 375 × 667',
+    category: 'phone',
+    width: 375,
+    height: 667,
+    deviceScaleFactor: 2
+  },
+  {
+    id: 'galaxy-s24',
+    label: 'Samsung Galaxy S24 — 360 × 780',
+    category: 'phone',
+    width: 360,
+    height: 780,
+    deviceScaleFactor: 3
+  },
+  {
+    id: 'galaxy-s24-ultra',
+    label: 'Samsung Galaxy S24 Ultra — 412 × 915',
+    category: 'phone',
+    width: 412,
+    height: 915,
+    deviceScaleFactor: 3.5
+  },
+  {
+    id: 'pixel-8',
+    label: 'Google Pixel 8 — 412 × 915',
+    category: 'phone',
+    width: 412,
+    height: 915,
+    deviceScaleFactor: 2.625
+  },
+  {
+    id: 'pixel-8-pro',
+    label: 'Google Pixel 8 Pro — 448 × 998',
+    category: 'phone',
+    width: 448,
+    height: 998,
+    deviceScaleFactor: 2.625
+  },
+  {
+    id: 'tablet',
+    label: 'Generic tablet — 820 × 1180',
+    category: 'tablet',
+    width: 820,
+    height: 1180,
+    deviceScaleFactor: 2
+  },
+  {
+    id: 'ipad-pro-12-9',
+    label: 'iPad Pro 12.9″ — 1024 × 1366',
+    category: 'tablet',
+    width: 1024,
+    height: 1366,
+    deviceScaleFactor: 2
+  },
+  {
+    id: 'ipad-air',
+    label: 'iPad Air — 820 × 1180',
+    category: 'tablet',
+    width: 820,
+    height: 1180,
+    deviceScaleFactor: 2
+  },
+  {
+    id: 'galaxy-tab-s9',
+    label: 'Samsung Galaxy Tab S9 — 800 × 1280',
+    category: 'tablet',
+    width: 800,
+    height: 1280,
+    deviceScaleFactor: 2
+  },
+  {
+    id: 'laptop',
+    label: 'Laptop — 1280 × 800',
+    category: 'desktop',
+    width: 1280,
+    height: 800,
+    deviceScaleFactor: 1
+  },
+  {
+    id: 'macbook-air',
+    label: 'MacBook Air — 1280 × 832',
+    category: 'desktop',
+    width: 1280,
+    height: 832,
+    deviceScaleFactor: 2
+  },
+  {
+    id: 'desktop',
+    label: 'Desktop — 1440 × 900',
+    category: 'desktop',
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1
+  }
 ]
+
+const VIEWPORT_PRESET_IDS = new Set<string>(VIEWPORT_PRESETS.map((preset) => preset.id))
 
 export function findViewportPreset(id: string): ViewportPreset | undefined {
   return VIEWPORT_PRESETS.find((preset) => preset.id === id)
 }
 
+export function viewportPresetsInCategory(
+  category: ViewportPresetCategory
+): readonly ViewportPreset[] {
+  return VIEWPORT_PRESETS.filter((preset) => preset.category === category)
+}
+
 export function isViewportPresetId(value: unknown): value is ViewportPresetId {
   return (
     value === 'responsive' ||
-    value === 'mobile' ||
-    value === 'tablet' ||
-    value === 'laptop' ||
-    value === 'desktop' ||
-    value === 'custom'
+    value === 'custom' ||
+    (typeof value === 'string' && VIEWPORT_PRESET_IDS.has(value))
   )
 }
 

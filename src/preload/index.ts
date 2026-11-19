@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC_CHANNELS,
-  type AddPaneMenuRequest,
   type PaneBoundsUpdate,
   type PaneCommand,
   type PaneFlowApi,
@@ -63,9 +62,8 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.sendPaneToBack, paneId),
   showPaneMenu: (request: PaneMenuRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.showPaneMenu, request),
-  showAddPaneMenu: (request: AddPaneMenuRequest) =>
-    ipcRenderer.invoke(IPC_CHANNELS.showAddPaneMenu, request),
   showThemeMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.showThemeMenu, request),
+  setTheme: (theme) => ipcRenderer.invoke(IPC_CHANNELS.setTheme, theme),
   capturePaneSnapshots: () => ipcRenderer.invoke(IPC_CHANNELS.capturePaneSnapshots),
   setCanvasZoom: (zoom: number) => ipcRenderer.invoke(IPC_CHANNELS.setCanvasZoom, zoom),
   updateCanvasMinimap: (state) =>

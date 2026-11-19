@@ -4,12 +4,12 @@
 
 PaneFlow is a local-first macOS desktop application for developers, designers, and QA teams who need to open, arrange, resize, and interact with multiple independent browser sessions at once.
 
-> **Project status:** Phases 0–4 complete; the unsigned local macOS MVP is complete. The app is a working Electron/Vue browser workspace with isolated persistent sessions, grid and freeform layouts, native-aware scrolling, drag reorder, resize/snapping, z-order, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-MVP hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
+> **Project status:** Phases 0–4 complete; the unsigned local macOS MVP is complete. The app is a working Electron/Vue browser workspace with isolated persistent sessions, a Canvas-only workspace with world-space snapping guides, a custom device menu and canvas context menu, native-aware view hiding, maximize/restore, native Pane-menu commands, per-pane viewport emulation, workspace persistence and management, safe window bounds, a profile manager, explicit shared-profile panes, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, close-and-delete profile lifecycle, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-MVP hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
 
 ## Current capabilities
 
 - Electron `BaseWindow` with a trusted Vue shell and native `WebContentsView` browser panes.
-- Two browser panes by default; add, duplicate, and close panes dynamically. The toolbar add control includes a device-size dropdown that creates a pane with the selected viewport. Duplicates copy URL/viewport with a fresh profile.
+- Two browser panes by default; add, duplicate, and close panes dynamically. The quiet toolbar **+** control opens a custom device menu with responsive, iPhone, Samsung, Pixel, iPad, Galaxy Tab, desktop, and MacBook presets. Duplicates copy URL/viewport with a fresh profile.
 - One persistent, internally generated browser profile per new pane.
 - Independent navigation, back, forward, reload, loading, and load-error states.
 - Per-pane native menu for back/forward/reload/DevTools/close.
@@ -17,28 +17,26 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Denied popups, permissions, downloads, display capture, and device access for remote content; sandboxed browser views with no app bridge or Node access.
 - Trusted shell served over a secure internal `paneflow://shell/` protocol with a production CSP that has no development network allowance, plus IPC sender document validation.
 - Independent authenticated sessions on one local origin, with HttpOnly persistent cookies, localStorage, and IndexedDB isolated per profile and restored after restart.
-- Pure TypeScript layout engine for grid placement/reflow, normalized freeform geometry, clamping, snapping, ordering, and maximize/restore, with 33 unit tests.
-- Engine-driven grid mode with a compact 1–5 column selector, equal-width reflow, native bounds alignment, and add/remove reflow.
-- Native-aware vertical grid scrolling: partially off-screen panes hide their browser view so it cannot cover chrome or escape the workspace.
-- Grid drag reordering from the pane title row, with native views temporarily hidden so pointer movement stays in the shell.
-- Freeform mode with normalized pane geometry, title-row dragging, eight resize handles, snapping guides, explicit bring-front/send-back controls, and a Tidy action.
+- Canvas-only workspace: pane headers drag panes in world coordinates, with live edge/center alignment guides against neighboring panes.
+- Pure TypeScript canvas and viewport helpers for frame sizing, world-space snapping, viewport validation, fit scaling, and minimap projection.
 - Temporary maximize/restore with unrelated native views hidden and the prior arrangement preserved.
-- Native **Pane** menu commands for add, close, reload active/all, maximize, and grid/freeform toggle, with an active pane inferred from shell/native focus.
-- Per-pane viewport emulation with responsive, mobile, tablet, laptop, and desktop presets, custom width/height/DPR, and automatic fit-to-pane scaling. New panes can start with a preset from the add-pane device dropdown. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
-- Versioned workspace persistence: pane IDs, profile references, URLs, viewport settings, grid columns/order, grid/freeform mode, and freeform geometry restore after restart. Profile partitions and sessions are retained.
+- Native **Pane** menu commands for add, close, reload active/all, and maximize, with an active pane inferred from shell/native focus.
+- Custom in-shell **+** device menu and right-click canvas menu. When a menu overlaps a native pane, that pane's view is hidden and its snapshot remains; uncovered panes stay live. Menus support keyboard arrows, Enter, Escape, and click-outside dismissal, and the minimap hides while a menu is open.
+- Per-pane viewport emulation with responsive, iPhone 15 Pro/Pro Max/SE, Samsung Galaxy S24/S24 Ultra, Google Pixel 8/8 Pro, iPad Pro 12.9″/Air, Samsung Galaxy Tab S9, laptop, MacBook Air, desktop, and custom width/height/DPR presets. New panes can start with any preset from the **+** menu. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
+- Versioned workspace persistence: pane IDs, profile references, URLs, viewport settings, pane order, layout mode, world-coordinate canvas positions, and legacy grid/freeform fields restore after restart. Legacy arrangements are normalized to Canvas. Profile partitions and sessions are retained.
 - Safe window restoration: normal bounds, maximized state, and full-screen state restore after restart when the saved normal bounds remain visible on a connected display.
 - Hidden-inset macOS title bar: traffic lights sit inside the compact toolbar, the shell fills the full window content, and empty toolbar space drags the window.
 - Compact single-row pane chrome that wraps only at narrow widths, with a frameless pane surface and a subtle active-pane outline.
-- Canvas layout with a dotted infinite backdrop, background drag and Hand-tool panning, Space as a temporary Hand tool, draggable pane headers, 50–200% wheel zoom around the cursor, an always-visible native Canvas overview in the bottom-right, one-click Fit all panes, world-coordinate pane positions, and captured pane snapshots while the world moves. The overview shows the current viewport, focuses or recenters from a click, and collapses to a compact header. Page content stays interactive when the pane is fully visible; device bezels are not implemented yet.
-- Persisted System/Light/Dark theme from the toolbar appearance menu and native View menu, with matching window chrome and shell tokens. Loaded website panes receive the effective appearance as a live `prefers-color-scheme` change without reloading.
-- Temporary pane-chrome preview in the Add pane chevron menu: Quiet bar, Canvas label, or Global bar. The preview applies to all panes; Quiet bar is the default.
+- Canvas is the only workspace layout. It has a dotted infinite backdrop, background drag and Hand-tool panning, Space as a temporary Hand tool, draggable pane headers, world-space edge/center snapping with live guides, 50–200% wheel zoom around the cursor, an always-visible native overview in the bottom-right, one-click Fit all panes, world-coordinate pane positions, and captured pane snapshots while the world moves. The overview shows the current viewport, focuses or recenters from a click, and collapses to a compact header. Page content stays interactive when the pane is fully visible; device bezels and pane frame resizing are not implemented.
+- Custom **+** add menu and right-click canvas menu with the Herdr-inspired compact menu language: sections, monochrome icons, dimension/shortcut metadata, checked Hand/Appearance states, keyboard navigation, and Escape dismissal.
+- Persisted System/Light/Dark theme from the toolbar appearance menu, custom canvas menu, and native View menu, with matching window chrome and shell tokens. Loaded website panes receive the effective appearance as a live `prefers-color-scheme` change without reloading.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
 - Profile manager dialog with creation dates, live pane usage, rename, and confirmed clear/delete. In-use profiles can be closed and deleted through a single explicit confirmation.
 - Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
 - Workspace manager for create, rename, duplicate, switch, delete, and secret-free import/export. Imported/duplicated workspaces receive fresh profiles.
 - Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline, with a configurable loaded-page soak (50 cycles observed).
 - Automated accessibility coverage for the shell toolbar, pane cards, profile dialog, and workspace dialog: accessible roles and names, focus order and visible focus, dialog focus traps and focus return, Chromium CDP accessibility-tree checks, and axe-core WCAG/best-practice audits. Axe is injected through CDP because the production CSP deliberately blocks inline scripts.
-- Deterministic local fixture server, unit tests, and two Playwright Electron tests including an eight-pane alignment/freeform stress pass, viewport-emulation checks, a full workspace/session restart, profile-manager lifecycle checks, workspace management, and the accessibility audit.
+- Deterministic local fixture server, unit tests, and two Playwright Electron tests covering Canvas snapping, the custom add/context menus, device presets, native-view hiding under menus, viewport emulation, a full workspace/session restart, profile-manager lifecycle checks, workspace management, and the accessibility audit.
 
 The current build does **not** include optional user-agent overrides, background-warm workspace switching, or signed/notarized distribution. See the roadmap in [`SPEC.md`](./SPEC.md).
 
@@ -63,8 +61,6 @@ make dev
 `make dev` checks the Node.js version, installs dependencies when `package.json` or `package-lock.json` has changed, downloads the Electron runtime when needed, and starts a local fixture server on a random loopback port. Two panes open with independent fixture sessions (`alice` and `bob`) that display their per-profile cookie, localStorage, viewport, and device pixel ratio. Open `/login` in a pane to try the fixture's independent authenticated sessions.
 
 To preview the production build instead, run `make start`. Run `make` or `make help` to list every target. A separate `npm install` is not normally required; use `make install` to force a clean reinstall.
-
-The Add pane chevron menu also contains a temporary **Pane chrome preview** section with Quiet bar (default), Canvas label, and Global bar. The choice applies to all panes and is stored locally for comparison; it is not a final product preference yet.
 
 ## Commands
 
@@ -101,7 +97,6 @@ Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node optio
 | `Cmd/Ctrl+Alt+R` | Reload active pane |
 | `Cmd/Ctrl+Alt+Shift+R` | Reload all panes |
 | `Cmd/Ctrl+Shift+M` | Toggle maximize for active pane |
-| `Cmd/Ctrl+Shift+L` | Toggle grid/freeform |
 | `Cmd/Ctrl+Shift+]` | Next workspace |
 | `Cmd/Ctrl+Shift+[` | Previous workspace |
 
@@ -121,16 +116,14 @@ The e2e tests launch the built app against local fixtures and verify:
 - no `window.paneflow`, `require`, or `process` in remote pages;
 - shell CSP blocking inline script and cross-origin fetch, the internal shell protocol, and rejection of IPC from a separate node-enabled webContents;
 - blocked remote `file:`/`data:` navigation, denied popups and notifications;
+- Canvas-only startup, persistent overview, pane-header dragging, world-space edge/center snapping, and guide cleanup;
+- custom **+** device menu creation, section/dimension rendering, Escape dismissal, and selected-preset verification;
+- right-click canvas menu actions for adding a pane, toggling Hand mode, and switching appearance;
+- native view hiding only where a menu overlaps, with live views restored after close;
 - native view bounds matching shell content rectangles before and after window resize;
-- 2/5/1-column grid reflow with native bounds alignment at every step;
-- drag reordering with native views hidden during drag and alignment restored afterward;
-- freeform move/resize with hidden native views and preserved geometry across mode switches;
 - temporary maximize/restore with unrelated native views hidden;
-- explicit freeform z-order changes reflected in native child order;
-- menu command routing for add/close/maximize/layout actions;
+- menu command routing for add/close/maximize actions;
 - next/previous workspace menu shortcuts with stable IDs, accelerator discovery, enabled-state updates, and restored pane identity;
-- an eight-pane grid/freeform alignment stress pass;
-- overflowing grid scrolling with native views hidden when partially off-screen;
 - real address-bar navigation and history controls;
 - rejecting unsupported URLs and unknown pane IDs in main;
 - pane close destroying its `webContents` without touching the other pane;
@@ -153,9 +146,9 @@ The Playwright tests require a local macOS GUI session. Unit tests include the p
 
 ## Architecture
 
-The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds; native `Menu.popup` is used when a menu must cover a website. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
+The trusted shell is a `WebContentsView` filling a `BaseWindow`. Each browser pane is another `WebContentsView` stacked above it, bounded exactly to a content placeholder in the shell. Pane chrome stays outside native browser bounds. Custom Canvas menus live in the shell; when a menu overlaps native content, the intersecting pane views are hidden and their snapshots remain, while uncovered panes stay live. Native `Menu.popup` remains for pane actions and app-level commands. Bounds are measured in CSS pixels/DIP in the renderer, validated and clamped in the main process, and applied without multiplying by `devicePixelRatio`.
 
-Layout math lives in a pure TypeScript engine under `src/shared/layout.ts`, and viewport presets, validation, and fit-scale math live in `src/shared/viewports.ts`. Grid mode positions pane cards from engine results, scrolls to the engine content height, hides native views when panes are only partially visible, and temporarily hides all native views while dragging/reordering. Freeform mode stores normalized per-pane geometry, uses a shell inset for resize handles, and preserves separate grid/freeform arrangements. Maximize is temporary renderer state layered over the current arrangement. A native Pane menu routes typed commands to the active pane. Pane headers expose viewport preset and custom size controls; fixed viewports always fit the pane, and the main process re-applies the fit scale when native bounds change. `WorkspaceStore` persists validated pane references and renderer-owned layout state into versioned JSON with atomic writes. A trusted **Profiles** dialog lists profile usage, manages rename/clear/delete, and can explicitly open a pane with an existing profile while native views are hidden. Theme choices are available from the toolbar appearance menu and the native **View → Theme** menu; main applies the effective color scheme to native chrome, shell tokens, and loaded website panes. The temporary pane-chrome preview is selectable from the Add pane chevron menu. A **Workspaces** dialog creates, renames, duplicates, switches, and deletes saved workspaces with fresh profiles on duplication. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
+Canvas math lives in the pure TypeScript modules under `src/shared/canvas.ts`, `src/shared/minimap.ts`, and `src/shared/viewports.ts`; viewport presets, validation, and fit-scale math also live in `viewports.ts`. The shell keeps world positions, pan, and zoom, hides native views that are partially off-screen or under an open menu, and restores them when fully visible. Pane headers drag frames; neighboring edges and centers produce live alignment guides. Maximize is temporary renderer state layered over the current arrangement. The Canvas global bar exposes active-pane navigation and viewport controls; fixed viewports always fit the pane, and main re-applies the fit scale when native bounds change. `WorkspaceStore` persists validated pane references and renderer-owned canvas state into versioned JSON with atomic writes, while legacy grid/freeform fields are accepted and migrated. A trusted **Profiles** dialog lists profile usage, manages rename/clear/delete, and can explicitly open a pane with an existing profile while native views are hidden. Theme choices are available from the toolbar, the custom canvas menu, and the native **View → Theme** menu; main applies the effective color scheme to native chrome, shell tokens, and loaded website panes. A **Workspaces** dialog creates, renames, duplicates, switches, and deletes saved workspaces with fresh profiles on duplication. Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), the decisions in [`docs/DECISIONS.md`](./docs/DECISIONS.md), and the Phase evidence in [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md).
 
 ## Start with OpenCode
 
@@ -198,19 +191,17 @@ opencode.jsonc        Project-level OpenCode configuration
 - New panes receive fresh profiles by default; sharing requires the profile manager's Open pane action.
 - Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
-- Active-pane chrome is indicated by a subtle accent outline and `aria-current`; dialog triggers expose expanded state, and the toolbar stays overflow-free at the tested 760 px width. Automated axe/role/AX checks cover the shell and dialogs, but VoiceOver order/announcements and focus-ring usability still need a manual pass.
+- Active-pane chrome is indicated by a subtle accent outline and `aria-current`; dialog triggers expose expanded state. Automated axe/role/AX checks cover the shell, custom menus, and dialogs, but VoiceOver order/announcements, focus-ring usability, and minimum-window toolbar layout still need a manual pass.
 - Workspace import/export transfers configuration only; imported panes receive fresh profiles and require sign-in again. Native file dialogs are not automated by e2e.
-- Leak coverage includes a configurable loaded-page switch soak (up to 50 cycles observed: 2 webContents, working set 589 MB → 684 MB on final `main`; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
-- Canvas mode has 50–200% zoom but no device-bezel or frame-resize controls yet. Dragging a pane header repositions that frame; website content stays interactive. Panning and Hand mode replace native pages with recent snapshots. At zoom levels where a frame no longer fits fully inside the workspace, its native view is hidden and the snapshot remains until the frame fits again. Selecting a partially visible pane centers it. The Canvas overview is a small trusted native view pinned to the bottom-right, always visible in Canvas without a reveal action; it adapts between 168 and 208 px wide, collapses to its header, and can cover a small part of the pane beneath it, but covered panes stay live outside that corner. Use Fit all panes in the Canvas global bar or the overview header for one-click recovery. Space activates the Hand tool only while shell chrome has focus; a focused website keeps normal keyboard input.
+- Leak coverage includes a configurable switch soak (up to 50 cycles observed: 2 webContents, working set 589 MB → 684 MB on final `main`; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
+- Canvas has 50–200% zoom but no device-bezel or frame-resize controls yet. Dragging a pane header repositions that frame with edge/center snapping guides; website content stays interactive. Panning and Hand mode replace native pages with recent snapshots. At zoom levels where a frame no longer fits fully inside the workspace, its native view is hidden and the snapshot remains until the frame fits again. Selecting a partially visible pane centers it. The overview is a small trusted native view pinned to the bottom-right, always visible in Canvas without a reveal action; it adapts between 168 and 208 px wide, collapses to its header, and can cover a small part of the pane beneath it, but covered panes stay live outside that corner. The custom + and right-click menus hide only the native panes they overlap, showing those snapshots until the menu closes. Use Fit all panes in the Canvas global bar or the overview header for one-click recovery. Space activates the Hand tool only while shell chrome has focus; a focused website keeps normal keyboard input.
 - Viewport emulation sets CSS dimensions and DPR only; it does not spoof user agents, touch, GPS, or other device APIs.
-- In actual display mode, an emulated viewport larger than its pane is clipped; pane-level panning/scrolling of the emulated surface is not implemented.
+- Fixed viewport panes in Canvas are sized to their declared CSS dimensions; very large devices can extend beyond the visible workspace until you zoom out or fit all.
 - Window position, size, maximized state, and full-screen state restore when the saved normal bounds remain visible on a current display. Minimized and focused state are not restored.
-- Partially visible grid panes are hidden while scrolling and only become interactive when fully in view.
-- A fully covered freeform pane may be unreachable until the covering pane moves.
 - Raw keyboard accelerators are configured in the native menu; menu command routing is tested, raw key chords are not yet automated.
-- Freeform geometry, selected columns, grid order, layout mode, viewport settings, pane order, and URLs now restore after restart. Unused profiles remain available in the profile manager for rename/clear/delete.
+- Canvas positions, pane order, viewport settings, and URLs restore after restart. Legacy grid/freeform files are migrated to Canvas. Unused profiles remain available in the profile manager for rename/clear/delete.
 - Clearing/deleting an in-use profile closes all panes that use it after explicit confirmation.
-- Overlapping freeform panes can cover each other's headers and far resize handles; move the covering pane or use a reachable control.
+- Overlapping canvas panes can cover each other's headers; use the overview or Fit all to locate and recover them.
 - Browser panes share the app's Chromium runtime. Profiles isolate session data, but panes are not separate browser installations or OS sandboxes.
 - Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.

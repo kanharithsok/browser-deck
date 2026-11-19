@@ -445,7 +445,7 @@ async function duplicateWorkspace(sourceId: string): Promise<void> {
     name,
     panes,
     layout: {
-      mode: source.layout.mode,
+      mode: 'canvas',
       columns: source.layout.columns,
       gridOrder: source.layout.gridOrder
         .map((paneId) => idMap.get(paneId))
@@ -458,7 +458,13 @@ async function duplicateWorkspace(sourceId: string): Promise<void> {
       ),
       freeformOrder: source.layout.freeformOrder
         .map((paneId) => idMap.get(paneId))
-        .filter((id): id is string => Boolean(id))
+        .filter((id): id is string => Boolean(id)),
+      canvas: Object.fromEntries(
+        Object.entries(source.layout.canvas ?? {}).flatMap(([paneId, position]) => {
+          const mappedId = idMap.get(paneId)
+          return mappedId ? [[mappedId, { ...position }]] : []
+        })
+      )
     },
     updatedAt: new Date().toISOString()
   })
@@ -732,12 +738,6 @@ function buildApplicationMenu(): void {
           label: 'Toggle Maximize',
           accelerator: 'CmdOrCtrl+Shift+M',
           click: () => sendCommand('toggle-maximize')
-        },
-        {
-          id: 'pane-layout',
-          label: 'Toggle Grid / Freeform',
-          accelerator: 'CmdOrCtrl+Shift+L',
-          click: () => sendCommand('toggle-layout')
         }
       ]
     },
@@ -1233,6 +1233,7 @@ app.whenReady().then(async () => {
     getThemePreference: () => workspaceStore?.theme() ?? 'system',
     getResolvedTheme: () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'),
     showThemeMenu,
+    setThemePreference: (theme) => applyThemePreference(theme),
     saveWorkspaceLayout: async (input) => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }

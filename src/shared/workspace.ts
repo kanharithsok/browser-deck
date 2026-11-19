@@ -25,6 +25,7 @@ const PANE_ID_PATTERN =
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/
 
+/** Legacy modes are still parsed so existing workspace files migrate cleanly. */
 export type WorkspaceLayoutMode = 'grid' | 'freeform' | 'canvas'
 
 export interface WorkspacePaneDefinition {
@@ -209,7 +210,7 @@ export function normalizeWindowBounds(input: unknown): WindowBounds | null {
 export function defaultWorkspaceLayout(paneIds: readonly string[] = []): WorkspaceLayout {
   const ids = paneIds.filter(isValidPaneId)
   return {
-    mode: 'grid',
+    mode: 'canvas',
     columns: 2,
     gridOrder: [...ids],
     freeform: {},
@@ -285,12 +286,8 @@ export function normalizeWorkspaceLayout(
   }
 
   const record = input as Record<string, unknown>
-  const mode: WorkspaceLayoutMode =
-    record.mode === 'freeform' ||
-    record.mode === 'grid' ||
-    record.mode === 'canvas'
-      ? record.mode
-      : fallback.mode
+  // Grid and Freeform are no longer selectable; old files load into Canvas.
+  const mode: WorkspaceLayoutMode = 'canvas'
   const columns =
     typeof record.columns === 'number' &&
     Number.isInteger(record.columns) &&

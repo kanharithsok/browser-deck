@@ -72,7 +72,7 @@ describe('workspace transfer serialization', () => {
         { url: 'http://localhost:3000/two', viewport: { preset: 'responsive' } }
       ],
       layout: {
-        mode: 'freeform',
+        mode: 'canvas',
         columns: 3,
         gridOrder: [1, 0],
         freeformOrder: [0, 1]
@@ -120,6 +120,7 @@ describe('workspace transfer serialization', () => {
         viewport: expect.objectContaining({ preset: 'responsive' })
       }
     ])
+    expect(materialized.layout.mode).toBe('canvas')
     expect(materialized.layout.gridOrder).toEqual([PANE_D, PANE_C])
     expect(materialized.layout.freeformOrder).toEqual([PANE_C, PANE_D])
     expect(materialized.layout.freeform).toEqual({

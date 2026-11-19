@@ -12,7 +12,7 @@
 
 ## 1. Product vision
 
-PaneFlow is a local-first desktop application for opening multiple independent, interactive browser sessions in one flexible workspace. Users can arrange browser panes in grid or freeform layouts, resize and snap them, emulate different viewport sizes, and save reusable workspaces.
+PaneFlow is a local-first desktop application for opening multiple independent, interactive browser sessions in one flexible workspace. Users can arrange browser panes on an infinite canvas, snap them to each other, emulate different viewport sizes, and save reusable workspaces.
 
 PaneFlow is intended for frontend developers, designers, QA engineers, agencies, and teams that need to compare websites, environments, accounts, roles, themes, or responsive layouts side by side.
 
@@ -79,11 +79,11 @@ PaneFlow is a desktop workspace for real browser sessions. It is not intended to
 - Independent URL navigation, back, forward, reload, loading, and error states.
 - Add, close, rename, and duplicate panes.
 - Pane duplication uses a fresh isolated profile by default.
-- Dynamic grid layout with selectable column count and automatic placement.
-- Freeform layout with drag, resize, z-order, and optional snapping.
-- Snap to grid guides, canvas edges, and neighboring pane edges.
+- Canvas-only workspace with world-coordinate pane placement and header dragging.
+- World-space snapping to neighboring pane edges and centers, with visible alignment guides.
 - Maximize/focus and restore a pane.
-- Per-pane viewport presets and custom viewport dimensions.
+- Per-pane viewport presets, including popular phones, tablets, laptops, and desktops, plus custom dimensions.
+- A compact **+** add control with a device picker, and a right-click canvas context menu for adding panes and common workspace settings.
 - Save, restore, duplicate, rename, switch, and delete workspaces.
 - Persistent browser profile data across normal application restarts.
 - Profile management, including clear and delete operations with confirmation.
@@ -148,27 +148,20 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** workspace selector/name, add-pane action with a device-size dropdown, layout mode, grid controls when relevant, reload-all, appearance control, and compact settings/profile access.
+1. **Top toolbar:** workspace selector/name, a compact **+** add-pane control with a device menu, reload-all, appearance control, and compact settings/profile access.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
-3. **Pane chrome:** compact single-row title/address/navigation controls where space permits, with lower-priority actions in the contextual menu and graceful wrapping at narrow widths.
-4. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
-5. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
+3. **Active-pane bar:** address, navigation, and viewport controls for the active Canvas pane.
+4. **Pane chrome:** compact single-row title and actions, with lower-priority actions in the contextual menu.
+5. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
+6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
 Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
 
 ### 6.3 Pane controls
 
-Each pane should expose, as space permits:
+Each pane exposes a compact title, loading/error status, contextual menu, and close action. The active Canvas pane additionally exposes address, back, forward, reload, and viewport controls in the global active-pane bar.
 
-- Pane title.
-- Address input.
-- Back, forward, and reload.
-- Loading/navigation status.
-- Viewport preset/custom-size selector or a compact viewport indicator.
-- Contextual menu.
-- Close action.
-
-When a pane is too small, collapse lower-priority controls into its contextual menu. Controls must never overlap or become unusable.
+When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable.
 
 Supported pane actions:
 
@@ -201,7 +194,6 @@ Use standard platform conventions and document the final shortcuts. At minimum, 
 - Reload all panes.
 - Focus/maximize and restore pane.
 - Switch workspace.
-- Toggle grid/freeform mode.
 
 Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and tested before being shown in menus.
 
@@ -215,31 +207,21 @@ Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and t
 - Support adding and removing panes without rebuilding the workspace.
 - Give every pane a stable internal ID.
 - Keep pane identity separate from browser profile identity.
-- Preserve pane order, viewport settings, URL, and layout state when changing layout modes.
+- Preserve pane order, viewport settings, URL, and Canvas positions when restoring a workspace.
 - If the machine becomes resource-constrained, show a useful warning rather than silently dropping panes or changing website behavior.
 
-### 7.2 Grid mode
+### 7.2 Grid and Freeform modes (removed)
 
-- User-selectable 1–5 columns, plus an automatic layout option if it improves usability.
-- Calculate the required rows from pane count and columns.
-- Equal-sized panes by default.
-- Dragging a pane changes its order; the grid reflows.
-- Add/remove operations recalculate placement without losing other panes.
-- Maintain consistent canvas padding and gaps.
-- Allow scrolling when the number of rows exceeds available vertical space.
-- Keep grid controls compact and visible only when relevant.
+Grid and Freeform are no longer selectable. Existing workspace files that reference either mode load into Canvas, and exports normalize to Canvas. Legacy layout fields may be retained in the schema only so older workspaces can be read without data loss.
 
-### 7.3 Freeform mode
+### 7.3 Canvas add and context menus
 
-- Drag panes anywhere within the canvas.
-- Resize horizontally and vertically.
-- Allow overlapping panes.
-- Control z-order and bring a pane forward/send it backward.
-- Optional snap-to-grid, snap-to-canvas-edge, and snap-to-neighbor-edge.
-- Show alignment guides only during relevant drag/resize interactions.
-- Provide a fit/organize action to arrange panes neatly again.
-- Keep each pane's title bar reachable when clamping to workspace bounds.
-- Enforce a reasonable minimum width and height so pane controls remain usable.
+- The toolbar **+** control opens a compact device menu grouped into Phones, Tablets, and Desktop. It includes responsive mode and popular devices such as iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop.
+- Right-clicking empty Canvas opens a menu with Add pane, Fit all panes, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance.
+- The Add pane item switches the menu to the device picker without opening a separate modal.
+- Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
+- Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
+- Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
 
 ### 7.4 Canvas mode
 
@@ -247,37 +229,33 @@ Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and t
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
 - While the Hand tool is active, use the mouse wheel to zoom between 50% and 200% around the cursor. Show the zoom level with a reset control. Keep the page's CSS viewport stable while visually scaling native views through device emulation.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
-- Keep pages live as native views when their content rectangle is fully inside the workspace.
+- While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
+- Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
 - Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
 - Provide a Fit all panes action in the Canvas global bar and in the overview. It must bring every pane back inside the workspace.
-- Use a workspace-level address and navigation bar for the active pane, with compact labels on each frame.
+- Use the Canvas global bar for active-pane address, navigation, and viewport controls, with compact labels on each frame.
+- Provide the + device menu and right-click canvas context menu described in §7.3.
 - Persist canvas positions per workspace. Pan offset and zoom are viewport state and may reset.
-- Device bezels and freeform frame resizing are not required for the first Canvas slice.
+- Device bezels and pane frame resizing are not required.
 
-### 7.5 Switching modes
+### 7.5 Canvas-only layout
 
-- Grid, freeform, and canvas modes share the same pane model and identity system.
-- Preserve each mode's prior arrangement; store grid order, freeform geometry, canvas positions, and canvas order separately.
+- Canvas is the only selectable layout. Remove Grid/Freeform controls and the grid/freeform toggle command from the user interface.
+- Existing workspaces with a legacy layout mode open in Canvas. Normalize saved and exported layout modes to Canvas while retaining legacy fields only for readable migration.
 - Do not persist temporary maximized/focused state.
-- Store freeform geometry in normalized coordinates so it adapts when the application window changes size.
-- If many panes cannot comfortably fit, allow scrolling or smaller grid cells; never silently discard panes.
+- If many panes cannot comfortably fit, provide zoom, Fit all, and the overview; never silently discard panes.
 
 ### 7.6 Snapping behavior
 
-Support optional:
-
-- Visible grid guides.
-- Snap-to-grid.
-- Snap-to-canvas edges.
-- Snap-to-neighbor pane edges.
-- Alignment guides while moving/resizing.
-- A sensible default snap threshold.
-
-A configurable snap sensitivity may be added if it can be exposed without cluttering the interface.
+- Snap pane edges and centers to neighboring pane edges and centers in world space.
+- Show a 1px alignment guide while a snap is active; clear guides on pointer release or cancel.
+- Use an 8 screen-pixel snap threshold, divided by canvas zoom for world-space calculations.
+- Do not snap to the dragged pane itself. The minimap and Fit all remain the recovery paths for distant panes.
+- A configurable snap sensitivity may be added later if it can be exposed without cluttering the interface.
 
 ### 7.7 Layout engine requirements
 
@@ -285,14 +263,14 @@ The layout engine is a core subsystem. Implement it in pure TypeScript, independ
 
 It must handle:
 
-- Grid placement and reflow.
-- Freeform geometry.
-- Normalized-coordinate conversion.
-- Minimum size and canvas-bound clamping.
-- Snap candidate calculation and thresholds.
-- Pane ordering and z-order.
+- Canvas frame sizing from pane viewport presets.
+- World-coordinate placement, default row arrangement, and persisted positions.
+- Edge/center snap candidate calculation and thresholds.
+- Minimap projection and adaptive minimap panel sizing.
+- Viewport preset validation and fit-scale math.
 - Maximize/restore geometry.
 - Add/remove/reorder operations.
+- Legacy grid/freeform schema validation for migration only.
 
 Do not place layout calculations directly inside Vue components or Electron IPC handlers.
 
@@ -410,14 +388,13 @@ Do not manually copy cookies or authentication tokens into PaneFlow's configurat
 
 Provide sensible presets for common:
 
-- Mobile phones.
-- Tablets.
-- Laptops.
-- Desktop viewports.
+- Phones: iPhone 15 Pro/Pro Max/SE, Samsung Galaxy S24/S24 Ultra, Google Pixel 8/8 Pro, and a responsive/generic phone preset.
+- Tablets: iPad Pro 12.9″, iPad Air, Samsung Galaxy Tab S9, and a generic tablet preset.
+- Laptops and desktops: MacBook Air, laptop, and desktop CSS viewports.
 
 Also support custom width and height.
 
-Do not use device-brand/model names as a promise of hardware accuracy. Preset names should describe a common viewport class and dimensions, or clearly label the source dimensions.
+Preset labels may identify a popular source device, but must always show the CSS viewport dimensions and use “viewport”/“emulation” language. Do not present a preset as physical hardware accuracy.
 
 ### 10.2 Per-pane settings
 
@@ -430,7 +407,7 @@ Each pane can have independent:
 
 Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
-New panes can be created directly with a fixed viewport preset from the add-pane device dropdown. The new pane receives that preset and a fresh browser profile.
+New panes can be created directly with a fixed viewport preset from the **+** device menu. The new pane receives that preset and a fresh browser profile.
 
 ### 10.3 Implementation and validation
 
@@ -438,7 +415,7 @@ New panes can be created directly with a fixed viewport preset from the add-pane
 - Verify all parameters against current official Electron documentation during implementation.
 - Confirm actual page values using a local fixture page that displays `window.innerWidth`, `window.innerHeight`, and `window.devicePixelRatio`.
 - Confirm that different panes can use different viewport configurations simultaneously.
-- Confirm that creating a pane from the device dropdown applies the selected preset without changing other panes.
+- Confirm that creating a pane from the **+** device menu applies the selected preset without changing other panes.
 - Confirm that the visual fit scale is recalculated after pane and window resizing without changing the intended emulated CSS viewport.
 
 Do not claim a preset reproduces physical hardware, touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Do not spoof user agents to bypass identity-provider restrictions.
@@ -470,13 +447,13 @@ Example workspaces:
 A workspace stores:
 
 - Stable ID and name.
-- Layout mode.
-- Mode-specific arrangement state.
+- Canvas layout marker and world-coordinate pane positions.
 - Pane order and pane definitions.
 - Pane IDs and browser profile references.
 - Per-pane URL and viewport settings.
-- Grid and snapping preferences.
-- Relevant pane titles and z-order.
+- Snapping preferences when configurable.
+- Relevant pane titles.
+- Legacy grid/freeform fields only for older-file migration.
 
 A workspace stores references to profile IDs, not profile contents or authentication data.
 
@@ -811,12 +788,12 @@ Tests must use local fixture pages/servers wherever possible. Do not make correc
 
 Cover at minimum:
 
-- Grid placement and reflow.
-- Freeform geometry and normalized-coordinate conversion.
-- Snap calculations and thresholds.
-- Minimum-size and canvas-bound clamping.
-- Pane ordering and z-order.
-- Maximize/restore geometry.
+- Canvas frame sizing and default placement.
+- World-space snap calculations and thresholds.
+- Minimap projection and adaptive panel sizing.
+- Pane ordering and maximize/restore geometry.
+- Legacy grid/freeform validation and migration.
+- Viewport preset/custom validation and fit-scale math.
 - URL normalization and scheme rejection.
 - Configuration validation and schema migrations.
 - Profile registry rules and safe partition-name generation.
@@ -839,9 +816,9 @@ Use local fixture pages/servers.
 ### 18.3 End-to-end and manual checks
 
 - Open at least 8 panes using local test pages.
-- Add, close, duplicate, rename, reorder, and navigate panes.
-- Switch between grid and freeform without losing the other mode's arrangement.
-- Drag, resize, snap, overlap, change z-order, maximize, and restore panes.
+- Add, close, duplicate, rename, and navigate panes.
+- Drag panes with snapping guides, use Fit all, collapse/expand the minimap, and recover partially visible panes.
+- Open the + device menu and right-click canvas menu, verify keyboard dismissal, and create a pane from a selected device.
 - Resize/maximize/restore the application window and verify native view alignment.
 - Test Retina coordinate behavior where available.
 - Verify viewport values from inside each page.
@@ -901,12 +878,12 @@ Do not build the full product UI until this experiment passes.
 ### Phase 2 — Workspace and layout engine
 
 - Implement the pure TypeScript layout engine and unit tests.
-- Build grid mode and dynamic pane management.
-- Add freeform drag/resize, snapping, z-order, and maximize/restore.
+- Build Canvas-only pane management with world-coordinate placement.
+- Add header dragging, world-space snapping guides, minimap recovery, and maximize/restore.
 - Synchronize native browser bounds with workspace geometry.
 - Add keyboard interactions for core pane actions.
 
-**Exit condition:** 8 panes can be arranged, moved, resized, snapped, overlapped, and interacted with without native view/control misalignment or loss of pane state.
+**Exit condition:** 8 panes can be added, moved, snapped, zoomed, fit into view, maximized, and interacted with without native view/control misalignment or loss of pane state.
 
 ### Phase 3 — Viewport emulation and persistence
 
@@ -942,8 +919,8 @@ The MVP is complete when a user can:
 4. Open supported HTTP/HTTPS websites, including localhost, LAN, staging, and production sites.
 5. Sign into the same website with different accounts in different panes without cookie/localStorage leakage.
 6. Navigate each pane independently.
-7. Arrange panes in grid and freeform modes.
-8. Drag, resize, snap, overlap, reorder, maximize, and restore panes.
+7. Arrange panes on the Canvas and navigate the workspace without losing them.
+8. Drag, snap, zoom, fit, maximize, and restore panes.
 9. Apply different viewport configurations to different panes and verify actual page viewport values.
 10. Restart the app and restore workspace configuration and persistent profile data.
 11. Manage, clear, and delete profiles safely.
