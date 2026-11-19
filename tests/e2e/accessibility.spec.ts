@@ -267,7 +267,15 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(profilesTrigger).toHaveAttribute('aria-expanded', 'false')
       await expect(profilesTrigger).toHaveAttribute('title', 'Manage browser profiles')
 
-      await expect(banner.getByRole('button', { name: 'Add pane' })).toBeEnabled()
+      await expect(
+        banner.getByRole('button', { name: 'Add pane', exact: true })
+      ).toBeEnabled()
+      const addPaneDeviceButton = banner.getByRole('button', {
+        name: 'Add pane with device size'
+      })
+      await expect(addPaneDeviceButton).toBeEnabled()
+      await expect(addPaneDeviceButton).toHaveAttribute('aria-haspopup', 'menu')
+      await expect(addPaneDeviceButton).toHaveAttribute('aria-expanded', 'false')
       const reloadAll = banner.getByRole('button', { name: 'Reload all panes' })
       await expect(reloadAll).toHaveAccessibleName('Reload all panes')
       await expect(reloadAll).toHaveAttribute('title', 'Reload all panes')
@@ -287,6 +295,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(axPairs).toContain('button:Switch workspace, current Workspace')
       expect(axPairs).toContain('button:Profiles')
       expect(axPairs).toContain('button:Add pane')
+      expect(axPairs).toContain('button:Add pane with device size')
       expect(axPairs).toContain('button:Reload all panes')
       expect(axPairs).toContain('combobox:Grid columns')
     })

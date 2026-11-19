@@ -3,7 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import PaneCard from './components/PaneCard.vue'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
-import type { PaneViewport } from '../../shared/viewports'
+import {
+  viewportFromPreset,
+  type PaneViewport,
+  type ViewportPresetId
+} from '../../shared/viewports'
 import type {
   ThemePreference,
   WorkspaceLayout,
@@ -57,6 +61,7 @@ const maximizedPaneId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
+const addPaneMenuOpen = ref(false)
 const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
 const profilesOpen = ref(false)
 const profiles = ref<ProfileSummary[]>([])
@@ -646,14 +651,14 @@ function applyState(state: ShellState): void {
   })
 }
 
-async function addPane(): Promise<void> {
+async function runAddPane(add: () => Promise<ScriptResult>): Promise<void> {
   if (addingPane.value) {
     return
   }
   addingPane.value = true
   actionError.value = null
   try {
-    const result = await window.paneflow.addPane()
+    const result = await add()
     if (!result.ok) {
       actionError.value = result.error
     }
@@ -661,6 +666,45 @@ async function addPane(): Promise<void> {
     actionError.value = 'Could not add a pane.'
   } finally {
     addingPane.value = false
+  }
+}
+
+async function addPane(): Promise<void> {
+  await runAddPane(() => window.paneflow.addPane())
+}
+
+async function addPaneWithViewport(preset: ViewportPresetId): Promise<void> {
+  await runAddPane(() => window.paneflow.addPaneWithViewport(viewportFromPreset(preset)))
+}
+
+async function openAddPaneMenu(event: MouseEvent): Promise<void> {
+  if (addingPane.value || addPaneMenuOpen.value) {
+    return
+  }
+  const button = event.currentTarget
+  if (!(button instanceof HTMLElement)) {
+    return
+  }
+
+  const rect = button.getBoundingClientRect()
+  addPaneMenuOpen.value = true
+  actionError.value = null
+  try {
+    const result = await window.paneflow.showAddPaneMenu({
+      x: rect.right - 2,
+      y: rect.bottom + 2
+    })
+    if (!result.ok) {
+      actionError.value = result.error
+      return
+    }
+    if (result.preset) {
+      await addPaneWithViewport(result.preset)
+    }
+  } catch {
+    actionError.value = 'Could not open the pane size menu.'
+  } finally {
+    addPaneMenuOpen.value = false
   }
 }
 
@@ -1741,17 +1785,33 @@ onBeforeUnmount(() => {
         </svg>
         Profiles
       </button>
-      <button
-        class="toolbar-button primary"
-        type="button"
-        :disabled="addingPane"
-        @click="addPane"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M8 3v10M3 8h10" />
-        </svg>
-        Add pane
-      </button>
+      <div class="add-pane-group">
+        <button
+          class="toolbar-button primary add-pane-main"
+          type="button"
+          :disabled="addingPane || addPaneMenuOpen"
+          @click="addPane"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+          Add pane
+        </button>
+        <button
+          class="toolbar-button primary add-pane-menu"
+          type="button"
+          title="Add pane with device size"
+          aria-label="Add pane with device size"
+          aria-haspopup="menu"
+          :aria-expanded="addPaneMenuOpen"
+          :disabled="addingPane || addPaneMenuOpen"
+          @click="openAddPaneMenu"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+      </div>
       <button
         class="icon-button toolbar-icon"
         type="button"
@@ -1840,12 +1900,33 @@ onBeforeUnmount(() => {
         <p class="empty-detail">
           Add a pane to open a real, isolated browser session in this workspace.
         </p>
-        <button class="toolbar-button primary" type="button" :disabled="addingPane" @click="addPane">
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M8 3v10M3 8h10" />
-          </svg>
-          Add pane
-        </button>
+        <div class="add-pane-group">
+          <button
+            class="toolbar-button primary add-pane-main"
+            type="button"
+            :disabled="addingPane || addPaneMenuOpen"
+            @click="addPane"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 3v10M3 8h10" />
+            </svg>
+            Add pane
+          </button>
+          <button
+            class="toolbar-button primary add-pane-menu"
+            type="button"
+            title="Add pane with device size"
+            aria-label="Add pane with device size"
+            aria-haspopup="menu"
+            :aria-expanded="addPaneMenuOpen"
+            :disabled="addingPane || addPaneMenuOpen"
+            @click="openAddPaneMenu"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
+        </div>
       </div>
     </main>
 
@@ -2370,6 +2451,26 @@ onBeforeUnmount(() => {
 .toolbar-button.primary:hover:not(:disabled) {
   background: var(--text);
   opacity: 0.86;
+}
+
+.add-pane-group {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.add-pane-group .add-pane-main {
+  border-radius: 6px 0 0 6px;
+}
+
+.add-pane-group .add-pane-menu {
+  padding: 0 6px;
+  border-left: 1px solid var(--bg);
+  border-radius: 0 6px 6px 0;
+}
+
+.add-pane-group .add-pane-menu svg {
+  width: 11px;
+  height: 11px;
 }
 
 .toolbar-button svg {

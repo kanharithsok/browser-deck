@@ -9,7 +9,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 ## Current capabilities
 
 - Electron `BaseWindow` with a trusted Vue shell and native `WebContentsView` browser panes.
-- Two browser panes by default; add, duplicate, and close panes dynamically. Duplicates copy URL/viewport with a fresh profile.
+- Two browser panes by default; add, duplicate, and close panes dynamically. The toolbar add control includes a device-size dropdown that creates a pane with the selected viewport. Duplicates copy URL/viewport with a fresh profile.
 - One persistent, internally generated browser profile per new pane.
 - Independent navigation, back, forward, reload, loading, and load-error states.
 - Per-pane native menu for back/forward/reload/DevTools/close.
@@ -24,7 +24,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Freeform mode with normalized pane geometry, title-row dragging, eight resize handles, snapping guides, explicit bring-front/send-back controls, and a Tidy action.
 - Temporary maximize/restore with unrelated native views hidden and the prior arrangement preserved.
 - Native **Pane** menu commands for add, close, reload active/all, maximize, and grid/freeform toggle, with an active pane inferred from shell/native focus.
-- Per-pane viewport emulation with responsive, mobile, tablet, laptop, and desktop presets, custom width/height/DPR, and automatic fit-to-pane scaling. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
+- Per-pane viewport emulation with responsive, mobile, tablet, laptop, and desktop presets, custom width/height/DPR, and automatic fit-to-pane scaling. New panes can start with a preset from the add-pane device dropdown. Page values are verified inside the fixture pages, and panes can use different presets simultaneously.
 - Versioned workspace persistence: pane IDs, profile references, URLs, viewport settings, grid columns/order, grid/freeform mode, and freeform geometry restore after restart. Profile partitions and sessions are retained.
 - Safe window restoration: normal bounds, maximized state, and full-screen state restore after restart when the saved normal bounds remain visible on a connected display.
 - Hidden-inset macOS title bar: traffic lights sit inside the compact toolbar, the shell fills the full window content, and empty toolbar space drags the window.
@@ -90,7 +90,7 @@ Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node optio
 
 | Shortcut | Action |
 | --- | --- |
-| `Cmd/Ctrl+T` | Add pane |
+| `Cmd/Ctrl+T` | Add responsive pane |
 | `Cmd/Ctrl+D` | Duplicate active pane |
 | `Cmd/Ctrl+Shift+W` | Close active pane |
 | `Cmd/Ctrl+Alt+R` | Reload active pane |

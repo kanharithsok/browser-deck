@@ -553,3 +553,26 @@ The MVP is complete. These items are post-MVP hardening and validation, not Phas
 **Known behavior / limitations:** Fixed viewports letterbox when the emulated aspect ratio differs from the pane; there is no fill/crop mode. The obsolete `displayScale` field is no longer written.
 
 **Manual GUI verification still outstanding:** Visual review of letterboxing at unusual pane aspect ratios. The automated checks cover scale changes and native bounds alignment, but not a human visual pass.
+
+## Post-MVP — Add-pane device size picker
+
+**Date:** 2026-11-19
+
+**Status:** Complete.
+
+**Change:** The toolbar Add pane control is now a split button. The primary button still creates a responsive pane; the chevron opens a native device-size menu with Responsive plus the mobile, tablet, laptop, and desktop presets. Selecting a preset sends it through a new validated `add-pane-with-viewport` IPC path, which creates a fresh browser profile and a pane with that viewport. The empty-state Add pane control uses the same split control. Device labels remain viewport classes with dimensions rather than device-brand claims.
+
+**Files changed:** `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/browser-manager.ts`, `src/renderer/src/App.vue`, browser-pane and accessibility e2e tests, `SPEC.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-029), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed (`tsc` and `vue-tsc`). |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run test:unit` | Passed: 11 files, 126 tests in 407 ms. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.9 s. The device test rejects an unknown preset, creates a mobile 390 × 844 DPR 3 pane, verifies its viewport, preset control, and fit emulation, and closes it cleanly. |
+| `npm run build` | Passed: main 118.06 kB, preload 6.06 kB, renderer JS 272.39 kB, CSS 23.44 kB. |
+| `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
+
+**Automated coverage:** The accessibility test verifies the device-size button's accessible name, menu semantics, and presence. The browser-pane e2e verifies main-process viewport validation, pane creation with the selected preset, fit emulation, fresh state, and cleanup.
+
+**Manual GUI verification still outstanding:** Selecting an item directly from the native popup menu is not automated by Playwright; the toolbar control, menu construction, and post-selection creation path are covered, but the native menu interaction needs a manual GUI check.

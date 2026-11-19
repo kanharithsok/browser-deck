@@ -79,6 +79,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Fixture `window.innerHeight` matches configured height. (E2e: mobile 844, tablet 1180, custom 700.)
 - [x] Device scale factor behavior documented and verified for emulation. (E2e: mobile DPR 3, tablet DPR 2, custom DPR 2; see ADR-010.)
 - [x] Fixed viewport presets always fit the pane content and refit after frame resizing. (E2e asserts fit scale below 1, recomputes the scale when the grid narrows, and restores it when the frame returns to its prior size. Responsive panes remain 1:1.)
+- [ ] Add-pane device dropdown creates a pane with the selected preset. (Toolbar control, validation, and the add-pane-with-viewport creation path are automated; selecting the item from the native menu still needs a manual GUI check.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
 - [x] Pane chrome remains usable at five grid columns. (E2e asserts no horizontal header overflow and a usable address width; controls wrap to a second row.)
 - [ ] Fill/crop display mode for panes whose aspect ratio differs from the viewport preset. (Not implemented; fixed viewports letterbox to keep the full viewport visible.)
