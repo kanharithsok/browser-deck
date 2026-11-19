@@ -773,10 +773,4 @@ function requestClose(): void {
     display: none;
   }
 }
-
-@container (max-width: 340px) {
-  .pane-actions {
-    display: none;
-  }
-}
 </style>

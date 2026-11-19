@@ -161,7 +161,7 @@ Do not add a complex sidebar to the MVP unless testing demonstrates a clear need
 
 Each pane exposes a compact title, loading/error status, contextual menu, and close action. The active Canvas pane additionally exposes address, back, forward, reload, and viewport controls in the global active-pane bar.
 
-When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable.
+When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep the maximize, contextual-menu, and close actions available at every zoom level; hide lower-priority metadata such as the profile or viewport badge before hiding actions.
 
 Supported pane actions:
 

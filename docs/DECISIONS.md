@@ -1204,6 +1204,33 @@ Record material technical decisions here. Keep entries short but include context
   - E2e verifies the empty bar shows "No pane selected" and the populated bar exposes the address input.
   - Visual check at 1280 × 860 and 720 × 560 confirms the bar stays 34 px and the empty state remains readable.
 
+## ADR-040 — Pane actions stay visible when Canvas frames narrow
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Pane frames scale with Canvas zoom, but their layout width is the scaled width. A `@container (max-width: 340px)` rule hid `.pane-actions` entirely. At 80% zoom, a 430 × 932 iPhone frame stayed at 344 px and kept its controls, while a 393 × 852 frame fell to about 314 px and lost maximize, actions, and close. The result looked like a random pane losing its header controls.
+
+- **Decision:**
+  1. Never hide the pane action cluster based on container width. Maximize, pane actions, and close remain available at every Canvas zoom and viewport preset.
+  2. Truncate the title and hide lower-priority metadata first. The profile is hidden below 470 px; the viewport badge may be hidden later if an even narrower layout needs the space.
+  3. Keep the single-row, non-wrapping header. The action cluster is `flex: none`; the main region shrinks and the title ellipsizes.
+  4. Do not collapse the dedicated controls into the ellipsis menu in this slice; the ellipsis already lists pane actions, but requiring an extra menu to close or maximize would be a regression.
+
+- **Alternatives considered:**
+  - **Keep the 340 px hide.** Rejected; it makes core controls disappear at ordinary zoom levels and is the reported bug.
+  - **Hide only the close button at narrow widths.** Rejected; close and maximize are both core controls, and the ellipsis alone is not a substitute.
+  - **Collapse all actions into the ellipsis.** Rejected for this slice; it adds a click for common actions and requires reworking the native menu.
+  - **Hide the viewport badge at 340 px instead.** Deferred; the header currently fits at ~314 px with the badge hidden for the active pane and the title truncating, so there is no need to remove more metadata yet.
+
+- **Consequences:**
+  - At extreme zoom-out, titles may truncate heavily, but the actions stay reachable.
+  - The header no longer silently loses controls at a width threshold.
+  - Pane actions remain visually dimmer on inactive panes but are always present.
+
+- **Evidence / verification:**
+  - E2e sets a 430 × 932 pane and a 393 × 852 pane, fits them, resets to 100%, zooms out to 80%, confirms the card widths straddle 340 px, and asserts maximize, pane actions, and close are visible on both.
+  - A manual visual pass at 80% shows both headers with controls and no header overflow (`scrollWidth === clientWidth`).
+
 ## ADR template
 
 ### ADR-NNN — Title

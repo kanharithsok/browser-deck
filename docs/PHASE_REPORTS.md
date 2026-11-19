@@ -697,3 +697,26 @@ The Canvas overview is a persistent native `WebContentsView` in the bottom-right
 **Manual GUI verification still outstanding:** VoiceOver announcement of the empty-state status, focus return to the percentage trigger after menu dismissal, and a visual pass at minimum window width remain manual. A left/right inspector layout was not implemented.
 
 **Known behavior / limitations:** The bar consumes a 34 px row even when nothing is selected; this is the cost of a stable canvas. The zoom menu keeps the overlays visible, but clicking the bar's non-button background does not dismiss the menu; clicking a zoom control or the minimap does. A persistent left/right inspector remains a future option if the top bar becomes too dense.
+
+## Post-MVP — Pane actions stay visible at every Canvas zoom
+
+**Date:** 2026-11-19
+
+**Status:** Implemented.
+
+**Change:** Removed the `@container (max-width: 340px)` rule that hid the entire pane action cluster. Pane frames scale with Canvas zoom, so a 430 × 932 pane at 80% remained 344 px and kept its controls while a 393 × 852 pane fell to about 314 px and silently lost maximize, pane actions, and close. The header now always keeps the action cluster; the title truncates and the profile remains the first metadata to hide at narrow widths. This matches the existing SPEC requirement that controls never become unusable. A visual pass at 80% confirmed both headers show all three controls with no overflow.
+
+**Files changed:** `src/renderer/src/components/PaneCard.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-040), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 15 unit files / 150 tests, all 13 light + 13 dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.5 s. The integration test sets a 430 × 932 pane and a 393 × 852 pane, fits them, resets to 100%, zooms out to 80%, confirms the card widths straddle the old 340 px breakpoint (344 px vs ~314 px), and asserts maximize, pane actions, and close are visible on both. |
+| `npm run build` | Passed: main 141.55 kB, preload 8.50 kB, renderer JS 326.34 kB, shell CSS 26.97 kB, minimap CSS 3.10 kB, zoom CSS 1.44 kB, shared tokens 2.98 kB. |
+| Pane-header visual check | Rendered two iPhone frames at 80%: both headers kept the maximize, ellipsis, and close controls; `scrollWidth === clientWidth` on both headers. |
+
+**Automated coverage:** The new e2e step covers the regression directly by straddling the former breakpoint rather than checking only one pane width. Existing pane chrome, viewport, zoom, workspace, and accessibility coverage continues to pass.
+
+**Manual GUI verification still outstanding:** Very small zoom levels where titles truncate heavily remain a visual review item. The actions are present, but the header is intentionally compact.
+
+**Known behavior / limitations:** At extreme zoom-out, the title may truncate to a few characters and the header can become crowded, but core actions stay reachable. The viewport badge may be hidden on the active pane because the global bar owns that information; inactive panes keep it while the header fits. Collapsing the dedicated controls into the ellipsis menu remains deferred.
