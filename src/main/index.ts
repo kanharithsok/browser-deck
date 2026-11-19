@@ -160,13 +160,13 @@ function persistPanes(manager: BrowserManager): void {
   }
   lastPersistedPaneKey = key
   void workspaceStore.setPanes(panes).catch((error) => {
-    console.error('Could not persist the workspace panes.', error)
+    console.error('Could not persist the workspace devices.', error)
   })
 }
 
 function toWorkspacePane(pane: PaneInitialization): WorkspacePaneDefinition {
   if (!pane.id) {
-    throw new Error('Initial panes require stable IDs.')
+    throw new Error('Initial devices require stable IDs.')
   }
   return {
     id: pane.id,
@@ -708,35 +708,35 @@ function buildApplicationMenu(): void {
     },
     { role: 'editMenu' },
     {
-      label: 'Pane',
+      label: 'Device',
       submenu: [
         {
           id: 'pane-add',
-          label: 'Add Pane',
+          label: 'Add Device',
           accelerator: 'CmdOrCtrl+T',
           click: () => sendCommand('add-pane')
         },
         {
           id: 'pane-duplicate',
-          label: 'Duplicate Pane',
+          label: 'Duplicate Device',
           accelerator: 'CmdOrCtrl+D',
           click: () => sendCommand('duplicate-pane')
         },
         {
           id: 'pane-close',
-          label: 'Close Pane',
+          label: 'Close Device',
           accelerator: 'CmdOrCtrl+Shift+W',
           click: () => sendCommand('close-pane')
         },
         {
           id: 'pane-reload',
-          label: 'Reload Pane',
+          label: 'Reload Device',
           accelerator: 'CmdOrCtrl+Alt+R',
           click: () => sendCommand('reload-pane')
         },
         {
           id: 'pane-reload-all',
-          label: 'Reload All Panes',
+          label: 'Reload All Devices',
           accelerator: 'CmdOrCtrl+Alt+Shift+R',
           click: () => sendCommand('reload-all')
         },
@@ -1428,7 +1428,7 @@ app.whenReady().then(async () => {
       if (profileInUse(profileId) && !closePanes) {
         return {
           ok: false,
-          error: 'Confirm closing panes using this profile before clearing its data.'
+          error: 'Confirm closing devices using this profile before clearing its data.'
         }
       }
       try {
@@ -1436,7 +1436,7 @@ app.whenReady().then(async () => {
           browserManager?.closePanesForProfile(profileId)
         }
         if (profileInUse(profileId)) {
-          return { ok: false, error: 'Could not close all panes using this profile.' }
+          return { ok: false, error: 'Could not close all devices using this profile.' }
         }
         await clearProfileSession(profileId)
         return { ok: true }
@@ -1451,7 +1451,7 @@ app.whenReady().then(async () => {
       if (profileInUse(profileId) && !closePanes) {
         return {
           ok: false,
-          error: 'Confirm closing panes using this profile before deleting it.'
+          error: 'Confirm closing devices using this profile before deleting it.'
         }
       }
       try {
@@ -1459,7 +1459,7 @@ app.whenReady().then(async () => {
           browserManager?.closePanesForProfile(profileId)
         }
         if (profileInUse(profileId)) {
-          return { ok: false, error: 'Could not close all panes using this profile.' }
+          return { ok: false, error: 'Could not close all devices using this profile.' }
         }
         await clearProfileSession(profileId)
         await profileStore.remove(profileId)

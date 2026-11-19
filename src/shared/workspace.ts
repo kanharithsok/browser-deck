@@ -124,19 +124,19 @@ export function parsePaneTitle(
   value: unknown
 ): { ok: true; title: string | null } | { ok: false; error: string } {
   if (typeof value !== 'string') {
-    return { ok: false, error: 'Pane title must be text.' }
+    return { ok: false, error: 'Device title must be text.' }
   }
   const trimmed = value.trim()
   if (!trimmed) {
     return { ok: true, title: null }
   }
   if (CONTROL_CHARACTERS.test(trimmed)) {
-    return { ok: false, error: 'Pane title contains invalid characters.' }
+    return { ok: false, error: 'Device title contains invalid characters.' }
   }
   if (trimmed.length > MAX_PANE_TITLE_LENGTH) {
     return {
       ok: false,
-      error: `Pane titles must be ${MAX_PANE_TITLE_LENGTH} characters or fewer.`
+      error: `Device titles must be ${MAX_PANE_TITLE_LENGTH} characters or fewer.`
     }
   }
   return { ok: true, title: trimmed }
@@ -356,7 +356,7 @@ export function parseWorkspaceData(
     return { ok: false, error: 'Workspace name is invalid.' }
   }
   if (!Array.isArray(record.panes) || record.panes.length > MAX_WORKSPACE_PANES) {
-    return { ok: false, error: 'Workspace panes are invalid.' }
+    return { ok: false, error: 'Workspace devices are invalid.' }
   }
 
   const paneIds: string[] = []
@@ -365,17 +365,17 @@ export function parseWorkspaceData(
 
   for (const entry of record.panes) {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      return { ok: false, error: 'Workspace pane is invalid.' }
+      return { ok: false, error: 'Workspace device is invalid.' }
     }
     const pane = entry as Record<string, unknown>
     if (!isValidPaneId(pane.id) || seenPaneIds.has(pane.id)) {
-      return { ok: false, error: 'Workspace pane ID is invalid or duplicated.' }
+      return { ok: false, error: 'Workspace device ID is invalid or duplicated.' }
     }
     if (!isValidProfileId(pane.profileId)) {
       return { ok: false, error: 'Workspace profile ID is invalid.' }
     }
     if (typeof pane.url !== 'string' || !isAllowedNavigationUrl(pane.url)) {
-      return { ok: false, error: 'Workspace pane URL is invalid.' }
+      return { ok: false, error: 'Workspace device URL is invalid.' }
     }
     const viewport = parsePaneViewport(pane.viewport)
     if (!viewport.ok) {

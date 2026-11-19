@@ -7,6 +7,8 @@ import {
   RESPONSIVE_VIEWPORT,
   VIEWPORT_PRESETS,
   parsePaneViewport,
+  toggleViewportRotation,
+  viewportContentSize,
   viewportDisplayScale,
   viewportFromPreset
 } from '../../src/shared/viewports'
@@ -166,6 +168,92 @@ describe('parsePaneViewport', () => {
         deviceScaleFactor: MIN_DEVICE_SCALE_FACTOR - 1
       }).ok
     ).toBe(false)
+  })
+
+  it('preserves the rotated orientation of fixed presets and custom viewports', () => {
+    expect(parsePaneViewport({ preset: 'iphone-15-pro', rotated: true })).toEqual({
+      ok: true,
+      viewport: {
+        preset: 'iphone-15-pro',
+        width: 393,
+        height: 852,
+        deviceScaleFactor: 3,
+        rotated: true
+      }
+    })
+    expect(
+      parsePaneViewport({
+        preset: 'custom',
+        width: 500,
+        height: 700,
+        deviceScaleFactor: 2,
+        rotated: true
+      })
+    ).toEqual({
+      ok: true,
+      viewport: {
+        preset: 'custom',
+        width: 500,
+        height: 700,
+        deviceScaleFactor: 2,
+        rotated: true
+      }
+    })
+    expect(parsePaneViewport({ preset: 'tablet', rotated: false })).toEqual({
+      ok: true,
+      viewport: {
+        preset: 'tablet',
+        width: 820,
+        height: 1180,
+        deviceScaleFactor: 2
+      }
+    })
+    expect(parsePaneViewport({ preset: 'tablet', rotated: 'yes' }).ok).toBe(false)
+    expect(parsePaneViewport({ preset: 'responsive', rotated: true })).toEqual({
+      ok: true,
+      viewport: RESPONSIVE_VIEWPORT
+    })
+  })
+})
+
+describe('viewport rotation', () => {
+  it('swaps the effective dimensions of a fixed viewport', () => {
+    const mobile = viewportFromPreset('mobile')
+    expect(viewportContentSize(mobile)).toEqual({ width: 390, height: 844 })
+
+    const rotated = toggleViewportRotation(mobile)
+    expect(rotated).toEqual({
+      preset: 'mobile',
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      rotated: true
+    })
+    expect(viewportContentSize(rotated as NonNullable<typeof rotated>)).toEqual({
+      width: 844,
+      height: 390
+    })
+
+    const restored = toggleViewportRotation(rotated as NonNullable<typeof rotated>)
+    expect(restored).toEqual(mobile)
+  })
+
+  it('does not rotate responsive viewports', () => {
+    expect(toggleViewportRotation(RESPONSIVE_VIEWPORT)).toBeNull()
+    expect(viewportContentSize(RESPONSIVE_VIEWPORT)).toEqual({ width: 0, height: 0 })
+  })
+
+  it('uses the rotated dimensions when fitting into a pane', () => {
+    const mobile = viewportFromPreset('mobile')
+    const upright = viewportDisplayScale(mobile, { width: 780, height: 600 })
+    const rotated = toggleViewportRotation(mobile)
+    const landscape = viewportDisplayScale(rotated as NonNullable<typeof rotated>, {
+      width: 780,
+      height: 600
+    })
+
+    expect(landscape).toBeGreaterThan(upright)
+    expect(landscape).toBeCloseTo(0.924, 3)
   })
 })
 

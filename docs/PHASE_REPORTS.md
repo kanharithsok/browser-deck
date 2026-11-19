@@ -544,7 +544,7 @@ The MVP is complete. These items are post-MVP hardening and validation, not Phas
 | `npm run typecheck` | Passed (`tsc` and `vue-tsc`). |
 | `npm run lint` | Passed with no warnings or errors. |
 | `npm run test:unit` | Passed: 11 files, 126 tests in 333 ms. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 15.7 s. Includes a five-column frame narrowing that changes the fit scale and a return to two columns that restores it. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.2 s. Includes a five-column frame narrowing that changes the fit scale and a return to two columns that restores it. |
 | `npm run build` | Passed: main 115.54 kB, preload 5.75 kB, renderer JS 269.94 kB, CSS 23.05 kB. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
 
@@ -747,3 +747,24 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 **Manual GUI verification still outstanding:** VoiceOver reading order across the native Workspace/Profiles menus and the separate bottom-bar webContents, long third-party URLs at the 720 px minimum width, and the custom viewport editor's invalid-error visual treatment remain manual. Native menu item clicks are exercised through `MenuItem.click()` in e2e rather than the OS menu.
 
 **Known behavior / limitations:** The top toolbar is dense; pane context hides below a 640 px active-bar width, and the custom viewport editor replaces the address row while editing. Workspace/profile access now takes an extra native-menu step and shows the current workspace name only in the Workspaces dialog. Canvas zoom scales pane chrome down with the page, so controls are small at 25–50% but remain present. The bottom canvas bar occupies a 280 × 40 DIP rectangle at the bottom center.
+
+## Post-MVP — Device-first chrome, rotation, capture, and Delete shortcut
+
+**Date:** 2026-11-19
+
+**Status:** Implemented.
+
+**Change:** Replaced the per-device maximize button with back, forward, and reload. Maximize remains in the native **Device → Toggle Maximize** menu (`Cmd/Ctrl+Shift+M`). Rotate viewport and capture screenshot were added to the native device actions menu; rotation is disabled for responsive viewports, and capture writes a PNG through a native save dialog. Fixed viewports now persist an optional `rotated` flag that swaps their effective width/height for emulation, fit scaling, canvas frames, and labels. User-facing copy and accessible names now say **device**; internal code, IPC, storage, and architecture notes retain **pane**. `Delete`/`Backspace` closes the selected device when shell chrome has focus, no modifiers are pressed, no dialog/custom menu is open, and focus is not in a text-entry control. Cmd+D remains the native Device-menu accelerator for duplicating the selected device.
+
+**Files changed:** `src/main/browser-manager.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/shared/canvas.ts`, `src/shared/ipc.ts`, `src/shared/screenshot.ts`, `src/shared/viewports.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/minimap.ts`, `src/renderer/minimap.html`, unit tests, e2e tests, `README.md`, `docs/DECISIONS.md` (ADR-043), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run test:unit` | Passed: 16 files / 157 tests. Added rotation parsing/toggling/sizing/fit/canvas coverage and screenshot filename safety. |
+| `npm run build` | Passed: main 147.92 kB, preload 8.85 kB, renderer JS 327.46 kB, shell CSS 27.38 kB, minimap CSS 3.10 kB, zoom CSS 1.69 kB, shared tokens 2.98 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.2 s. Coverage includes per-device header back/forward/reload, rotated emulation and frame geometry, PNG screenshot output, the Cmd+D accelerator configuration, Delete closing the selected device, and the address-field guard. |
+| Visual check | Rendered a three-device Canvas at 1280 × 860: each header showed back, forward, reload, actions, and close; the iPhone frame stayed readable and the menu trigger remained visible. |
+
+**Known behavior / limitations:** Maximize is no longer visible in the header; it lives in the native Device menu. Rotation applies only to fixed viewports. Screenshot capture always opens a native save dialog, so it is not part of the raw OS-dialog-free workflow. Delete closes from shell focus only; a focused website keeps normal keyboard input. OS-level Cmd+D delivery is not automated, but the native accelerator and command routing are verified.

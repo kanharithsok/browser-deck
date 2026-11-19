@@ -1,5 +1,5 @@
 import type { Rect, Size } from './layout'
-import type { PaneViewport } from './viewports'
+import { viewportContentSize, type PaneViewport } from './viewports'
 
 export interface CanvasPosition {
   x: number
@@ -132,7 +132,7 @@ export function canvasContentSize(viewport: PaneViewport): Size {
   if (viewport.preset === 'responsive') {
     return { width: CANVAS_RESPONSIVE_WIDTH, height: CANVAS_RESPONSIVE_HEIGHT }
   }
-  return { width: viewport.width, height: viewport.height }
+  return viewportContentSize(viewport)
 }
 
 /** Full canvas frame size, including the compact pane label row. */

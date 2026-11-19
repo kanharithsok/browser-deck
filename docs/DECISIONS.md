@@ -1291,7 +1291,37 @@ Record material technical decisions here. Keep entries short but include context
   - Manual measurement at 100%, 50%, and 200%: a 560 × 700 frame stays a 560 × 700 page viewport while the card renders at 560 × 732, 280 × 366, and 1120 × 1464; the header renders at 32, 16, and 64 px.
   - E2e continues to verify native bounds alignment after zoom and responsive emulation below 100%.
 
-## ADR template
+## ADR-043 — Device-first chrome actions, terminology, and shortcuts
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** The selected-device header devoted a control to maximize, while back/forward/reload were available only in the top toolbar/legacy navigation row. The user asked to replace maximize with those navigation actions, add rotation and screenshot, use “device” in user-facing copy, and support Cmd+D/Delete for the selected device.
+
+- **Decision:**
+  1. Replace the per-pane maximize button with back, forward, and reload. Maximize remains available through the native **Device → Toggle Maximize** menu and its accelerator.
+  2. Put rotate viewport and capture screenshot in the device actions menu. Rotation is disabled for responsive viewports; screenshots use a native save dialog and write PNG data only after the user chooses a path.
+  3. Store rotation as an optional `rotated` flag on `PaneViewport`. Fixed viewports swap their effective width/height for emulation, fit scaling, canvas frames, and labels. Responsive viewports cannot rotate.
+  4. Use **device** in visible UI copy and accessible names. Keep **pane** as the internal and architecture term for the native view and its IDs, IPC channels, storage fields, and code types.
+  5. Keep `Cmd+D` as the native Device-menu accelerator for duplicating the selected device. Add `Delete`/`Backspace` in the trusted shell when no dialog/menu is open, the event has no modifiers, and focus is not in a text-entry control.
+
+- **Alternatives considered:**
+  - **Keep maximize and add three navigation buttons.** Rejected; the user explicitly asked to replace maximize, and five header controls already consume meaningful width on small device frames.
+  - **Put rotate and screenshot in the header.** Rejected; screenshot is infrequent and rotation does not apply to responsive devices. The actions menu keeps the header quiet.
+  - **Handle Cmd+D only in the shell.** Rejected; a focused remote website must not be able to suppress or spoof workspace shortcuts, and the native menu accelerator works without access to remote pages.
+  - **Allow Delete/Backspace from any focus context.** Rejected; editing an address or device name must not close the device.
+  - **Rename internal APIs and storage to device.** Rejected; it would churn the validated IPC/storage contract without changing user-visible behavior.
+
+- **Consequences:**
+  - Visible copy and accessible names are consistent across the pane card, global bar, menus, dialogs, minimap, and errors.
+  - Rotation persists with the workspace viewport and changes the canvas frame shape.
+  - Screenshot paths are chosen by the user; capture failures use a native error box.
+  - Legacy workspaces load with an upright viewport because `rotated` is optional.
+
+- **Evidence / verification:**
+  - Unit tests cover rotation parsing, toggling, effective sizing, fit scaling, rotated canvas frames, and screenshot filename safety.
+  - E2e verifies per-device header back/forward/reload, rotated emulation and frame geometry, PNG screenshot output through the validated IPC path, the Cmd+D menu accelerator, and Delete closing the selected device while text-entry focus is protected.
+
+
 
 ### ADR-NNN — Title
 

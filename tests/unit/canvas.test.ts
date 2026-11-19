@@ -24,6 +24,18 @@ describe('canvas layout helpers', () => {
       width: 390,
       height: 844 + CANVAS_HEADER_HEIGHT
     })
+    expect(
+      canvasFrameSize({
+        preset: 'mobile',
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 3,
+        rotated: true
+      })
+    ).toEqual({
+      width: 844,
+      height: 390 + CANVAS_HEADER_HEIGHT
+    })
   })
 
   it('arranges missing panes in a deterministic row', () => {

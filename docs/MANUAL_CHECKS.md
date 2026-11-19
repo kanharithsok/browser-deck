@@ -87,10 +87,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Bottom canvas bar Hand, zoom steps, presets, Fit all, Reset, and appearance work. (E2e checks the native bar at bottom center, toggles Hand, zooms out, opens the 7-preset menu, selects 50%, resets to 100%, and opens the appearance menu. The bar and minimap stay visible while its menus are open.)
 - [x] The top toolbar embeds the active-pane URL/navigation/viewport controls and keeps Reload/Add on the right. (E2e verifies the single-row toolbar, the embedded address controls, and the absence of Workspace/Profiles/Hand/Appearance toolbar buttons.)
 - [x] Workspace and profile management live in the native menu bar. (E2e triggers `workspace-manage` and `profiles-manage` menu items, opens both dialogs, and verifies focus returns to the active address input.)
-- [x] Clicking empty canvas clears the active pane and interacting with a pane restores it. (E2e clicks empty canvas, verifies no active card and an empty "No pane selected" toolbar state, then clicks a pane title and verifies the address input returns.)
+- [x] Clicking empty canvas clears the active pane and interacting with a pane restores it. (E2e clicks empty canvas, verifies no active card and an empty "No device selected" toolbar state, then clicks a pane title and verifies the address input returns.)
 - [x] The top toolbar does not shift the canvas. (E2e captures the workspace rectangle before deselection, after deselection, and after reselection; all three are identical. The toolbar stays 42 px with an empty state.)
 - [x] All top-toolbar buttons are borderless. (E2e computes 0 px borders for every button in the toolbar.)
-- [x] Pane actions stay visible at every Canvas zoom. (E2e sets 430 × 932 and 393 × 852 panes, zooms to 80% so their widths straddle the old 340 px breakpoint, and verifies maximize, pane actions, and close on both.)
+- [x] Device actions stay visible at every Canvas zoom. (E2e sets 430 × 932 and 393 × 852 devices, zooms to 80% so their widths straddle the old 340 px breakpoint, and verifies back, forward, reload, actions, and close on both.)
 - [x] Canvas zoom scales the whole pane while the viewport stays fixed. (Measured a 560 × 700 viewport at 100%, 50%, and 200%: the card/header scale to 560 × 732/32, 280 × 366/16, and 1120 × 1464/64 while `window.innerWidth/Height` stays 560 × 700.)
 - [ ] Hand tool pans from over a pane. (E2e verifies the Hand tool hides native views and toggles state; pointer panning from inside a frame needs a manual GUI pass.)
 - [x] Canvas overview is always visible in Canvas, shows every pane and the current viewport, and Fit all brings all panes back. (E2e enters Canvas without opening anything, verifies the native panel at the bottom-right, both frame buttons and the viewport outline, clicks Fit all, and asserts both cards fit inside the workspace with native bounds aligned.)
@@ -107,7 +107,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 
 Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/accessible-name checks, keyboard focus order and focus-visible assertions, dialog focus trapping and dialog focus return to the active address, Chromium's CDP accessibility tree, and an axe-core WCAG 2.x/best-practice audit for the shell toolbar, pane cards, profile dialog, workspace dialog, and bottom canvas bar. VoiceOver and other screen-reader behavior still require manual review; axe cannot verify spoken order, announcements, or whether a focus ring is meaningful to a particular user.
 
-- [x] Icon-only controls have accessible names and tooltips. (Automated role/name checks for reload-all, pane actions, maximize/restore, close, navigation, and the bottom Hand/zoom/appearance controls; tooltips are asserted for shell reload-all, maximize, pane actions, close, and reload pane.)
+- [x] Icon-only controls have accessible names and tooltips. (Automated role/name checks for reload-all, device actions, close, header navigation, and the bottom Hand/zoom/appearance controls; tooltips are asserted for shell reload-all, device actions, close, and reload device.)
 - [x] Keyboard focus is visible on shell controls. (Automated Tab/Shift+Tab assertions verify `:focus-visible` and a 2 px accent outline; the dialog container shows the same ring when opened from the keyboard.)
 - [x] Focus moves to the new pane after add and recovers to an address control after close. (Existing e2e assertions.)
 - [x] Tab order crosses the toolbar, pane controls, address, and viewport controls in DOM order without entering native content. (Automated forward/reverse focus assertions; disabled Back/Forward are skipped.)
@@ -160,3 +160,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [ ] Renderer crash/navigation failure does not crash the app shell. (Failure UI exists; crash recovery needs a dedicated check.)
 - [x] No secrets appear in logs, exports, fixtures, or repository files. (Repository review; fixtures contain only synthetic identities; credential-bearing URLs are rejected and export profiles are stripped.)
 - [ ] Window shutdown leaves no orphaned views/processes. (Teardown implemented and e2e closes panes/windows; repeat after Phase 2.)
+
+- [x] Device rotation swaps the emulated viewport and canvas frame. (E2e rotates a custom 500 × 1000 viewport through the validated IPC path, verifies a 1000 × 500 page and rotated frame, then restores it.)
+- [x] Screenshot capture writes a PNG. (E2e patches the native save dialog, captures the selected device through the validated IPC path, and verifies the PNG signature.)
+- [x] Delete closes the selected device from shell focus, and text-entry focus is protected. (E2e presses Backspace in the address field without closing, then Delete to close the duplicate. Cmd+D is a native Device-menu accelerator and routing is tested; OS-level chord delivery is manual.)

@@ -952,8 +952,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .not.toBe(minimapBackgroundBefore)
 
     // Fit all from the persistent overview brings every pane back into view.
-    await expect(shellPage.getByRole('button', { name: 'Fit all panes to view' })).toBeVisible()
-    await minimapPage.getByRole('button', { name: 'Fit all panes' }).click()
+    await expect(shellPage.getByRole('button', { name: 'Fit all devices to view' })).toBeVisible()
+    await minimapPage.getByRole('button', { name: 'Fit all devices' }).click()
     await waitForVisibleAlignedBounds(app)
     const fittedWorkspace = await shellPage.locator('.workspace').boundingBox()
     const fittedCards = await shellPage.locator('.pane-card').evaluateAll((cards) =>
@@ -996,14 +996,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const addButton = shellPage.locator('.toolbar .add-pane-button')
     expect((await addButton.textContent())?.trim()).toBe('')
     await addButton.click()
-    const addMenu = shellPage.getByRole('menu', { name: 'Add pane' })
+    const addMenu = shellPage.getByRole('menu', { name: 'Add device' })
     await expect(addMenu).toBeVisible()
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).some((state) => !state.visible))
       .toBe(true)
     await expect(addMenu.getByRole('menuitem')).toHaveCount(10)
     await expect(addMenu.locator('.app-menu-section')).toHaveText([
-      'New pane',
+      'New device',
       'Phones',
       'Tablets',
       'Desktop'
@@ -1033,7 +1033,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes.length === 2,
       'device pane from the toolbar menu to close'
     )
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForAlignedBounds(app)
 
     // Right-click empty canvas opens the custom canvas menu. It can add a pane,
@@ -1054,8 +1054,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(canvasMenu.getByText('View', { exact: true })).toBeVisible()
     await expect(canvasMenu.getByText('Manage', { exact: true })).toBeVisible()
     await expect(canvasMenu.getByText('Appearance', { exact: true })).toBeVisible()
-    await canvasMenu.getByRole('menuitem', { name: /^Add pane/ }).click()
-    await expect(shellPage.getByRole('menu', { name: 'Add pane' })).toBeVisible()
+    await canvasMenu.getByRole('menuitem', { name: /^Add device/ }).click()
+    await expect(shellPage.getByRole('menu', { name: 'Add device' })).toBeVisible()
     await expect(
       shellPage.getByRole('menuitem', { name: /^iPad Pro 12\.9/ })
     ).toBeVisible()
@@ -1094,7 +1094,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Bottom zoom bar: step controls and a percentage dropdown that can set
     // exact levels or run Fit all / Reset.
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForAlignedBounds(app)
     const zoomLabelBeforeStep = await zoomPage.locator('#value').textContent()
     await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
@@ -1125,7 +1125,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await shellPage.mouse.click(deselectWorkspace.x + 6, deselectWorkspace.y + 6)
     await expect.poll(() => shellPage.locator('.pane-card-active').count()).toBe(0)
     await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
-    await expect(shellPage.locator('.global-pane-bar')).toContainText('No pane selected')
+    await expect(shellPage.locator('.global-pane-bar')).toContainText('No device selected')
     const clearedWorkspace = await shellPage.locator('.workspace').boundingBox()
     expect(clearedWorkspace).toEqual(deselectWorkspace)
     await shellPage.locator('.pane-title').first().click()
@@ -1176,7 +1176,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(mobileFitEmulation?.scale).toBeLessThanOrEqual(1)
 
     // A second pane can hold a different emulated viewport at the same time.
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await focusPane(shellPage, bobPaneId as string)
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('tablet')
     await waitFor(
@@ -1188,7 +1188,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect.poll(aliceMetrics).toMatchObject({ width: 390, height: 844, dpr: 3 })
 
     // Device presets use their real CSS dimensions and device pixel ratios.
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await focusPane(shellPage, alicePaneId as string)
     const aliceViewportSelect = shellPage.locator('.global-pane-bar .viewport-select')
     await aliceViewportSelect.selectOption('pixel-8')
@@ -1242,6 +1242,39 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await customRow.getByRole('button', { name: 'Cancel' }).click()
     await expect(customRow).toHaveCount(0)
 
+    // Rotating a fixed viewport swaps the emulated dimensions and the canvas
+    // frame until it is rotated back.
+    const rotateResult = await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.paneflow.rotatePaneViewport(${JSON.stringify(alicePaneId)})`
+    )
+    expect(rotateResult.ok).toBe(true)
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes[0]?.viewport.rotated === true &&
+        state.panes[0]?.viewport.width === 500 &&
+        state.panes[0]?.viewport.height === 1000,
+      'rotated custom viewport state'
+    )
+    await expect.poll(aliceMetrics).toMatchObject({ width: 1000, height: 500, dpr: 2 })
+    const rotatedEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(rotatedEmulation?.viewport.rotated).toBe(true)
+    const rotatedCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+    await expect
+      .poll(async () => (await rotatedCard.boundingBox())?.width ?? 0)
+      .toBeGreaterThan((await rotatedCard.boundingBox())?.height ?? 0)
+    await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.paneflow.rotatePaneViewport(${JSON.stringify(alicePaneId)})`
+    )
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.viewport.rotated !== true,
+      'restored upright viewport state'
+    )
+    await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 1000, dpr: 2 })
+
     await aliceViewportSelect.selectOption('responsive')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1258,10 +1291,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[1]?.viewport.preset === 'responsive',
       'responsive viewport state for the second pane'
     )
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(app)
 
-    // Pane actions must stay available at every canvas zoom. At 80% these two
+    // Device actions must stay available at every canvas zoom. At 80% these two
     // iPhone frames straddle the old 340 px breakpoint that hid actions.
     await focusPane(shellPage, alicePaneId as string)
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-15-pro-max')
@@ -1277,7 +1310,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[1]?.viewport.preset === 'iphone-15-pro',
       'iPhone 15 Pro viewport for action visibility'
     )
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await resetCanvasZoomFromBar(shellPage, zoomPage)
     await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
     await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
@@ -1290,9 +1323,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect((await bobActionCard.boundingBox())?.width ?? 0).toBeLessThanOrEqual(340)
     for (const card of [aliceActionCard, bobActionCard]) {
       await expect(card.locator('.pane-actions')).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Maximize pane' })).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Pane actions' })).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Close pane' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Go back' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Go forward' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Reload device' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Device actions' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Close device' })).toBeVisible()
     }
 
     // Restore responsive panes for the remaining zoom/emulation checks.
@@ -1307,7 +1342,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         state.panes[1]?.viewport.preset === 'responsive',
       'responsive viewports before zoom emulation check'
     )
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(app)
 
     // Responsive panes scale their live views through canvas zoom. Returning
@@ -1341,32 +1376,26 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toBe(true)
 
     // Maximize temporarily fills the workspace; unrelated native views hide,
-    // and restore returns to the prior canvas geometry.
+    // and restore returns to the prior canvas geometry. The pane header no
+    // longer exposes a maximize button, so this uses the native Device menu.
+    await focusPane(shellPage, alicePaneId as string)
     const preMaximizeRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
     if (!preMaximizeRect) {
-      throw new Error('Pre-maximize pane bounds are unavailable')
+      throw new Error('Pre-maximize device bounds are unavailable')
     }
-    await shellPage
-      .locator('.pane-card')
-      .nth(0)
-      .getByRole('button', { name: 'Maximize pane' })
-      .click()
+    await clickAppMenuCommand(app, 'pane-maximize')
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
       .toBe(1)
     await waitForVisibleAlignedBounds(app)
     const maximizedRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
     if (!maximizedRect) {
-      throw new Error('Maximized pane bounds are unavailable')
+      throw new Error('Maximized device bounds are unavailable')
     }
     expect(maximizedRect.width).toBeGreaterThan(preMaximizeRect.width + 20)
     expect(maximizedRect.height).toBeGreaterThanOrEqual(preMaximizeRect.height - 1)
 
-    await shellPage
-      .locator('.pane-card')
-      .nth(0)
-      .getByRole('button', { name: 'Restore pane' })
-      .click()
+    await clickAppMenuCommand(app, 'pane-maximize')
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
       .toBe(2)
@@ -1377,6 +1406,43 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }
     expect(Math.abs(restoredMaximizeRect.x - preMaximizeRect.x)).toBeLessThanOrEqual(2)
     expect(Math.abs(restoredMaximizeRect.width - preMaximizeRect.width)).toBeLessThanOrEqual(2)
+
+    // Screen capture writes a real PNG through the validated IPC path. Patch
+    // the native save dialog so the test does not need to drive OS chrome.
+    const screenshotPath = join(tmpdir(), `paneflow-screenshot-${Date.now()}.png`)
+    await app.evaluate(({ dialog }, targetPath) => {
+      const original = dialog.showSaveDialog
+      ;(
+        globalThis as typeof globalThis & {
+          __paneflowOriginalSaveDialog?: typeof dialog.showSaveDialog
+        }
+      ).__paneflowOriginalSaveDialog = original
+      dialog.showSaveDialog = (async () => ({
+        canceled: false,
+        filePath: targetPath
+      })) as typeof dialog.showSaveDialog
+    }, screenshotPath)
+    const screenshot = await shellEvaluate<{ ok: boolean; filePath?: string; error?: string }>(
+      app,
+      `window.paneflow.capturePaneScreenshot(${JSON.stringify(alicePaneId)})`
+    )
+    await app.evaluate(({ dialog }) => {
+      const original = (
+        globalThis as typeof globalThis & {
+          __paneflowOriginalSaveDialog?: typeof dialog.showSaveDialog
+        }
+      ).__paneflowOriginalSaveDialog
+      if (original) {
+        dialog.showSaveDialog = original
+      }
+    })
+    expect(screenshot.ok, screenshot.error).toBe(true)
+    expect(screenshot.filePath).toBe(screenshotPath)
+    const screenshotBytes = await readFile(screenshotPath)
+    expect(
+      screenshotBytes.subarray(0, 8)
+    ).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    await rm(screenshotPath, { force: true })
 
     // Application menu commands route through preload to the active pane.
     const duplicateSource = (await getSnapshot(app as ElectronApplication)).panes.find(
@@ -1389,6 +1455,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (await getSnapshot(app as ElectronApplication)).panes.map((pane) => pane.id)
     )
     await focusPane(shellPage, alicePaneId as string)
+    expect(await readAppMenuItem(app, 'pane-duplicate')).toEqual({
+      id: 'pane-duplicate',
+      accelerator: 'CmdOrCtrl+D',
+      enabled: true
+    })
     await clickAppMenuCommand(app, 'pane-duplicate')
     const duplicatedState = await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1400,11 +1471,27 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(firstProfileIds).not.toContain(duplicatedPane?.profileId)
     expect(duplicatedPane?.url).toBe(duplicateSource.url)
     expect(duplicatedPane?.viewport).toEqual(duplicateSource.viewport)
-    await clickAppMenuCommand(app, 'pane-close')
+
+    // Delete closes the selected device from shell focus, but never while the
+    // user is editing pane chrome such as the address field.
+    await focusPane(shellPage, duplicatedPane?.id as string)
+    const addressField = shellPage.locator(`.pane-card[data-pane-id="${duplicatedPane?.id}"] .address-input`)
+    if ((await addressField.count()) > 0) {
+      await addressField.focus()
+    } else {
+      await shellPage.locator('.global-pane-bar .address-input').focus()
+    }
+    await shellPage.keyboard.press('Backspace')
+    await expect
+      .poll(async () => (await getSnapshot(app as ElectronApplication)).panes.length)
+      .toBe(3)
+    await shellPage.keyboard.press('Escape')
+    await focusPane(shellPage, duplicatedPane?.id as string)
+    await shellPage.keyboard.press('Delete')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes.length === 2,
-      'duplicate pane close'
+      'delete-shortcut pane close'
     )
 
     // Custom pane titles are edited inline. Invalid or unknown-pane renames
@@ -1420,7 +1507,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     expect(rejectedUnknownRename.ok).toBe(false)
 
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(app)
     const namedAliceCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
     await namedAliceCard.locator('.pane-title').dblclick()
@@ -1495,7 +1582,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       height: 915,
       deviceScaleFactor: 2.625
     })
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(app)
     await expect(
       shellPage.locator('.global-pane-bar .viewport-select')
@@ -1525,7 +1612,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
       .toBe(2)
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForAlignedBounds(app)
     const resolvedTheme = (await getSnapshot(app as ElectronApplication)).resolvedTheme
     expect(['light', 'dark']).toContain(resolvedTheme)
@@ -1557,6 +1644,27 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'back navigation'
     )
     expect(bobPage.url()).toContain('/pane/two')
+
+    // The pane header owns per-device back, forward, and reload controls.
+    const aliceHeader = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+    await aliceHeader.getByRole('button', { name: 'Go forward' }).click()
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.url.includes('/other?from=e2e') ?? false,
+      'pane header forward navigation'
+    )
+    await aliceHeader.getByRole('button', { name: 'Go back' }).click()
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.url.includes('/pane/one') ?? false,
+      'pane header back navigation'
+    )
+    await aliceHeader.getByRole('button', { name: 'Reload device' }).click()
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.isLoading === false,
+      'pane header reload'
+    )
 
     // Main-process validation rejects unsupported schemes and unknown panes;
     // renderer-side validation alone is not the security boundary.
@@ -1637,12 +1745,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }, bobPaneId as string)
     expect(bobWebContentsId).not.toBeNull()
 
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(app)
     await shellPage
       .locator('.pane-card')
       .nth(1)
-      .getByRole('button', { name: 'Close pane' })
+      .getByRole('button', { name: 'Close device' })
       .click()
     const afterClose = await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1722,7 +1830,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Make the persisted workspace distinctive: an iPhone SE viewport and a
     // horizontal canvas move. The restart must restore both.
-    await shellPage.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForAlignedBounds(app)
     await focusPane(shellPage, alicePaneId as string)
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-se')
@@ -1992,7 +2100,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       throw new Error('Restarted shell page is unavailable')
     }
 
-    await restartShell.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(restartApp)
     const restartedAliceCard = restartShell.locator(
       `.pane-card[data-pane-id="${alicePaneId}"]`
@@ -2037,7 +2145,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[0]?.viewport.preset === 'responsive',
       'responsive viewport after restart verification'
     )
-    await restartShell.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(restartApp)
 
     // Profile manager: usage, rename, clear, and safe delete.
@@ -2107,7 +2215,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const sharedProfileRow = profilesDialog.locator(
       `.profile-row[data-profile-id="${sharedProfileId}"]`
     )
-    await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
+    await sharedProfileRow.getByRole('button', { name: /^Open device/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     await waitFor(
       () => getSnapshot(restartApp),
@@ -2116,7 +2224,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await clickAppMenuCommand(restartApp, 'profiles-manage')
-    await sharedProfileRow.getByRole('button', { name: /^Open pane/ }).click()
+    await sharedProfileRow.getByRole('button', { name: /^Open device/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     const sharedState = await waitFor(
       () => getSnapshot(restartApp),
@@ -2128,10 +2236,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     for (const pane of sharedPanes) {
       await expect(
         restartShell.locator(`.pane-card[data-pane-id="${pane.id}"] .pane-profile`)
-      ).toContainText('2 panes')
+      ).toContainText('2 devices')
     }
 
-    await restartShell.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(restartApp)
     for (const [index, pane] of sharedPanes.entries()) {
       await setPaneAddress(restartShell, pane.id, `${fixture.url}/pane/shared?slot=${index}`)
@@ -2159,21 +2267,21 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     ).toBe('shared')
 
     await clickAppMenuCommand(restartApp, 'profiles-manage')
-    await expect(sharedProfileRow).toContainText('2 panes:')
+    await expect(sharedProfileRow).toContainText('2 devices:')
     await expect(sharedProfileRow.getByRole('button', { name: /^Clear/ })).toBeEnabled()
     await expect(sharedProfileRow.getByRole('button', { name: /^Delete/ })).toBeEnabled()
     await sharedProfileRow.getByRole('button', { name: /^Delete/ }).click()
     await expect(
       sharedProfileRow.getByRole('group', { name: /Confirm delete/ })
-    ).toContainText('Close 2 panes')
-    await sharedProfileRow.getByRole('button', { name: 'Close panes & delete' }).click()
+    ).toContainText('Close 2 devices')
+    await sharedProfileRow.getByRole('button', { name: 'Close devices & delete' }).click()
     await expect(sharedProfileRow).toHaveCount(0)
     await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.panes.length === 1 && state.panes[0]?.id === alicePaneId,
       'shared panes closed with profile delete'
     )
-    await expect(profilesDialog.getByRole('status')).toContainText('Closed its panes')
+    await expect(profilesDialog.getByRole('status')).toContainText('Closed its devices')
     await profilesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(profilesDialog).toHaveCount(0)
     await waitForAlignedBounds(restartApp)
@@ -2200,7 +2308,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       `.workspace-row[data-workspace-id="${originalWorkspaceId}"]`
     )
     await expect(originalWorkspaceRow).toContainText('Active')
-    await expect(originalWorkspaceRow).toContainText('1 pane')
+    await expect(originalWorkspaceRow).toContainText('1 device')
 
     const workspaceIdByName = async (name: string): Promise<string> => {
       const result = await shellEvaluate<{
@@ -2225,7 +2333,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     const secondWorkspaceRow = workspaceRowById(secondWorkspaceId)
     await expect(secondWorkspaceRow).toHaveCount(1)
-    await expect(secondWorkspaceRow).toContainText('0 panes')
+    await expect(secondWorkspaceRow).toContainText('0 devices')
     await expect
       .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
       .toBe(true)
@@ -2274,7 +2382,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'workspace duplicate'
     )
     await expect(workspaceRowById(copyWorkspaceId)).toHaveCount(1)
-    await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 pane')
+    await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 device')
     await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(workspacesDialog).toHaveCount(0)
 
@@ -2559,7 +2667,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes.length === 2,
       'Canvas stress panes to close'
     )
-    await restartShell.getByRole('button', { name: 'Fit all panes to view' }).click()
+    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForVisibleAlignedBounds(restartApp)
 
     // The active pane is visible in chrome and exposed to assistive tech.

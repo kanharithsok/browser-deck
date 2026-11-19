@@ -72,7 +72,7 @@ function render(nextState: CanvasMinimapState): void {
   }
 
   for (const frame of layout.frames) {
-    const title = nextState.panes.find((pane) => pane.id === frame.id)?.title ?? 'Pane'
+    const title = nextState.panes.find((pane) => pane.id === frame.id)?.title ?? 'Device'
     const button = document.createElement('button')
     button.type = 'button'
     button.className = frame.active ? 'frame active' : 'frame'
@@ -80,8 +80,8 @@ function render(nextState: CanvasMinimapState): void {
     button.style.top = `${frame.rect.y}px`
     button.style.width = `${frame.rect.width}px`
     button.style.height = `${frame.rect.height}px`
-    button.title = `Focus pane: ${title}`
-    button.setAttribute('aria-label', `Focus pane: ${title}`)
+    button.title = `Focus device: ${title}`
+    button.setAttribute('aria-label', `Focus device: ${title}`)
     button.addEventListener('click', (event) => {
       event.stopPropagation()
       send({ type: 'focus', paneId: frame.id })
