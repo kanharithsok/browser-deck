@@ -691,14 +691,17 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const backgroundBefore = await shellPage
       .locator('.workspace')
       .evaluate((element) => getComputedStyle(element).backgroundPosition)
-    const paneDragHeader = await firstCanvasCard.locator('.pane-title-row').boundingBox()
+    const paneDragHeader = await firstCanvasCard.locator('.pane-header').boundingBox()
     if (!paneDragBefore || !otherPaneBefore || !paneDragHeader) {
       throw new Error('Canvas pane drag bounds are unavailable')
     }
-    await shellPage.mouse.move(paneDragHeader.x + 20, paneDragHeader.y + paneDragHeader.height / 2)
+    await shellPage.mouse.move(
+      paneDragHeader.x + paneDragHeader.width * 0.5,
+      paneDragHeader.y + paneDragHeader.height / 2
+    )
     await shellPage.mouse.down()
     await shellPage.mouse.move(
-      paneDragHeader.x + 60,
+      paneDragHeader.x + paneDragHeader.width * 0.5 + 40,
       paneDragHeader.y + paneDragHeader.height / 2 + 4,
       { steps: 6 }
     )

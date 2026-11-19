@@ -960,7 +960,7 @@ Record material technical decisions here. Keep entries short but include context
   5. While panning or using the Hand tool, hide native views and show recent in-memory JPEG snapshots. On release, restore live native views for frames fully inside the workspace; partially visible frames remain snapshots.
   6. Clicking a partially visible frame centers it and restores its native view.
   7. Use the existing global active-pane bar and compact per-pane labels in Canvas mode.
-  8. Drag a pane's label row to move that pane in world coordinates. Website content stays in the native view and keeps normal page interaction; dragging content does not move the frame or canvas.
+  8. Drag a pane's header/label area to move that pane in world coordinates. Website content stays in the native view and keeps normal page interaction; dragging content does not move the frame or canvas.
   9. Defer canvas zoom, device bezels, and frame resizing.
 
 - **Alternatives considered:**

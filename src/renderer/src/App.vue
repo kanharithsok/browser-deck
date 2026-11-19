@@ -1889,7 +1889,7 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     const interactive = target.closest(
       'button, a, input, select, textarea, form, [role="button"]'
     )
-    if (target.closest('.pane-title-row') && !interactive) {
+    if (target.closest('.pane-header') && !interactive) {
       beginCanvasPaneDrag(event, canvasPaneId)
       return
     }
