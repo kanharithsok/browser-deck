@@ -6,7 +6,6 @@ import PaneCard from './components/PaneCard.vue'
 import type { AppMenuModel } from './menu'
 import {
   CANVAS_GAP,
-  CANVAS_HEADER_HEIGHT,
   CANVAS_ORIGIN,
   CANVAS_SNAP_THRESHOLD,
   defaultCanvasPositions,
@@ -140,7 +139,7 @@ const maximizedPaneId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
-const appMenuMode = ref<'add' | 'canvas' | 'zoom' | null>(null)
+const appMenuMode = ref<'add' | 'canvas' | 'zoom' | 'appearance' | null>(null)
 const appMenuAnchor = ref<{
   x: number
   y: number
@@ -163,7 +162,6 @@ const profileAction = ref<ProfileActionState | null>(null)
 const renamingProfileId = ref<string | null>(null)
 const renameDraft = ref('')
 const profilesDialogEl = ref<HTMLElement | null>(null)
-const profilesButtonEl = ref<HTMLButtonElement | null>(null)
 const profileDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
 const workspacesOpen = ref(false)
@@ -177,13 +175,10 @@ const renamingWorkspaceId = ref<string | null>(null)
 const workspaceRenameDraft = ref('')
 const newWorkspaceName = ref('')
 const workspacesDialogEl = ref<HTMLElement | null>(null)
-const workspacesButtonEl = ref<HTMLButtonElement | null>(null)
-const workspaceName = ref('Workspace')
 const currentWorkspaceId = ref<string | null>(null)
 const themePreference = ref<ThemePreference>('system')
 const resolvedTheme = ref<'light' | 'dark'>('light')
 const paneChrome = ref<PaneChromeStyle>(readPaneChromePreference())
-const appearanceMenuOpen = ref(false)
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -389,6 +384,35 @@ const zoomMenuModel = computed<AppMenuModel>(() => ({
   ]
 }))
 
+const themeMenuItems = computed(() => [
+  {
+    id: 'theme:system',
+    label: 'System',
+    icon: 'system' as const,
+    kind: 'radio' as const,
+    checked: themePreference.value === 'system'
+  },
+  {
+    id: 'theme:light',
+    label: 'Light',
+    icon: 'sun' as const,
+    kind: 'radio' as const,
+    checked: themePreference.value === 'light'
+  },
+  {
+    id: 'theme:dark',
+    label: 'Dark',
+    icon: 'moon' as const,
+    kind: 'radio' as const,
+    checked: themePreference.value === 'dark'
+  }
+])
+
+const appearanceMenuModel = computed<AppMenuModel>(() => ({
+  label: 'Appearance',
+  sections: [{ items: themeMenuItems.value }]
+}))
+
 const canvasMenuModel = computed<AppMenuModel>(() => ({
   label: 'Canvas menu',
   sections: [
@@ -443,29 +467,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
     },
     {
       label: 'Appearance',
-      items: [
-        {
-          id: 'theme:system',
-          label: 'System',
-          icon: 'system',
-          kind: 'radio',
-          checked: themePreference.value === 'system'
-        },
-        {
-          id: 'theme:light',
-          label: 'Light',
-          icon: 'sun',
-          kind: 'radio',
-          checked: themePreference.value === 'light'
-        },
-        {
-          id: 'theme:dark',
-          label: 'Dark',
-          icon: 'moon',
-          kind: 'radio',
-          checked: themePreference.value === 'dark'
-        }
-      ]
+      items: themeMenuItems.value
     }
   ]
 }))
@@ -631,18 +633,21 @@ function paneSlotStyle(paneId: string): Record<string, string> {
       top: '8px',
       width: `${Math.max(0, workspaceSize.value.width - 16)}px`,
       height: `${Math.max(0, workspaceSize.value.height - 16)}px`,
+      '--pane-zoom': '1',
+      '--pane-world-width': `${Math.max(0, workspaceSize.value.width - 16)}px`,
       zIndex: '100'
     }
   }
 
   if (canvasFrame) {
     const zoom = canvasZoom.value
-    const contentHeight = canvasFrame.height - CANVAS_HEADER_HEIGHT
     return {
       left: `${canvasPan.value.x + canvasFrame.x * zoom}px`,
       top: `${canvasPan.value.y + canvasFrame.y * zoom}px`,
       width: `${canvasFrame.width * zoom}px`,
-      height: `${contentHeight * zoom + CANVAS_HEADER_HEIGHT}px`,
+      height: `${canvasFrame.height * zoom}px`,
+      '--pane-zoom': String(zoom),
+      '--pane-world-width': `${canvasFrame.width}px`,
       zIndex:
         canvasPaneDrag.value?.paneId === paneId
           ? '1000'
@@ -1080,6 +1085,10 @@ function toggleCanvasHand(): void {
   setCanvasHandMode(!canvasHandMode.value)
 }
 
+watch(canvasHandActive, (active) => {
+  void window.paneflow.setCanvasHandMode(active).catch(() => undefined)
+})
+
 function syncCanvasZoomToMain(zoom: number): void {
   void window.paneflow.setCanvasZoom(zoom).catch(() => undefined)
 }
@@ -1137,7 +1146,22 @@ function applyCanvasZoomAction(action: CanvasZoomAction): void {
     }
     return
   }
-  if (appMenuMode.value === 'zoom') {
+  if (action.type === 'appearance') {
+    if (appMenuMode.value === 'appearance') {
+      closeAppMenu(false)
+    } else {
+      openCanvasAppearanceMenu()
+    }
+    return
+  }
+  if (action.type === 'toggle-hand') {
+    if (appMenuMode.value === 'zoom' || appMenuMode.value === 'appearance') {
+      closeAppMenu(false)
+    }
+    toggleCanvasHand()
+    return
+  }
+  if (appMenuMode.value === 'zoom' || appMenuMode.value === 'appearance') {
     closeAppMenu(false)
   }
   switch (action.type) {
@@ -1267,22 +1291,21 @@ function focusCanvasPane(paneId: string): void {
   if (!frame) {
     return
   }
-  const contentHeight = frame.height - CANVAS_HEADER_HEIGHT
   const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
   const availableHeight = Math.max(
     1,
-    workspaceSize.value.height - CANVAS_FIT_PADDING * 2 - CANVAS_HEADER_HEIGHT
+    workspaceSize.value.height - CANVAS_FIT_PADDING * 2
   )
   const fitZoom = Math.min(
     CANVAS_MAX_ZOOM,
     Math.max(
       CANVAS_MIN_ZOOM,
-      Math.min(availableWidth / frame.width, availableHeight / contentHeight, 1)
+      Math.min(availableWidth / frame.width, availableHeight / frame.height, 1)
     )
   )
   const zoom = Math.min(canvasZoom.value, fitZoom)
   const screenWidth = frame.width * zoom
-  const screenHeight = contentHeight * zoom + CANVAS_HEADER_HEIGHT
+  const screenHeight = frame.height * zoom
   canvasZoom.value = zoom
   canvasPan.value = {
     x: Math.round((workspaceSize.value.width - screenWidth) / 2 - frame.x * zoom),
@@ -1325,7 +1348,9 @@ function syncCanvasMinimapVisibility(): void {
     layoutMode.value === 'canvas' &&
     !profilesOpen.value &&
     !workspacesOpen.value &&
-    (appMenuMode.value === null || appMenuMode.value === 'zoom')
+    (appMenuMode.value === null ||
+      appMenuMode.value === 'zoom' ||
+      appMenuMode.value === 'appearance')
   void window.paneflow
     .setCanvasMinimapVisible(visible)
     .catch(() => undefined)
@@ -1338,7 +1363,7 @@ function onCanvasMinimapAction(action: CanvasMinimapAction): void {
   if (layoutMode.value !== 'canvas') {
     return
   }
-  if (appMenuMode.value === 'zoom') {
+  if (appMenuMode.value === 'zoom' || appMenuMode.value === 'appearance') {
     closeAppMenu(false)
   }
   if (action.type === 'focus') {
@@ -1360,9 +1385,8 @@ function centerCanvasPane(paneId: string): void {
   if (!frame) {
     return
   }
-  const contentHeight = frame.height - CANVAS_HEADER_HEIGHT
   const screenWidth = frame.width * canvasZoom.value
-  const screenHeight = contentHeight * canvasZoom.value + CANVAS_HEADER_HEIGHT
+  const screenHeight = frame.height * canvasZoom.value
   canvasPan.value = {
     x: Math.round((workspaceSize.value.width - screenWidth) / 2) - frame.x * canvasZoom.value,
     y: Math.round((workspaceSize.value.height - screenHeight) / 2) - frame.y * canvasZoom.value
@@ -1551,8 +1575,6 @@ function applyState(state: ShellState): void {
     layoutPersistenceReady = false
     suspendedPaneIds.value = new Set()
   }
-  workspaceName.value = state.workspace.name
-
   const previousIds = new Set(panes.value.map((pane) => pane.id))
   const addedPane =
     !workspaceChanged && focusManagementEnabled && state.panes.length > panes.value.length
@@ -1662,7 +1684,7 @@ async function prepareMenuSnapshots(): Promise<void> {
 }
 
 async function openAppMenu(
-  mode: 'add' | 'canvas' | 'zoom',
+  mode: 'add' | 'canvas' | 'zoom' | 'appearance',
   anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
@@ -1749,6 +1771,21 @@ function openCanvasZoomMenu(): void {
   )
 }
 
+function openCanvasAppearanceMenu(): void {
+  if (profilesOpen.value || workspacesOpen.value || layoutMode.value !== 'canvas') {
+    return
+  }
+  void openAppMenu(
+    'appearance',
+    {
+      x: window.innerWidth / 2,
+      y: window.innerHeight - CANVAS_ZOOM_MARGIN - CANVAS_ZOOM_BAR_HEIGHT - 6,
+      align: 'center'
+    },
+    null
+  )
+}
+
 function onAppMenuSelect(id: string): void {
   if (id.startsWith('zoom:')) {
     closeAppMenu(false)
@@ -1817,33 +1854,6 @@ function onAppMenuSelect(id: string): void {
   }
 }
 
-async function openAppearanceMenu(event: MouseEvent): Promise<void> {
-  if (appearanceMenuOpen.value) {
-    return
-  }
-  const button = event.currentTarget
-  if (!(button instanceof HTMLElement)) {
-    return
-  }
-
-  const rect = button.getBoundingClientRect()
-  appearanceMenuOpen.value = true
-  actionError.value = null
-  try {
-    const result = await window.paneflow.showThemeMenu({
-      x: Math.max(0, rect.left),
-      y: rect.bottom + 2
-    })
-    if (!result.ok) {
-      actionError.value = result.error
-    }
-  } catch {
-    actionError.value = 'Could not open the appearance menu.'
-  } finally {
-    appearanceMenuOpen.value = false
-  }
-}
-
 async function duplicatePane(paneId: string): Promise<void> {
   actionError.value = null
   try {
@@ -1898,6 +1908,15 @@ async function refreshProfiles(): Promise<void> {
   }
 }
 
+function focusAfterDialog(): void {
+  const input = document.querySelector<HTMLInputElement>('.global-pane-bar .address-input')
+  if (input) {
+    input.focus()
+    return
+  }
+  document.querySelector<HTMLButtonElement>('.toolbar .add-pane-button')?.focus()
+}
+
 function openProfiles(): void {
   if (profilesOpen.value) {
     return
@@ -1925,7 +1944,7 @@ function closeProfiles(): void {
   renameDraft.value = ''
   void nextTick(() => {
     scheduleMeasure()
-    profilesButtonEl.value?.focus()
+    focusAfterDialog()
   })
 }
 
@@ -2135,7 +2154,7 @@ function closeWorkspaces(): void {
   newWorkspaceName.value = ''
   void nextTick(() => {
     scheduleMeasure()
-    workspacesButtonEl.value?.focus()
+    focusAfterDialog()
   })
 }
 
@@ -2524,6 +2543,12 @@ function handlePaneCommand(command: PaneCommand): void {
       if (pane) {
         toggleMaximize(pane.id)
       }
+      break
+    case 'open-profiles':
+      openProfiles()
+      break
+    case 'open-workspaces':
+      openWorkspaces()
       break
   }
 }
@@ -2959,6 +2984,7 @@ onMounted(async () => {
   disposeZoomActionListener = window.paneflow.onCanvasZoomAction(
     applyCanvasZoomAction
   )
+  void window.paneflow.setCanvasHandMode(canvasHandActive.value).catch(() => undefined)
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
   disposeCommandListener = window.paneflow.onPaneCommand(handlePaneCommand)
   disposeFocusListener = window.paneflow.onPaneFocused((paneId) => {
@@ -3058,74 +3084,20 @@ onBeforeUnmount(() => {
     <header class="toolbar">
       <h1 class="brand">PaneFlow</h1>
 
-      <button
-        ref="workspacesButtonEl"
-        class="workspace-switcher"
-        type="button"
-        title="Switch workspace"
-        aria-haspopup="dialog"
-        :aria-expanded="workspacesOpen"
-        :aria-label="`Switch workspace, current ${workspaceName}`"
-        @click="openWorkspaces"
-      >
-        <span class="workspace-switcher-name">{{ workspaceName }}</span>
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="m4 6 4 4 4-4" />
-        </svg>
-      </button>
+      <GlobalPaneBar
+        v-if="showGlobalPaneBar"
+        :key="activePane ? activePane.id : 'empty'"
+        variant="toolbar"
+        :pane="activePane"
+        :show-canvas-tools="layoutMode === 'canvas'"
+        :fit-all-disabled="panes.length === 0"
+        :has-panes="panes.length > 0"
+        @set-viewport="onGlobalPaneSetViewport"
+        @layout-changed="onPaneLayoutChanged"
+        @fit-all="fitCanvasToPanes"
+      />
 
-      <span class="toolbar-spacer"></span>
-
-      <button
-        class="icon-button toolbar-icon hand-tool"
-        :class="{ active: canvasHandActive }"
-        type="button"
-        title="Hand tool (hold Space)"
-        aria-label="Hand tool"
-        :aria-pressed="canvasHandActive"
-        @click="toggleCanvasHand"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M8 2.2v4.1M3.8 4.8l2.9 2.9M12.2 4.8 9.3 7.7M2.2 10.2l3.4 3.4h4.8l3.4-3.4" />
-        </svg>
-      </button>
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
-      <button
-        ref="profilesButtonEl"
-        class="icon-button toolbar-icon"
-        type="button"
-        title="Manage browser profiles"
-        aria-label="Profiles"
-        aria-haspopup="dialog"
-        :aria-expanded="profilesOpen"
-        @click="openProfiles"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="5.5" r="2.5" />
-          <path d="M3.5 13c.4-2.2 2.2-3.5 4.5-3.5s4.1 1.3 4.5 3.5" />
-        </svg>
-      </button>
-      <button
-        class="icon-button toolbar-icon appearance-button"
-        type="button"
-        :title="`Appearance: ${themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark'}`"
-        :aria-label="`Appearance: ${themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark'}`"
-        aria-haspopup="menu"
-        :aria-expanded="appearanceMenuOpen"
-        @click="openAppearanceMenu"
-      >
-        <svg v-if="themePreference === 'dark'" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M13.2 9.7A5.5 5.5 0 0 1 6.3 2.8 5.5 5.5 0 1 0 13.2 9.7Z" />
-        </svg>
-        <svg v-else-if="themePreference === 'light'" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="3.1" />
-          <path d="M8 1.5v1.7M8 12.8v1.7M1.5 8h1.7M12.8 8h1.7M3.4 3.4l1.2 1.2M11.4 11.4l1.2 1.2M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2" />
-        </svg>
-        <svg v-else viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2.2" y="3" width="11.6" height="8" rx="1.3" />
-          <path d="M5.5 13h5M8 11v2" />
-        </svg>
-      </button>
       <button
         class="icon-button toolbar-icon"
         type="button"
@@ -3163,18 +3135,6 @@ onBeforeUnmount(() => {
         </svg>
       </button>
     </div>
-
-    <GlobalPaneBar
-      v-if="showGlobalPaneBar"
-      :key="activePane ? activePane.id : 'empty'"
-      :pane="activePane"
-      :show-canvas-tools="layoutMode === 'canvas'"
-      :fit-all-disabled="panes.length === 0"
-      :has-panes="panes.length > 0"
-      @set-viewport="onGlobalPaneSetViewport"
-      @layout-changed="onPaneLayoutChanged"
-      @fit-all="fitCanvasToPanes"
-    />
 
     <main
       ref="workspaceEl"
@@ -3658,11 +3618,19 @@ onBeforeUnmount(() => {
           ? addPaneMenuModel
           : appMenuMode === 'zoom'
             ? zoomMenuModel
-            : canvasMenuModel
+            : appMenuMode === 'appearance'
+              ? appearanceMenuModel
+              : canvasMenuModel
       "
       :anchor="appMenuAnchor"
-      :placement="appMenuMode === 'zoom' ? 'above' : 'below'"
-      :width="appMenuMode === 'zoom' ? CANVAS_ZOOM_MENU_WIDTH : undefined"
+      :placement="
+        appMenuMode === 'zoom' || appMenuMode === 'appearance' ? 'above' : 'below'
+      "
+      :width="
+        appMenuMode === 'zoom' || appMenuMode === 'appearance'
+          ? CANVAS_ZOOM_MENU_WIDTH
+          : undefined
+      "
       @select="onAppMenuSelect"
       @close="closeAppMenu()"
       @bounds="onAppMenuBounds"
@@ -3697,8 +3665,13 @@ onBeforeUnmount(() => {
 
 .app-shell.mac-titlebar .toolbar button,
 .app-shell.mac-titlebar .toolbar select,
-.app-shell.mac-titlebar .toolbar .workspace-switcher {
+.app-shell.mac-titlebar .toolbar input {
   -webkit-app-region: no-drag;
+}
+
+.toolbar .address-input,
+.toolbar .custom-field input {
+  user-select: text;
 }
 
 .brand {
@@ -3708,10 +3681,6 @@ onBeforeUnmount(() => {
   letter-spacing: -0.01em;
 }
 
-.toolbar-spacer {
-  flex: 1;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -3719,11 +3688,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.hand-tool.active {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
 }
 
 .toolbar-button {
@@ -3875,10 +3839,6 @@ onBeforeUnmount(() => {
 .pane-grid {
   position: relative;
   min-height: 100%;
-}
-
-.appearance-button {
-  flex: none;
 }
 
 .pane-slot {
@@ -4144,45 +4104,6 @@ onBeforeUnmount(() => {
 .profiles-count {
   color: var(--text-faint);
   font-size: 11.5px;
-}
-
-.workspace-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 210px;
-  height: 28px;
-  margin-left: 4px;
-  padding: 0 7px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.workspace-switcher:hover {
-  border-color: var(--border);
-  background: var(--surface-inset);
-  color: var(--text);
-}
-
-.workspace-switcher-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-switcher svg {
-  flex: none;
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .workspace-create {

@@ -1,8 +1,12 @@
+import type { ThemePreference } from './workspace'
+
 export type CanvasZoomTheme = 'light' | 'dark'
 
 export interface CanvasZoomState {
   theme: CanvasZoomTheme
+  themePreference: ThemePreference
   zoom: number
+  handMode: boolean
 }
 
 export type CanvasZoomAction =
@@ -11,12 +15,14 @@ export type CanvasZoomAction =
   | { type: 'fit' }
   | { type: 'reset' }
   | { type: 'menu' }
+  | { type: 'toggle-hand' }
+  | { type: 'appearance' }
 
 export const CANVAS_MIN_ZOOM = 0.25
 export const CANVAS_MAX_ZOOM = 2
 export const CANVAS_ZOOM_STEP = 0.1
 export const CANVAS_ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
-export const CANVAS_ZOOM_BAR_WIDTH = 204
+export const CANVAS_ZOOM_BAR_WIDTH = 280
 export const CANVAS_ZOOM_BAR_HEIGHT = 40
 export const CANVAS_ZOOM_MARGIN = 12
 export const CANVAS_ZOOM_MENU_WIDTH = 224
@@ -27,6 +33,10 @@ export function clampCanvasZoom(zoom: number): number {
 
 function finite(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark'
 }
 
 export function parseCanvasZoomState(value: unknown): CanvasZoomState | null {
@@ -40,13 +50,17 @@ export function parseCanvasZoomState(value: unknown): CanvasZoomState | null {
   if (
     !finite(record.zoom) ||
     record.zoom < CANVAS_MIN_ZOOM ||
-    record.zoom > CANVAS_MAX_ZOOM
+    record.zoom > CANVAS_MAX_ZOOM ||
+    typeof record.handMode !== 'boolean' ||
+    !isThemePreference(record.themePreference)
   ) {
     return null
   }
   return {
     theme: record.theme,
-    zoom: record.zoom
+    themePreference: record.themePreference,
+    zoom: record.zoom,
+    handMode: record.handMode
   }
 }
 
@@ -75,6 +89,12 @@ export function parseCanvasZoomAction(value: unknown): CanvasZoomAction | null {
   }
   if (record.type === 'menu') {
     return { type: 'menu' }
+  }
+  if (record.type === 'toggle-hand') {
+    return { type: 'toggle-hand' }
+  }
+  if (record.type === 'appearance') {
+    return { type: 'appearance' }
   }
   return null
 }

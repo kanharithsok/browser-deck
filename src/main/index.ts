@@ -16,7 +16,6 @@ import {
 import {
   IPC_CHANNELS,
   type PaneCommand,
-  type ScriptResult,
   type ShellState,
   type WorkspaceTransferResult
 } from '../shared/ipc'
@@ -91,6 +90,7 @@ let lastCanvasMinimapState: CanvasMinimapState | null = null
 let zoomView: WebContentsView | null = null
 let zoomVisible = false
 let zoomLoaded = false
+let canvasHandActive = false
 let lastCanvasZoomState: CanvasZoomState | null = null
 let browserManager: BrowserManager | null = null
 let profileStore: ProfileStore | null = null
@@ -657,30 +657,6 @@ function themeMenuItems(): MenuItemConstructorOptions[] {
   }))
 }
 
-function showThemeMenu(x: number, y: number): Promise<ScriptResult> {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return Promise.resolve({ ok: false, error: 'Invalid menu position.' })
-  }
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return Promise.resolve({ ok: false, error: 'Window is not available.' })
-  }
-
-  const window = mainWindow
-  return new Promise((resolve) => {
-    const menu = Menu.buildFromTemplate(themeMenuItems())
-    try {
-      menu.popup({
-        window,
-        x: Math.max(0, Math.round(x)),
-        y: Math.max(0, Math.round(y)),
-        callback: () => resolve({ ok: true })
-      })
-    } catch {
-      resolve({ ok: false, error: 'Could not open the appearance menu.' })
-    }
-  })
-}
-
 function buildApplicationMenu(): void {
   const isMac = process.platform === 'darwin'
 
@@ -697,6 +673,13 @@ function buildApplicationMenu(): void {
       label: 'Workspace',
       submenu: [
         {
+          id: 'workspace-manage',
+          label: 'Workspaces…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => sendCommand('open-workspaces')
+        },
+        { type: 'separator' },
+        {
           id: 'workspace-next',
           label: 'Next Workspace',
           accelerator: 'CmdOrCtrl+Shift+]',
@@ -709,6 +692,17 @@ function buildApplicationMenu(): void {
           accelerator: 'CmdOrCtrl+Shift+[',
           enabled: false,
           click: () => cycleWorkspace('previous')
+        }
+      ]
+    },
+    {
+      label: 'Profiles',
+      submenu: [
+        {
+          id: 'profiles-manage',
+          label: 'Manage Profiles…',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => sendCommand('open-profiles')
         }
       ]
     },
@@ -927,12 +921,22 @@ function setCanvasMinimapVisible(visible: boolean): void {
 function forwardCanvasZoomState(): void {
   const state: CanvasZoomState = {
     theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
-    zoom: browserManager?.canvasZoomValue() ?? 1
+    themePreference: workspaceStore?.theme() ?? 'system',
+    zoom: browserManager?.canvasZoomValue() ?? 1,
+    handMode: canvasHandActive
   }
   lastCanvasZoomState = state
   if (zoomLoaded && zoomView && !zoomView.webContents.isDestroyed()) {
     zoomView.webContents.send(IPC_CHANNELS.canvasZoomState, state)
   }
+}
+
+function setCanvasHandModeActive(active: boolean): void {
+  if (canvasHandActive === active) {
+    return
+  }
+  canvasHandActive = active
+  forwardCanvasZoomState()
 }
 
 function forwardCanvasZoomAction(action: CanvasZoomAction): void {
@@ -1062,6 +1066,7 @@ async function createWindow(): Promise<void> {
   })
   shell.webContents.on('did-start-loading', () => {
     setCanvasMinimapVisible(false)
+    setCanvasHandModeActive(false)
   })
   shell.webContents.on('render-process-gone', () => {
     setCanvasMinimapVisible(false)
@@ -1378,6 +1383,7 @@ app.whenReady().then(async () => {
     forwardCanvasMinimapAction,
     updateCanvasZoomState: forwardCanvasZoomState,
     forwardCanvasZoomAction,
+    setCanvasHandMode: setCanvasHandModeActive,
     getCanvasSize: canvasSize,
     getWorkspaceLayout: () => workspaceStore?.layout() ?? defaultWorkspaceLayout([]),
     getWorkspaceIdentity: () => ({
@@ -1386,7 +1392,6 @@ app.whenReady().then(async () => {
     }),
     getThemePreference: () => workspaceStore?.theme() ?? 'system',
     getResolvedTheme: () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'),
-    showThemeMenu,
     setThemePreference: (theme) => applyThemePreference(theme),
     saveWorkspaceLayout: async (input) => {
       if (!workspaceStore) {

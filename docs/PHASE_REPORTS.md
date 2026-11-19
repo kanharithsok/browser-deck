@@ -720,3 +720,30 @@ The Canvas overview is a persistent native `WebContentsView` in the bottom-right
 **Manual GUI verification still outstanding:** Very small zoom levels where titles truncate heavily remain a visual review item. The actions are present, but the header is intentionally compact.
 
 **Known behavior / limitations:** At extreme zoom-out, the title may truncate to a few characters and the header can become crowded, but core actions stay reachable. The viewport badge may be hidden on the active pane because the global bar owns that information; inactive panes keep it while the header fits. Collapsing the dedicated controls into the ellipsis menu remains deferred.
+
+## Post-MVP — Top toolbar consolidation, bottom canvas bar, and uniform pane zoom
+
+**Date:** 2026-11-19
+
+**Status:** Implemented.
+
+**Change:** Consolidated the top toolbar into one stable 42 px row: PaneFlow brand, active-pane context, back/forward/reload, address, viewport selector, Fit all, Reload all, and Add pane. Removed the separate active-pane row and the Workspace, Profiles, Hand, and appearance toolbar buttons. Workspace management now lives in the native **Workspace → Workspaces…** item; profile management lives in a native **Profiles → Manage Profiles…** menu. Both open the existing dialogs and return focus to the active address input. Hand and appearance moved into the bottom canvas bar, which is now 280 × 40 DIP and holds Hand, zoom-out, percentage, zoom-in, and appearance; appearance opens the in-shell System/Light/Dark menu above the bar, while the native View → Theme menu remains. The custom viewport editor now replaces the address row inline, so the toolbar height stays 42 px while editing.
+
+Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the declared frame times the zoom, the header wrapper is `32 px × zoom`, and the header itself is laid out at its world width and CSS-scaled by the zoom. The page keeps its declared CSS viewport while main applies the matching device-emulation scale, so a 100 × 100 frame remains a 100 × 100 viewport at 50% and is rendered at half size without reflowing. Fit and centering math now uses the full scaled frame height.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/zoom.html`, `src/renderer/src/zoom.ts`, `src/renderer/src/zoom.css`, `src/shared/zoom.ts`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `tests/unit/zoom.test.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/e2e/accessibility.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-038/039 updates, ADR-041/042), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 15 unit files / 150 tests, all 13 light + 13 dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 14.8 s. Coverage includes the single-row toolbar, absence of Workspace/Profiles/Hand/Appearance toolbar buttons, native Workspace/Profiles menu commands, inline custom viewport editing at a stable toolbar height, bottom-bar Hand and appearance actions, zoom-menu overlay retention, whole-pane uniform zoom with fixed page metrics, and dialog focus return to the address input. |
+| `npm run build` | Passed: main 141.52 kB, preload 8.52 kB, renderer JS 325.00 kB, shell CSS 27.32 kB, minimap CSS 3.10 kB, canvas-bar CSS 1.69 kB, shared tokens 2.98 kB. |
+| Top-bar visual check | Rendered 1280 × 860 and 720 × 560 windows. One 42 px row holds the brand, active-pane URL/navigation/viewport controls, Fit all, Reload, and Add; the context collapses at narrow widths and the empty state reads "No pane selected" / "Click a pane to edit its address". |
+| Bottom-bar visual check | Rendered Hand, zoom-out, 100%, zoom-in, and appearance at bottom center. The zoom menu and appearance menu stay above the bar; the minimap remains visible at the bottom-right. |
+| Uniform zoom probe | Measured a 560 × 700 viewport at 100%, 50%, and 200%: card 560 × 732 / 280 × 366 / 1120 × 1464; header 32 / 16 / 64 px; page `window.innerWidth/Height` stayed 560 × 700 at every level. |
+
+**Automated coverage:** Unit tests cover the expanded zoom/hand/theme state and action validation. E2e verifies the top toolbar composition, native menu commands, focus fallback, inline custom editor, bottom-bar controls, overlay retention, and fixed page metrics under Canvas zoom. Accessibility e2e verifies the embedded active-pane controls, toolbar tab order including Reload/Add, native-menu dialog focus return, bottom-bar Hand/Appearance labels, appearance menu semantics, and axe audits of the toolbar and canvas bar.
+
+**Manual GUI verification still outstanding:** VoiceOver reading order across the native Workspace/Profiles menus and the separate bottom-bar webContents, long third-party URLs at the 720 px minimum width, and the custom viewport editor's invalid-error visual treatment remain manual. Native menu item clicks are exercised through `MenuItem.click()` in e2e rather than the OS menu.
+
+**Known behavior / limitations:** The top toolbar is dense; pane context hides below a 640 px active-bar width, and the custom viewport editor replaces the address row while editing. Workspace/profile access now takes an extra native-menu step and shows the current workspace name only in the Workspaces dialog. Canvas zoom scales pane chrome down with the page, so controls are small at 25–50% but remain present. The bottom canvas bar occupies a 280 × 40 DIP rectangle at the bottom center.

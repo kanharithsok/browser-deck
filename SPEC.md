@@ -148,18 +148,18 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** workspace selector/name, a compact **+** add-pane control with a device menu, reload-all, appearance control, and compact settings/profile access.
+1. **Top toolbar:** brand, the active pane's address/navigation/viewport controls, Fit all, reload-all, and the compact **+** add-pane control with its device menu. Keep this a stable single row.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
-3. **Active-pane bar:** address, navigation, and viewport controls for the active Canvas pane.
+3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, and appearance.
 4. **Pane chrome:** compact single-row title and actions, with lower-priority actions in the contextual menu.
 5. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
 6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
-Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
+Workspace and profile management live in the native menu bar, not the top toolbar. Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
 
 ### 6.3 Pane controls
 
-Each pane exposes a compact title, loading/error status, contextual menu, and close action. The active Canvas pane additionally exposes address, back, forward, reload, and viewport controls in the global active-pane bar.
+Each pane exposes a compact title, loading/error status, contextual menu, and close action. The active Canvas pane additionally exposes address, back, forward, reload, and viewport controls in the top toolbar.
 
 When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep the maximize, contextual-menu, and close actions available at every zoom level; hide lower-priority metadata such as the profile or viewport badge before hiding actions.
 
@@ -222,16 +222,16 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
 - Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
 - Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
-- The zoom menu is the exception to hiding overlays: keep the bottom zoom bar and the overview visible while it is open, and close it when a zoom or overview action is used.
+- The zoom and appearance menus are the exception to hiding overlays: keep the bottom canvas bar and the overview visible while they are open, and close them when a bar or overview action is used.
 
 ### 7.4 Canvas mode
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
-- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center zoom bar with zoom-out and zoom-in buttons and a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%). Keep the zoom bar and overview visible while this menu is open. Keep the page's CSS viewport stable while visually scaling native views through device emulation.
+- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center canvas bar with Hand, zoom-out and zoom-in buttons, a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%), and appearance. Keep this bar and the overview visible while its zoom or appearance menu is open. Canvas zoom scales the whole pane as a unit (frame, header chrome, and page content) while the declared viewport stays fixed; do not reflow or change the page's CSS viewport dimensions.
 - Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
 - Clicking empty canvas with the primary button and without dragging clears the active pane. Interacting with a pane, its header, or the minimap restores selection.
-- Keep the active-pane bar mounted at a stable height in Canvas. When no pane is selected, show a quiet empty state instead of removing the bar, so selecting or clearing a pane never moves or resizes the canvas.
+- Keep the top toolbar and its active-pane controls mounted at a stable height in Canvas. When no pane is selected, show a quiet empty state instead of removing the controls, so selecting or clearing a pane never moves or resizes the canvas.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
 - Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
@@ -240,8 +240,8 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
-- Provide a Fit all panes action in the Canvas global bar, in the overview, and in the zoom menu. It must bring every pane back inside the workspace.
-- Use the Canvas global bar for active-pane address, navigation, and viewport controls, with compact labels on each frame.
+- Provide a Fit all panes action in the top toolbar, in the overview, and in the zoom menu. It must bring every pane back inside the workspace.
+- Use the top toolbar for active-pane address, navigation, and viewport controls, with compact labels on each frame.
 - Provide the + device menu and right-click canvas context menu described in §7.3.
 - Persist canvas positions per workspace. Pan offset, zoom, and a cleared active-pane selection are viewport state and may reset.
 - Device bezels and pane frame resizing are not required.
