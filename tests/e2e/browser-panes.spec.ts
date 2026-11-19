@@ -793,6 +793,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       accelerator: 'CmdOrCtrl+K',
       enabled: true
     })
+    const findDeviceButton = shellPage.getByRole('button', {
+      name: 'Find device',
+      exact: true
+    })
+    await expect(findDeviceButton).toHaveAttribute('title', 'Find device (Cmd/Ctrl+K)')
     await clickAppMenuCommand(app, 'pane-find')
     const devicePalette = shellPage.getByRole('dialog', { name: 'Find device' })
     await expect(devicePalette).toBeVisible()
@@ -801,6 +806,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     })
     await expect(devicePaletteInput).toBeFocused()
     await expect(devicePalette.getByRole('option')).toHaveCount(2)
+    await expect(
+      devicePalette.getByRole('option').first().locator('.device-palette-viewport')
+    ).toHaveText('Responsive')
+    await expect(
+      devicePalette.getByRole('option').first().locator('.device-palette-detail')
+    ).toContainText('127.0.0.1')
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
       .toBe(true)
@@ -811,8 +822,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await getZoomState(app as ElectronApplication))?.visible)
       .toBe(false)
 
+    await devicePaletteInput.fill('Responsive')
+    await expect(devicePalette.getByRole('option')).toHaveCount(2)
+    await expect(
+      devicePalette.getByRole('option').first().locator('.device-palette-viewport mark')
+    ).toHaveText('Responsive')
     await devicePaletteInput.fill('Pane two')
     await expect(devicePalette.getByRole('option')).toHaveCount(1)
+    await expect(devicePalette.locator('.device-palette-title mark')).toHaveText('Pane two')
     await devicePaletteInput.press('Enter')
     await expect(devicePalette).toHaveCount(0)
     await expect(shellPage.locator('.pane-card-active')).toHaveAttribute(
@@ -836,7 +853,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(async () => (await getMinimapState(app as ElectronApplication))?.visible)
       .toBe(true)
 
-    await clickAppMenuCommand(app, 'pane-find')
+    await findDeviceButton.click()
     await expect(devicePalette).toBeVisible()
     await devicePaletteInput.fill('no-such-device')
     await expect(devicePalette.getByText('No matching devices.')).toBeVisible()

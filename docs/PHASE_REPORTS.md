@@ -827,3 +827,22 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual check | Rendered the palette over a two-device Canvas; the search field, active-first list, selected row, detail metadata, and keyboard hints fit cleanly at 1280 × 860. |
 
 **Known behavior / limitations:** Opening the palette freezes live pages behind snapshots while native views are hidden, matching existing dialogs and menus. While it is open, native menu commands other than Find Device are ignored. Full URLs and query strings are not shown in search results. Action commands and fuzzy scoring are deferred. Native accelerator delivery and shell focus when Cmd/Ctrl+K is pressed while a website has focus remain manual checks.
+
+## Post-MVP — Device palette discovery and match highlighting
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Added a magnifier button to the top toolbar so the device palette is discoverable without the native menu, while keeping `Cmd/Ctrl+K` and **Device → Find Device…** as-is. The palette now highlights matching substrings in device titles, host/profile details, and viewport badges. Results moved to a clearer title + metadata + viewport-badge hierarchy.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-047), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.81 kB, preload 9.49 kB, renderer JS 342.09 kB, shell CSS 30.33 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.9 s. Added toolbar-button, viewport-badge, match-highlighting, and no-match coverage. |
+| Visual check | Rendered a search for `pane`: both titles and the `Responsive` badges highlighted, metadata stayed on one line, and the new toolbar magnifier was visible. |
+
+**Known behavior / limitations:** The toolbar entry is disabled when there are no devices. Search still excludes full URLs and query strings. Fuzzy scoring and action commands remain deferred.

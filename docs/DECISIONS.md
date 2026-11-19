@@ -1409,6 +1409,33 @@ Record material technical decisions here. Keep entries short but include context
   - E2e opens the palette from the native menu command, verifies the dialog/combobox/listbox semantics, filters by title, selects with Enter, checks center/active/focus behavior, verifies Escape and the no-match state, and confirms native views and overlay visibility restore.
   - Typecheck, lint, unit tests, build, and the full Playwright suite pass.
 
+## ADR-047 — Device palette discovery and scannability
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The initial `Cmd/Ctrl+K` palette worked but was only discoverable through the native Device menu. Results were a flat title-and-detail line, so users could not see which part of a title, host, or viewport matched their query.
+
+- **Decision:**
+  1. Add a magnifier icon to the top toolbar, disabled when the workspace has no devices.
+  2. Keep the same palette and native shortcut; the toolbar button is an additional entry point, not a new overlay.
+  3. Highlight matching substrings in titles, host/profile details, and viewport badges.
+  4. Move the effective viewport into a compact right-aligned badge so each result has a clear title, metadata, and size hierarchy.
+  5. Keep full URLs and query strings out of results.
+
+- **Alternatives considered:**
+  - **Permanent searchable sidebar.** Rejected; it adds permanent chrome and narrows the canvas.
+  - **Make the toolbar entry the only entry point.** Rejected; `Cmd/Ctrl+K` remains the fastest path and stays available while a website has focus.
+  - **Highlight only the title.** Rejected; host, profile, and viewport are common search targets.
+
+- **Consequences:**
+  - The toolbar has one additional icon and focusable control.
+  - The palette result list is slightly denser but easier to scan.
+  - Search remains title/host/profile/viewport based; full URLs are not displayed.
+
+- **Evidence / verification:**
+  - E2e checks the toolbar entry, native accelerator, viewport badge, title and viewport highlighting, Enter selection, Escape, and no-match state.
+  - Typecheck, lint, unit tests, build, full Playwright suite, and a 1280 × 860 visual pass pass.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded

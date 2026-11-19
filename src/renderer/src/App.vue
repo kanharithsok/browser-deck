@@ -328,6 +328,7 @@ interface DevicePaletteResult {
   pane: PaneState
   title: string
   detail: string
+  viewport: string
   search: string
 }
 
@@ -343,10 +344,47 @@ function devicePaletteViewportLabel(viewport: PaneViewport): string {
   if (viewport.preset === 'responsive') {
     return 'Responsive'
   }
+  const size = viewportContentSize(viewport)
+  return `${size.width} × ${size.height}`
+}
+
+function devicePaletteViewportSearch(viewport: PaneViewport): string {
+  if (viewport.preset === 'responsive') {
+    return 'Responsive'
+  }
   const preset = findViewportPreset(viewport.preset)
   const size = viewportContentSize(viewport)
-  const name = preset ? preset.label.split(' — ')[0] : 'Custom'
-  return `${name} ${size.width} × ${size.height}`
+  return `${preset ? preset.label : 'Custom'} ${size.width} × ${size.height}`
+}
+
+interface HighlightSegment {
+  text: string
+  match: boolean
+}
+
+function highlightSegments(text: string, query: string): HighlightSegment[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) {
+    return [{ text, match: false }]
+  }
+  const haystack = text.toLowerCase()
+  const segments: HighlightSegment[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const index = haystack.indexOf(needle, cursor)
+    if (index === -1) {
+      break
+    }
+    if (index > cursor) {
+      segments.push({ text: text.slice(cursor, index), match: false })
+    }
+    segments.push({ text: text.slice(index, index + needle.length), match: true })
+    cursor = index + needle.length
+  }
+  if (cursor < text.length) {
+    segments.push({ text: text.slice(cursor), match: false })
+  }
+  return segments.length > 0 ? segments : [{ text, match: false }]
 }
 
 const devicePaletteResults = computed<DevicePaletteResult[]>(() => {
@@ -359,12 +397,14 @@ const devicePaletteResults = computed<DevicePaletteResult[]>(() => {
         profileCount > 1
           ? `${pane.profileLabel} · ${profileCount} devices`
           : pane.profileLabel
-      const detail = `${hostname} · ${profile} · ${devicePaletteViewportLabel(pane.viewport)}`
+      const viewport = devicePaletteViewportLabel(pane.viewport)
+      const detail = `${hostname} · ${profile}`
       return {
         pane,
         title: pane.title,
         detail,
-        search: `${pane.title} ${detail}`.toLowerCase()
+        viewport,
+        search: `${pane.title} ${detail} ${devicePaletteViewportSearch(pane.viewport)}`.toLowerCase()
       }
     })
     .filter((result) => !query || result.search.includes(query))
@@ -3427,6 +3467,20 @@ onBeforeUnmount(() => {
       <button
         class="icon-button toolbar-icon"
         type="button"
+        title="Find device (Cmd/Ctrl+K)"
+        aria-label="Find device"
+        aria-keyshortcuts="Meta+K Control+K"
+        :disabled="panes.length === 0"
+        @click="openDevicePalette"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="7" cy="7" r="4.5" />
+          <path d="m10.5 10.5 3 3" />
+        </svg>
+      </button>
+      <button
+        class="icon-button toolbar-icon"
+        type="button"
         title="Reload all devices"
         aria-label="Reload all devices"
         :disabled="panes.length === 0"
@@ -3981,8 +4035,44 @@ onBeforeUnmount(() => {
             @mousedown.prevent
             @click="chooseDevicePaletteResult(result)"
           >
-            <span class="device-palette-title">{{ result.title }}</span>
-            <span class="device-palette-detail">{{ result.detail }}</span>
+            <span class="device-palette-option-top">
+              <span class="device-palette-title">
+                <template
+                  v-for="(segment, segmentIndex) in highlightSegments(
+                    result.title,
+                    devicePaletteQuery
+                  )"
+                  :key="`title-${segmentIndex}`"
+                >
+                  <mark v-if="segment.match" class="device-palette-match">{{ segment.text }}</mark>
+                  <template v-else>{{ segment.text }}</template>
+                </template>
+              </span>
+              <span class="device-palette-viewport">
+                <template
+                  v-for="(segment, segmentIndex) in highlightSegments(
+                    result.viewport,
+                    devicePaletteQuery
+                  )"
+                  :key="`viewport-${segmentIndex}`"
+                >
+                  <mark v-if="segment.match" class="device-palette-match">{{ segment.text }}</mark>
+                  <template v-else>{{ segment.text }}</template>
+                </template>
+              </span>
+            </span>
+            <span class="device-palette-detail">
+              <template
+                v-for="(segment, segmentIndex) in highlightSegments(
+                  result.detail,
+                  devicePaletteQuery
+                )"
+                :key="`detail-${segmentIndex}`"
+              >
+                <mark v-if="segment.match" class="device-palette-match">{{ segment.text }}</mark>
+                <template v-else>{{ segment.text }}</template>
+              </template>
+            </span>
           </li>
         </ul>
         <div
@@ -4359,10 +4449,18 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
   user-select: none;
+}
+
+.device-palette-option-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
 .device-palette-option-selected {
@@ -4370,11 +4468,35 @@ onBeforeUnmount(() => {
 }
 
 .device-palette-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.device-palette-viewport {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.device-palette-option-selected .device-palette-viewport {
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.device-palette-match {
+  background: transparent;
+  color: var(--accent-strong);
+  font-weight: 650;
 }
 
 .device-palette-detail {
