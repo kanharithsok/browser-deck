@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { layoutMinimap } from '../../src/shared/minimap'
+import {
+  CANVAS_MINIMAP_COLLAPSED_HEIGHT,
+  CANVAS_MINIMAP_MAX_WIDTH,
+  CANVAS_MINIMAP_MIN_WIDTH,
+  canvasMinimapSize,
+  layoutMinimap,
+  parseCanvasMinimapAction,
+  parseCanvasMinimapState
+} from '../../src/shared/minimap'
 
 describe('canvas minimap layout', () => {
   it('projects panes and the current viewport into the map', () => {
@@ -44,5 +52,87 @@ describe('canvas minimap layout', () => {
         { width: 0, height: 300 }
       )
     ).toBeNull()
+  })
+})
+
+describe('canvas minimap panel sizing', () => {
+  it('shrinks with the window and stays within readable bounds', () => {
+    expect(canvasMinimapSize({ width: 720, height: 520 }, false)).toEqual({
+      width: CANVAS_MINIMAP_MIN_WIDTH,
+      height: Math.round(CANVAS_MINIMAP_MIN_WIDTH * 0.64)
+    })
+    expect(canvasMinimapSize({ width: 1280, height: 860 }, false)).toEqual({
+      width: 205,
+      height: Math.round(205 * 0.64)
+    })
+    expect(canvasMinimapSize({ width: 1920, height: 1080 }, false)).toEqual({
+      width: CANVAS_MINIMAP_MAX_WIDTH,
+      height: Math.round(CANVAS_MINIMAP_MAX_WIDTH * 0.64)
+    })
+  })
+
+  it('keeps only the header visible when collapsed', () => {
+    expect(canvasMinimapSize({ width: 1280, height: 860 }, true).height).toBe(
+      CANVAS_MINIMAP_COLLAPSED_HEIGHT
+    )
+  })
+})
+
+describe('canvas minimap state validation', () => {
+  const validState = {
+    theme: 'dark',
+    zoom: 1.25,
+    panes: [
+      {
+        id: 'pane-a',
+        title: 'Pane A',
+        active: true,
+        x: 10,
+        y: 20,
+        width: 560,
+        height: 732
+      }
+    ],
+    viewport: { x: -100, y: -50, width: 800, height: 600 }
+  }
+
+  it('accepts a complete trusted state payload', () => {
+    expect(parseCanvasMinimapState(validState)).toEqual(validState)
+  })
+
+  it('rejects malformed themes, zoom, panes, and viewports', () => {
+    expect(parseCanvasMinimapState({ ...validState, theme: 'sepia' })).toBeNull()
+    expect(parseCanvasMinimapState({ ...validState, zoom: 0.1 })).toBeNull()
+    expect(
+      parseCanvasMinimapState({
+        ...validState,
+        panes: [{ ...validState.panes[0], width: 0 }]
+      })
+    ).toBeNull()
+    expect(
+      parseCanvasMinimapState({
+        ...validState,
+        viewport: { ...validState.viewport, height: 0 }
+      })
+    ).toBeNull()
+  })
+
+  it('validates every minimap action and collapse state', () => {
+    expect(parseCanvasMinimapAction({ type: 'focus', paneId: 'pane-a' })).toEqual({
+      type: 'focus',
+      paneId: 'pane-a'
+    })
+    expect(parseCanvasMinimapAction({ type: 'recenter', x: 12, y: -8 })).toEqual({
+      type: 'recenter',
+      x: 12,
+      y: -8
+    })
+    expect(parseCanvasMinimapAction({ type: 'fit' })).toEqual({ type: 'fit' })
+    expect(parseCanvasMinimapAction({ type: 'collapse', collapsed: true })).toEqual({
+      type: 'collapse',
+      collapsed: true
+    })
+    expect(parseCanvasMinimapAction({ type: 'collapse', collapsed: 'yes' })).toBeNull()
+    expect(parseCanvasMinimapAction({ type: 'unknown' })).toBeNull()
   })
 })

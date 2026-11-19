@@ -1,0 +1,175 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-size: 10px;
+}
+
+/* Shared tokens load after this file in the production build; raise
+ * specificity so the native view keeps its transparent rounded corners. */
+html:root,
+html body {
+  background: transparent;
+  font-size: 10px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  padding: 5px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.panel-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  height: 16px;
+}
+
+.panel-title {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 8.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.panel-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.zoom {
+  margin-right: 2px;
+  color: var(--text-muted);
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.tool:hover {
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
+.tool svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.expand-icon {
+  display: none;
+}
+
+.map {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 12px 12px;
+  cursor: crosshair;
+}
+
+.frame {
+  position: absolute;
+  min-width: 3px;
+  min-height: 3px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+
+.frame:hover {
+  border-color: var(--text-muted);
+}
+
+.frame.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.viewport {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+  pointer-events: none;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 9.5px;
+}
+
+.panel[data-collapsed='true'] {
+  justify-content: center;
+  gap: 0;
+  padding: 4px 6px;
+}
+
+.panel[data-collapsed='true'] .map,
+.panel[data-collapsed='true'] .zoom,
+.panel[data-collapsed='true'] #fit {
+  display: none;
+}
+
+.panel[data-collapsed='true'] .collapse-icon {
+  display: none;
+}
+
+.panel[data-collapsed='true'] .expand-icon {
+  display: inline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

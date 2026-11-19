@@ -40,10 +40,13 @@ src/
     index.d.ts          `window.paneflow` declaration
   renderer/
     index.html          shell entry
+    minimap.html        trusted Canvas overview entry
     src/App.vue         toolbar, workspace grid, bounds measurement
     src/components/PaneCard.vue
     src/components/PaneNavigation.vue
     src/components/GlobalPaneBar.vue
+    src/minimap.ts      Canvas overview rendering and actions
+    src/minimap.css     compact overview panel styles
     src/assets/app.css  design tokens and base styles
   shared/
     ipc.ts              channel names and IPC payload types
@@ -79,10 +82,13 @@ BaseWindow.contentView
 │  │ │ WebContentsView   │ │  │ │ WebContentsView   │ │  │
 │  │ └───────────────────┘ │  │ └───────────────────┘ │  │
 │  └───────────────────────┘  └───────────────────────┘  │
+│                          ┌ overview WebContentsView ─┐  │
+│                          │ bottom-right, Canvas only │  │
+│                          └───────────────────────────┘  │
 └──────────────────────────────────────────────────────────┘
 ```
 
-The shell is the first child of `contentView` and fills the window content area. Each pane view is added afterwards and occupies only the rectangle of its `.pane-content` placeholder. Pane chrome therefore remains ordinary DOM and is never covered by a native view. Native menus are the only intentional overlay above browser content in the current composition.
+The shell is the first child of `contentView` and fills the window content area. Each pane view is added afterwards and occupies only the rectangle of its `.pane-content` placeholder. Pane chrome therefore remains ordinary DOM and is never covered by a native view. In Canvas mode a small trusted overview `WebContentsView` is raised above the pane stack at the bottom-right; it is the only persistent native overlay above browser content. Native menus remain temporary overlays.
 
 On macOS the window uses `titleBarStyle: 'hiddenInset'` with the traffic lights at `(16, 16)`. The shell fills the full window bounds, the toolbar is the window drag region, and interactive toolbar controls opt out with `-webkit-app-region: no-drag`. The toolbar reserves 84 px at the leading edge for traffic lights. Other platforms keep the default native frame.
 
@@ -133,7 +139,7 @@ The toolbar appearance button opens a native System/Light/Dark menu. Main keeps 
 
 Canvas layout uses world-coordinate pane positions plus a viewport pan offset and zoom. The shell draws a radial-gradient dot field whose background position follows the pan. Dragging empty canvas, wheel panning, or using the Hand tool updates only the shell transform until the gesture ends; native views are hidden for the duration. Holding Space temporarily enables the Hand tool. While Hand is active, the wheel zooms around the cursor between 50% and 200%; pane frame sizes, positions, and snapshots scale in the shell, while main applies the matching scale through device emulation for responsive panes. Main captures JPEG page snapshots through `capturePaneSnapshots`; the shell displays those images while panning and for partially off-screen panes. On release, the validated bounds path restores native views for frames fully inside the workspace. Canvas positions are persisted in workspace layout; pan and zoom are viewport state.
 
-The Canvas overview is a modal dialog because a DOM minimap would be covered by native pane views. Opening it hides native views through the measured-visibility path. `src/shared/minimap.ts` projects all pane frames and the current viewport into a fixed map, including the viewport bounds so panes remain findable after panning far away. Selecting a frame centers it and fits a zoom that can show the whole frame; selecting the map background centers that world point. The Canvas global bar exposes one-click Fit all panes and the overview trigger.
+The Canvas overview is a separate trusted `WebContentsView` because a DOM minimap would be covered by native pane views. It is pinned to the bottom-right, sized between 168 and 208 px wide as the window changes, and raised above the pane stack whenever Canvas is active. The panel can collapse to its header. `src/shared/minimap.ts` projects all pane frames and the current viewport into the map, including the viewport bounds so panes remain findable after panning far away; it also owns the adaptive panel size. The shell sends validated projection state through `paneflow:update-canvas-minimap`; main relays it to the minimap view. Selecting a frame centers and focuses that pane, selecting the map background centers that world point, and the header's fit control or the Canvas global bar runs Fit all. Minimap actions are validated in main and relayed to the shell, which then regains focus. Covered native views are never hidden for the minimap, so pages stay live outside its corner.
 
 `PaneCard` exposes `.pane-content[data-pane-content="<paneId>"]`. `App.vue` observes the workspace with a `ResizeObserver` and re-measures after state changes and window resize notifications. Measurements are coalesced into one `requestAnimationFrame`. The renderer sends absolute rectangles relative to the shell viewport; the shell view starts at `(0, 0)` in the window content, so these coordinates are directly usable as `View.setBounds` DIP coordinates.
 
@@ -216,6 +222,11 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:add-pane-with-viewport` | Validated viewport plus a fresh profile for a new pane |
 | `paneflow:show-theme-menu` | Native System/Light/Dark menu anchored to the toolbar appearance control |
 | `paneflow:capture-pane-snapshots` | In-memory JPEG snapshots for canvas panning and partially visible panes |
+| `paneflow:update-canvas-minimap` | Validated shell → main Canvas projection state |
+| `paneflow:set-canvas-minimap-visible` | Show or hide the native overview in Canvas mode |
+| `paneflow:canvas-minimap-state` | Main → minimap projection state |
+| `paneflow:canvas-minimap-action` | Validated minimap → main focus, recenter, fit, or collapse action |
+| `paneflow:canvas-minimap-action-requested` | Main → shell minimap action request |
 | `paneflow:save-workspace-layout` | Validated renderer-owned grid/freeform layout state |
 | `paneflow:list-profiles` | Profile metadata, creation dates, and live pane usage |
 | `paneflow:rename-profile` | Validated profile label update |
@@ -237,7 +248,7 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:state-changed` | Main → shell state snapshots |
 | `paneflow:request-measurement` | Main → shell re-measure request |
 
-Every `ipcMain.handle` validates that the sender is the shell `webContents`, that the sender frame is the shell's main frame, and that the frame document is the built `paneflow://shell/index.html` entry or the validated loopback development origin. Payload types and lengths are checked again in main. The renderer's validation is only a UX convenience. Unauthorized state reads receive an empty default state rather than workspace metadata.
+Every `ipcMain.handle` validates that the sender is the shell `webContents`, that the sender frame is the shell's main frame, and that the frame document is the built `paneflow://shell/index.html` entry or the validated loopback development origin. The minimap action channel instead requires the dedicated minimap `webContents`, its main frame, and the trusted `minimap.html` document. Payload types and lengths are checked again in main. The renderer's validation is only a UX convenience. Unauthorized state reads receive an empty default state rather than workspace metadata.
 
 ## Sessions and profiles
 

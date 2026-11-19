@@ -17,6 +17,12 @@ export interface PaneflowTestHook {
   webContentsCount: () => number
   shellWebContentsId: () => number | null
   contentBounds: () => PaneViewRect | null
+  minimapState: () => {
+    visible: boolean
+    bounds: PaneViewRect
+    loaded: boolean
+    collapsed: boolean
+  } | null
 }
 
 /**

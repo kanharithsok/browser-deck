@@ -18,7 +18,6 @@ const emit = defineEmits<{
   'set-viewport': [viewport: PaneViewport]
   'layout-changed': []
   'fit-all': []
-  overview: []
 }>()
 
 const addressError = ref<string | null>(null)
@@ -56,20 +55,6 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
-        </svg>
-      </button>
-      <button
-        class="global-canvas-tool"
-        type="button"
-        title="Canvas overview"
-        aria-label="Canvas overview"
-        @click="emit('overview')"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2.5" y="3" width="4.5" height="4.5" rx="0.7" />
-          <rect x="9" y="3" width="4.5" height="4.5" rx="0.7" />
-          <rect x="2.5" y="9" width="4.5" height="4.5" rx="0.7" />
-          <rect x="9" y="9" width="4.5" height="4.5" rx="0.7" />
         </svg>
       </button>
     </div>

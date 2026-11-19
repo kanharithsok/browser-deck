@@ -2,6 +2,7 @@ export const SHELL_SCHEME = 'paneflow'
 export const SHELL_HOST = 'shell'
 export const SHELL_ORIGIN = `${SHELL_SCHEME}://${SHELL_HOST}`
 export const SHELL_ENTRY_URL = `${SHELL_ORIGIN}/index.html`
+export const SHELL_MINIMAP_URL = `${SHELL_ORIGIN}/minimap.html`
 
 /**
  * Builds the trusted shell CSP. Production has no remote network allowance.
@@ -55,6 +56,35 @@ export function buildShellCsp(devServerUrl: string | null): string {
  * Returns true only for the built shell document or the validated development
  * shell origin. IPC sender checks use this in addition to WebContents identity.
  */
+export function isTrustedMinimapDocumentUrl(
+  rawUrl: string,
+  devServerUrl: string | null
+): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return false
+  }
+
+  if (devServerUrl) {
+    try {
+      return (
+        parsed.origin === new URL(devServerUrl).origin &&
+        parsed.pathname === '/minimap.html'
+      )
+    } catch {
+      return false
+    }
+  }
+
+  return (
+    parsed.protocol === `${SHELL_SCHEME}:` &&
+    parsed.hostname === SHELL_HOST &&
+    parsed.pathname === '/minimap.html'
+  )
+}
+
 export function isTrustedShellDocumentUrl(
   rawUrl: string,
   devServerUrl: string | null

@@ -12,7 +12,7 @@ import {
   type Page
 } from '@playwright/test'
 import { IPC_CHANNELS, type PaneViewRect, type ShellState } from '../../src/shared/ipc'
-import { SHELL_ENTRY_URL } from '../../src/shared/shell'
+import { SHELL_ENTRY_URL, SHELL_MINIMAP_URL } from '../../src/shared/shell'
 import type { PaneViewport } from '../../src/shared/viewports'
 import type { WorkspaceData } from '../../src/shared/workspace'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
@@ -28,6 +28,12 @@ interface TestHook {
   webContentsCount(): number
   shellWebContentsId(): number | null
   contentBounds(): PaneViewRect | null
+  minimapState(): {
+    visible: boolean
+    bounds: PaneViewRect
+    loaded: boolean
+    collapsed: boolean
+  } | null
 }
 
 interface DomPaneRect {
@@ -172,6 +178,21 @@ async function getWebContentsCount(app: ElectronApplication): Promise<number> {
       throw new Error('Test hook is not installed')
     }
     return hook.webContentsCount()
+  })
+}
+
+async function getMinimapState(app: ElectronApplication): Promise<{
+  visible: boolean
+  bounds: PaneViewRect
+  loaded: boolean
+  collapsed: boolean
+} | null> {
+  return app.evaluate(() => {
+    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    if (!hook) {
+      throw new Error('Test hook is not installed')
+    }
+    return hook.minimapState()
   })
 }
 
@@ -526,15 +547,17 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       async () => (app as ElectronApplication).windows(),
       (windows) =>
         windows.some((page) => isShellPage(page.url())) &&
+        windows.some((page) => page.url() === SHELL_MINIMAP_URL) &&
         windows.some((page) => page.url().includes('/pane/one')) &&
         windows.some((page) => page.url().includes('/pane/two')),
-      'shell and native pane pages'
+      'shell, minimap, and native pane pages'
     )
     const shellPage = pages.find((page) => isShellPage(page.url()))
+    const minimapPage = pages.find((page) => page.url() === SHELL_MINIMAP_URL)
     const alicePage = pages.find((page) => page.url().includes('/pane/one'))
     const bobPage = pages.find((page) => page.url().includes('/pane/two'))
-    if (!shellPage || !alicePage || !bobPage) {
-      throw new Error('Expected the shell and both native pane pages')
+    if (!shellPage || !minimapPage || !alicePage || !bobPage) {
+      throw new Error('Expected the shell, minimap, and both native pane pages')
     }
     expect(shellPage.url()).toBe(SHELL_ENTRY_URL)
 
@@ -683,6 +706,42 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(shellPage.locator('.workspace')).toHaveClass(/workspace-canvas/)
     await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
     await waitForAlignedBounds(app)
+
+    // The overview is a persistent native panel in the bottom-right. It needs
+    // no reveal button and must stay above native pane views.
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.visible)
+      .toBe(true)
+    const visibleMinimap = await getMinimapState(app as ElectronApplication)
+    const minimapContent = await getContentBounds(app as ElectronApplication)
+    if (!visibleMinimap) {
+      throw new Error('Canvas minimap state is unavailable')
+    }
+    expect(visibleMinimap.loaded).toBe(true)
+    expect(visibleMinimap.bounds.x + visibleMinimap.bounds.width).toBe(minimapContent.width - 12)
+    expect(visibleMinimap.bounds.y + visibleMinimap.bounds.height).toBe(minimapContent.height - 12)
+    expect(visibleMinimap.bounds.width).toBeGreaterThanOrEqual(168)
+    await expect(minimapPage.locator('.frame')).toHaveCount(2)
+    await expect(minimapPage.locator('.viewport')).toBeVisible()
+
+    // A minimap frame centers and focuses its pane, then returns keyboard focus
+    // to the shell instead of keeping it in the native overlay.
+    await minimapPage.locator('.frame').nth(1).click()
+    await waitForVisibleAlignedBounds(app)
+    await expect(shellPage.locator('.pane-card').nth(1)).toHaveAttribute('aria-current', 'true')
+    const centeredWorkspace = await shellPage.locator('.workspace').boundingBox()
+    const centeredPane = await shellPage.locator('.pane-card').nth(1).boundingBox()
+    if (!centeredWorkspace || !centeredPane) {
+      throw new Error('Canvas minimap focus bounds are unavailable')
+    }
+    expect(
+      Math.abs(
+        centeredPane.x + centeredPane.width / 2 -
+          (centeredWorkspace.x + centeredWorkspace.width / 2)
+      )
+    ).toBeLessThanOrEqual(2)
+    expect(await shellPage.evaluate(() => document.hasFocus())).toBe(true)
+
     await expect.poll(() => shellPage.locator('.pane-snapshot').count()).toBe(2)
     const firstCanvasCard = shellPage.locator('.pane-card').first()
     const secondCanvasCard = shellPage.locator('.pane-card').nth(1)
@@ -782,19 +841,27 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(canvasAfter?.x).not.toBe(canvasBefore.x)
     expect(canvasAfter?.y).not.toBe(canvasBefore.y)
 
-    // The overview shows every pane and the current viewport, and Fit all
-    // brings every pane back into the visible workspace.
-    await expect(shellPage.getByRole('button', { name: 'Fit all panes to view' })).toBeVisible()
-    await shellPage.getByRole('button', { name: 'Canvas overview' }).click()
-    const overview = shellPage.getByRole('dialog', { name: 'Canvas overview' })
-    await expect(overview).toBeVisible()
+    // Clicking empty minimap space recenters the canvas without making the
+    // native views disappear or opening a dialog.
+    const minimapBackgroundBefore = await shellPage
+      .locator('.workspace')
+      .evaluate((element) => getComputedStyle(element).backgroundPosition)
+    const minimapMap = await minimapPage.locator('#map').boundingBox()
+    if (!minimapMap) {
+      throw new Error('Canvas minimap bounds are unavailable')
+    }
+    await minimapPage.mouse.click(minimapMap.x + 4, minimapMap.y + 4)
     await expect
-      .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
-      .toBe(true)
-    await expect(overview.locator('.overview-frame')).toHaveCount(2)
-    await expect(overview.locator('.overview-viewport')).toBeVisible()
-    await overview.getByRole('button', { name: 'Fit all panes' }).click()
-    await expect(overview).toBeHidden()
+      .poll(() =>
+        shellPage
+          .locator('.workspace')
+          .evaluate((element) => getComputedStyle(element).backgroundPosition)
+      )
+      .not.toBe(minimapBackgroundBefore)
+
+    // Fit all from the persistent overview brings every pane back into view.
+    await expect(shellPage.getByRole('button', { name: 'Fit all panes to view' })).toBeVisible()
+    await minimapPage.getByRole('button', { name: 'Fit all panes' }).click()
     await waitForVisibleAlignedBounds(app)
     const fittedWorkspace = await shellPage.locator('.workspace').boundingBox()
     const fittedCards = await shellPage.locator('.pane-card').evaluateAll((cards) =>
@@ -812,6 +879,26 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       )
     }
 
+    // The overview collapses to a compact header while remaining available,
+    // then restores the map and frames.
+    const expandedMinimap = await getMinimapState(app as ElectronApplication)
+    if (!expandedMinimap) {
+      throw new Error('Expanded minimap state is unavailable')
+    }
+    await minimapPage.getByRole('button', { name: 'Collapse overview' }).click()
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.collapsed)
+      .toBe(true)
+    const collapsedMinimap = await getMinimapState(app as ElectronApplication)
+    expect(collapsedMinimap?.bounds.height).toBeLessThan(expandedMinimap.bounds.height)
+    await expect(minimapPage.locator('#map')).toBeHidden()
+    await minimapPage.getByRole('button', { name: 'Expand overview' }).click()
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.collapsed)
+      .toBe(false)
+    await expect(minimapPage.locator('#map')).toBeVisible()
+    await expect(minimapPage.locator('.frame')).toHaveCount(2)
+
     const handTool = shellPage.getByRole('button', { name: 'Hand tool' })
     await handTool.click()
     await expect(handTool).toHaveAttribute('aria-pressed', 'true')
@@ -823,6 +910,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitForVisibleAlignedBounds(app)
     await shellPage.getByRole('button', { name: 'Grid' }).click()
     await expect(shellPage.locator('.workspace')).not.toHaveClass(/workspace-canvas/)
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.visible)
+      .toBe(false)
     await waitForAlignedBounds(app)
 
     // Per-pane viewport emulation: presets, custom dimensions, validation,

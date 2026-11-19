@@ -29,9 +29,17 @@ import {
   type ProfileSummary
 } from '../shared/profiles'
 import {
+  CANVAS_MINIMAP_MARGIN,
+  canvasMinimapSize,
+  type CanvasMinimapAction,
+  type CanvasMinimapState
+} from '../shared/minimap'
+import {
   buildShellCsp,
+  isTrustedMinimapDocumentUrl,
   isTrustedShellDocumentUrl,
-  SHELL_ENTRY_URL
+  SHELL_ENTRY_URL,
+  SHELL_MINIMAP_URL
 } from '../shared/shell'
 import {
   DEFAULT_WORKSPACE_ID,
@@ -66,6 +74,11 @@ import { WorkspaceStore } from './workspace-store'
 
 let mainWindow: BaseWindow | null = null
 let shellView: WebContentsView | null = null
+let minimapView: WebContentsView | null = null
+let minimapVisible = false
+let minimapCollapsed = false
+let minimapLoaded = false
+let lastCanvasMinimapState: CanvasMinimapState | null = null
 let browserManager: BrowserManager | null = null
 let profileStore: ProfileStore | null = null
 let workspaceStore: WorkspaceStore | null = null
@@ -201,6 +214,7 @@ async function createInitialPanes(
 function createBrowserManager(window: BaseWindow, profiles: ProfileStore): BrowserManager {
   return new BrowserManager(window, profiles, {
     getColorScheme: paneColorScheme,
+    onPaneLayerChanged: () => raiseMinimapView(),
     onStateChanged: () => {
       if (workspaceSwitching) {
         return
@@ -798,6 +812,81 @@ function getDevServerUrl(): URL | null {
   return null
 }
 
+function syncMinimapBounds(window: BaseWindow, view: WebContentsView): void {
+  if (window.isDestroyed() || view.webContents.isDestroyed()) {
+    return
+  }
+  const content = window.getContentBounds()
+  const size = canvasMinimapSize(content, minimapCollapsed)
+  view.setBounds({
+    x: Math.max(0, content.width - size.width - CANVAS_MINIMAP_MARGIN),
+    y: Math.max(0, content.height - size.height - CANVAS_MINIMAP_MARGIN),
+    width: size.width,
+    height: size.height
+  })
+}
+
+function focusShellAfterMinimapAction(): void {
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.webContents.focus()
+  }
+}
+
+function setCanvasMinimapCollapsed(collapsed: boolean): void {
+  minimapCollapsed = collapsed
+  if (mainWindow && minimapView && !minimapView.webContents.isDestroyed()) {
+    syncMinimapBounds(mainWindow, minimapView)
+    if (minimapVisible) {
+      raiseMinimapView()
+    }
+  }
+  focusShellAfterMinimapAction()
+}
+
+function raiseMinimapView(): void {
+  if (
+    !minimapVisible ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    !minimapView ||
+    minimapView.webContents.isDestroyed()
+  ) {
+    return
+  }
+  mainWindow.contentView.addChildView(minimapView)
+  minimapView.setVisible(true)
+}
+
+function setCanvasMinimapVisible(visible: boolean): void {
+  minimapVisible = visible
+  if (!minimapView || minimapView.webContents.isDestroyed()) {
+    return
+  }
+  if (visible) {
+    raiseMinimapView()
+  } else {
+    minimapView.setVisible(false)
+  }
+}
+
+function forwardCanvasMinimapState(state: CanvasMinimapState): void {
+  lastCanvasMinimapState = state
+  if (
+    minimapLoaded &&
+    minimapView &&
+    !minimapView.webContents.isDestroyed()
+  ) {
+    minimapView.webContents.send(IPC_CHANNELS.canvasMinimapState, state)
+  }
+}
+
+function forwardCanvasMinimapAction(action: CanvasMinimapAction): void {
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.webContents.send(IPC_CHANNELS.canvasMinimapActionRequested, action)
+  }
+  focusShellAfterMinimapAction()
+}
+
 async function loadShell(shell: WebContentsView, devServer: URL | null): Promise<void> {
   if (devServer) {
     await shell.webContents.loadURL(devServer.toString())
@@ -894,6 +983,71 @@ async function createWindow(): Promise<void> {
   shell.webContents.on('will-attach-webview', (event) => {
     event.preventDefault()
   })
+  shell.webContents.on('did-start-loading', () => {
+    setCanvasMinimapVisible(false)
+  })
+  shell.webContents.on('render-process-gone', () => {
+    setCanvasMinimapVisible(false)
+  })
+
+  const minimap = new WebContentsView({
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      navigateOnDragDrop: false,
+      spellcheck: false
+    }
+  })
+  minimapView = minimap
+  minimap.setBackgroundColor('#00000000')
+  minimap.setBorderRadius(10)
+  minimap.setVisible(false)
+  window.contentView.addChildView(minimap)
+  syncMinimapBounds(window, minimap)
+
+  minimap.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+  })
+  minimap.webContents.on('will-redirect', (event) => {
+    if (!isTrustedMinimapDocumentUrl(event.url, devServer?.origin ?? null)) {
+      event.preventDefault()
+    }
+  })
+  minimap.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  minimap.webContents.on('will-attach-webview', (event) => {
+    event.preventDefault()
+  })
+  minimap.webContents.on('did-finish-load', () => {
+    if (
+      minimap.webContents.isDestroyed() ||
+      !isTrustedMinimapDocumentUrl(
+        minimap.webContents.getURL(),
+        devServer?.origin ?? null
+      )
+    ) {
+      return
+    }
+    minimapLoaded = true
+    if (lastCanvasMinimapState) {
+      minimap.webContents.send(IPC_CHANNELS.canvasMinimapState, lastCanvasMinimapState)
+    }
+    raiseMinimapView()
+  })
+
+  const minimapUrl = devServer
+    ? new URL('minimap.html', devServer).toString()
+    : SHELL_MINIMAP_URL
+  void minimap.webContents.loadURL(minimapUrl).catch((error: unknown) => {
+    console.error('Could not load the Canvas minimap.', error)
+  })
 
   const requestMeasurement = (): void => {
     if (!shell.webContents.isDestroyed()) {
@@ -903,6 +1057,12 @@ async function createWindow(): Promise<void> {
 
   const syncLayout = (): void => {
     syncShellBounds(window, shell)
+    if (minimapView && !minimapView.webContents.isDestroyed()) {
+      syncMinimapBounds(window, minimapView)
+      if (minimapVisible) {
+        raiseMinimapView()
+      }
+    }
     requestMeasurement()
   }
 
@@ -959,6 +1119,16 @@ async function createWindow(): Promise<void> {
     lastPersistedPaneKey = ''
     disableWorkspaceMenuActions()
 
+    if (minimapView && !minimapView.webContents.isDestroyed()) {
+      minimapView.webContents.removeAllListeners()
+      minimapView.webContents.close()
+    }
+    minimapView = null
+    minimapVisible = false
+    minimapCollapsed = false
+    minimapLoaded = false
+    lastCanvasMinimapState = null
+
     if (!shell.webContents.isDestroyed()) {
       shell.webContents.removeAllListeners()
       shell.webContents.close()
@@ -990,7 +1160,16 @@ async function createWindow(): Promise<void> {
       }
       const bounds = window.getContentBounds()
       return { x: 0, y: 0, width: bounds.width, height: bounds.height }
-    }
+    },
+    minimapState: () =>
+      minimapView && !minimapView.webContents.isDestroyed()
+        ? {
+            visible: minimapView.getVisible(),
+            bounds: minimapView.getBounds(),
+            loaded: minimapLoaded,
+            collapsed: minimapCollapsed
+          }
+        : null
   })
 
   try {
@@ -1039,7 +1218,12 @@ app.whenReady().then(async () => {
   registerIpcHandlers({
     getBrowserManager: () => browserManager,
     getShellWebContents: () => shellView?.webContents ?? null,
+    getMinimapWebContents: () => minimapView?.webContents ?? null,
     getDevServerUrl: () => devServerUrl?.origin ?? null,
+    updateCanvasMinimapState: forwardCanvasMinimapState,
+    setCanvasMinimapVisible,
+    setCanvasMinimapCollapsed,
+    forwardCanvasMinimapAction,
     getCanvasSize: canvasSize,
     getWorkspaceLayout: () => workspaceStore?.layout() ?? defaultWorkspaceLayout([]),
     getWorkspaceIdentity: () => ({

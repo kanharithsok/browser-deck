@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas overview</title>
+    <link rel="stylesheet" href="/src/assets/app.css" />
+    <link rel="stylesheet" href="/src/minimap.css" />
+  </head>
+  <body>
+    <section id="panel" class="panel" aria-label="Canvas overview">
+      <header class="panel-header">
+        <span class="panel-title">Overview</span>
+        <span class="panel-actions">
+          <span id="zoom" class="zoom">100%</span>
+          <button
+            id="fit"
+            class="tool"
+            type="button"
+            title="Fit all panes"
+            aria-label="Fit all panes"
+          >
+            <svg viewBox="0 0 14 14" aria-hidden="true">
+              <path d="M2.5 5.5v-3h3M8.5 2.5h3v3M2.5 8.5v3h3M11.5 8.5v3h-3" />
+            </svg>
+          </button>
+          <button
+            id="collapse"
+            class="tool"
+            type="button"
+            title="Collapse overview"
+            aria-label="Collapse overview"
+            aria-expanded="true"
+            aria-controls="map"
+          >
+            <svg viewBox="0 0 14 14" aria-hidden="true">
+              <path class="collapse-icon" d="M3.5 7h7" />
+              <path class="expand-icon" d="M3.5 7h7M7 3.5v7" />
+            </svg>
+          </button>
+        </span>
+      </header>
+      <div
+        id="map"
+        class="map"
+        role="group"
+        aria-label="Canvas minimap. Select a pane to center it."
+      >
+        <p id="empty" class="empty">No panes</p>
+      </div>
+    </section>
+    <script type="module" src="/src/minimap.ts"></script>
+  </body>
+</html>

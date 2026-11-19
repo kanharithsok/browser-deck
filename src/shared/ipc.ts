@@ -1,3 +1,7 @@
+import type {
+  CanvasMinimapAction,
+  CanvasMinimapState
+} from './minimap'
 import type { PaneChromeStyle } from './pane-chrome'
 import type { ProfileSummary } from './profiles'
 import type { PaneViewport, ViewportPresetId } from './viewports'
@@ -42,6 +46,11 @@ export const IPC_CHANNELS = {
   showThemeMenu: 'paneflow:show-theme-menu',
   capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
   setCanvasZoom: 'paneflow:set-canvas-zoom',
+  updateCanvasMinimap: 'paneflow:update-canvas-minimap',
+  setCanvasMinimapVisible: 'paneflow:set-canvas-minimap-visible',
+  canvasMinimapState: 'paneflow:canvas-minimap-state',
+  canvasMinimapAction: 'paneflow:canvas-minimap-action',
+  canvasMinimapActionRequested: 'paneflow:canvas-minimap-action-requested',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneRenameRequested: 'paneflow:pane-rename-requested',
@@ -176,6 +185,11 @@ export interface PaneFlowApi {
   showThemeMenu(request: ThemeMenuRequest): Promise<ScriptResult>
   capturePaneSnapshots(): Promise<PaneSnapshotsResult>
   setCanvasZoom(zoom: number): Promise<ScriptResult>
+  updateCanvasMinimap(state: CanvasMinimapState): Promise<ScriptResult>
+  setCanvasMinimapVisible(visible: boolean): Promise<ScriptResult>
+  sendCanvasMinimapAction(action: CanvasMinimapAction): Promise<ScriptResult>
+  onCanvasMinimapState(listener: (state: CanvasMinimapState) => void): () => void
+  onCanvasMinimapAction(listener: (action: CanvasMinimapAction) => void): () => void
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
