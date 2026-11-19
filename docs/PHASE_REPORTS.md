@@ -616,7 +616,7 @@ The Canvas overview is a persistent native `WebContentsView` in the bottom-right
 | Check | Result |
 | --- | --- |
 | `make check` | Passed: typecheck, lint, 14 unit files / 142 tests, all 13 light + 13 dark contrast pairs. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 17.6 s. Persistent minimap visibility, bottom-right positioning, frame focus/centering, viewport outline, empty-map recentering, Fit all, collapse/expand, shell focus return, Canvas pane-header drag, page content interaction, Space hand mode, wheel zoom with stable 560 × 700 page metrics, zoom reset, wheel-pan native realignment, background pan, Hand-tool state, minimap hiding in Grid, accessibility/axe, and the full existing integration path passed. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.9 s. Persistent minimap visibility, bottom-right positioning, frame focus/centering, viewport outline, empty-map recentering, Fit all, collapse/expand, shell focus return, Canvas pane-header drag, page content interaction, Space hand mode, wheel zoom with stable 560 × 700 page metrics, zoom reset, wheel-pan native realignment, background pan, Hand-tool state, minimap hiding in Grid, accessibility/axe, and the full existing integration path passed. |
 | `npm run build` | Passed: main 136.60 kB, preload 7.70 kB, renderer JS 308.14 kB, shell CSS 26.02 kB, minimap CSS 3.10 kB, shared tokens 2.98 kB. |
 | Canvas visual check | Rendered the native overview at 1280 × 860 (205 × 131) and 760 × 540 (168 × 108), collapsed to 205 × 28 and 168 × 28. Verified the dashed viewport outline, frame focus, toolbar icons, and dark appearance; shared light/dark tokens are covered by the contrast check. |
 
