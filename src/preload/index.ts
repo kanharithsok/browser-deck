@@ -152,6 +152,15 @@ const api: PaneFlowApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.paneFocused, wrapped)
     }
   },
+  onPaneMaximizeRequested: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, paneId: string): void => {
+      listener(paneId)
+    }
+    ipcRenderer.on(IPC_CHANNELS.paneMaximizeRequested, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.paneMaximizeRequested, wrapped)
+    }
+  },
   onPaneRenameRequested: (listener) => {
     const wrapped = (_event: IpcRendererEvent, paneId: string): void => {
       listener(paneId)

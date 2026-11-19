@@ -270,6 +270,15 @@ function reload(): void {
         />
       </form>
 
+      <span
+        v-if="addressError"
+        class="address-error"
+        aria-hidden="true"
+        :title="addressError"
+      >
+        {{ addressError }}
+      </span>
+
       <select
         class="viewport-select"
         :value="selectedPreset"
@@ -436,6 +445,18 @@ function reload(): void {
 .address-input-invalid:focus {
   border-color: var(--danger);
   outline-color: var(--danger);
+}
+
+.address-error {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--danger);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .viewport-select {

@@ -245,6 +245,11 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
         shellView.webContents.send(IPC_CHANNELS.paneFocused, paneId)
       }
     },
+    onPaneMaximizeRequested: (paneId) => {
+      if (shellView && !shellView.webContents.isDestroyed()) {
+        shellView.webContents.send(IPC_CHANNELS.paneMaximizeRequested, paneId)
+      }
+    },
     onPaneRenameRequested: (paneId) => {
       if (shellView && !shellView.webContents.isDestroyed()) {
         shellView.webContents.send(IPC_CHANNELS.paneRenameRequested, paneId)
@@ -728,10 +733,17 @@ function buildApplicationMenu(): void {
           accelerator: 'CmdOrCtrl+Shift+W',
           click: () => sendCommand('close-pane')
         },
+        { type: 'separator' },
+        {
+          id: 'pane-focus-address',
+          label: 'Focus Address',
+          accelerator: 'CmdOrCtrl+L',
+          click: () => sendCommand('focus-address')
+        },
         {
           id: 'pane-reload',
           label: 'Reload Device',
-          accelerator: 'CmdOrCtrl+Alt+R',
+          accelerator: 'CmdOrCtrl+R',
           click: () => sendCommand('reload-pane')
         },
         {
@@ -752,8 +764,6 @@ function buildApplicationMenu(): void {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
         {

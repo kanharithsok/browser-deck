@@ -14,7 +14,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Two browser panes by default; add, duplicate, and close panes dynamically. The quiet toolbar **+** control opens a custom device menu with responsive, iPhone, Samsung, Pixel, iPad, Galaxy Tab, desktop, and MacBook presets. Duplicates copy URL/viewport with a fresh profile.
 - One persistent, internally generated browser profile per new pane.
 - Independent navigation, back, forward, reload, loading, and load-error states. Each device header carries back, forward, reload, device actions, and close; rotate viewport and capture screenshot live in the actions menu.
-- Per-device native menu for back/forward/reload, rotate viewport, screenshot, duplicate, rename, DevTools, and close.
+- Per-device native menu for back/forward/reload, copy URL, rotate viewport, screenshot, maximize/restore, duplicate, rename, DevTools, and close.
 - Retina-correct bounds synchronization verified at `devicePixelRatio: 2`.
 - Denied popups, permissions, downloads, display capture, and device access for remote content; sandboxed browser views with no app bridge or Node access.
 - Trusted shell served over a secure internal `paneflow://shell/` protocol with a production CSP that has no development network allowance, plus IPC sender document validation.
@@ -31,10 +31,10 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Compact single-row device chrome with a frameless surface and a subtle selected-device outline. The header carries back, forward, reload, actions, and close; maximize moved to the native Device menu. Controls stay available at every Canvas zoom, and the profile is hidden first when space is tight.
 - Canvas is the only workspace layout. It has a dotted infinite backdrop, background drag and Hand-tool panning, Space as a temporary Hand tool, draggable pane headers, world-space edge/center snapping with live guides, 25–200% wheel zoom around the cursor, a single-row top toolbar with the active pane's URL/navigation/viewport controls, a bottom canvas bar with Hand, zoom, and appearance controls, an always-visible native overview in the bottom-right, one-click Fit all devices, fit-on-open for each workspace, click-empty-canvas deselection, world-coordinate pane positions, and captured pane snapshots while the world moves. Canvas zoom scales the whole pane as a unit while the declared viewport size stays fixed. The overview shows the current viewport, focuses or recenters from a click, and collapses to a compact header. Page content stays interactive when the pane is fully visible; device bezels and pane frame resizing are not implemented.
 - Custom **+** add menu and right-click canvas menu with the Herdr-inspired compact menu language: sections, monochrome icons, dimension/shortcut metadata, checked Hand/Appearance states, keyboard navigation, and Escape dismissal.
-- Persisted System/Light/Dark theme from the bottom canvas bar appearance menu, custom canvas menu, and native View menu, with matching window chrome and shell tokens. Loaded website panes receive the effective appearance as a live `prefers-color-scheme` change without reloading. The **Workspace** and **Profiles** managers live in the native menu bar; Reload all and Add remain in the top toolbar.
+- Persisted System/Light/Dark theme from the bottom canvas bar appearance menu, custom canvas menu, and native View menu, with matching window chrome and shell tokens. Loaded website panes receive the effective appearance as a live `prefers-color-scheme` change without reloading. The **Workspace** and **Profiles** managers live in the native menu bar; Reload all and Add remain in the top toolbar. Address validation errors are shown inline in the toolbar and announced through a live status region.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
 - Profile manager dialog with creation dates, live pane usage, rename, and confirmed clear/delete. In-use profiles can be closed and deleted through a single explicit confirmation.
-- Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New panes still receive fresh profiles by default.
+- Explicit shared-profile panes from the profile manager, with shared cookie/storage behavior and usage/count indicators. New devices still receive fresh profiles by default.
 - Workspace manager for create, rename, duplicate, switch, delete, and secret-free import/export. Imported/duplicated workspaces receive fresh profiles.
 - Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline, with a configurable loaded-page soak (50 cycles observed).
 - Automated accessibility coverage for the shell toolbar, pane cards, profile dialog, and workspace dialog: accessible roles and names, focus order and visible focus, dialog focus traps and focus return, Chromium CDP accessibility-tree checks, and axe-core WCAG/best-practice audits. Axe is injected through CDP because the production CSP deliberately blocks inline scripts.
@@ -97,7 +97,8 @@ Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node optio
 | `Cmd/Ctrl+D` | Duplicate selected device |
 | `Delete` / `Backspace` | Close selected device (when shell chrome has focus) |
 | `Cmd/Ctrl+Shift+W` | Close selected device |
-| `Cmd/Ctrl+Alt+R` | Reload selected device |
+| `Cmd/Ctrl+L` | Focus the selected device address |
+| `Cmd/Ctrl+R` | Reload selected device |
 | `Cmd/Ctrl+Alt+Shift+R` | Reload all devices |
 | `Cmd/Ctrl+Shift+M` | Toggle maximize for selected device |
 | `Cmd/Ctrl+Shift+]` | Next workspace |
@@ -191,7 +192,7 @@ opencode.jsonc        Project-level OpenCode configuration
 
 ## Known limitations
 
-- New panes receive fresh profiles by default; sharing requires the profile manager's Open device action.
+- New devices receive fresh profiles by default; sharing requires the profile manager's New device action.
 - Shared-profile panes intentionally share cookies and site storage.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
 - Active-device chrome is indicated by a subtle accent outline and `aria-current`; menu triggers expose expanded state and dialogs opened from the native menubar return focus to the active-pane address. Automated axe/role/AX checks cover the shell, custom menus, and dialogs, but VoiceOver order/announcements, focus-ring usability, and minimum-window toolbar layout still need a manual pass.

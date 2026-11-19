@@ -1003,10 +1003,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toBe(true)
     await expect(addMenu.getByRole('menuitem')).toHaveCount(10)
     await expect(addMenu.locator('.app-menu-section')).toHaveText([
-      'New device',
-      'Phones',
-      'Tablets',
-      'Desktop'
+      'Start with viewport',
+      'Phone viewports',
+      'Tablet viewports',
+      'Desktop viewports'
     ])
     await addMenu
       .getByRole('menuitem', { name: /^iPhone 15 Pro\b.*393/ })
@@ -1680,16 +1680,38 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     expect(rejectedBounds.ok).toBe(false)
 
-    // Address errors are visible in the live status region and Escape recovers.
+    // Address errors are visible in the toolbar and announced through the live
+    // status region; Escape restores the current URL.
+    expect(await readAppMenuItem(app, 'pane-reload')).toEqual({
+      id: 'pane-reload',
+      accelerator: 'CmdOrCtrl+R',
+      enabled: true
+    })
+    expect(await readAppMenuItem(app, 'pane-focus-address')).toEqual({
+      id: 'pane-focus-address',
+      accelerator: 'CmdOrCtrl+L',
+      enabled: true
+    })
     const firstInput = shellPage.locator('.global-pane-bar .address-input')
     await firstInput.fill('javascript:alert(1)')
     await firstInput.press('Enter')
+    await expect(shellPage.locator('.global-pane-bar .address-error')).toHaveText(
+      /Only http/
+    )
     await expect(shellPage.locator('.global-pane-bar .global-pane-status')).toContainText(
       'Only http'
     )
     expect(await firstInput.getAttribute('aria-invalid')).toBe('true')
     await firstInput.press('Escape')
     await expect(firstInput).toHaveValue(`${fixture.url}/pane/one?user=alice`)
+
+    await clickAppMenuCommand(app, 'pane-focus-address')
+    await expect
+      .poll(() =>
+        shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')
+      )
+      .toMatch(/^Address for device /)
+    await shellPage.keyboard.press('Escape')
 
     // Resize the native window; shell and browser bounds must realign.
     await app.evaluate(({ BaseWindow }) => {
@@ -2215,7 +2237,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const sharedProfileRow = profilesDialog.locator(
       `.profile-row[data-profile-id="${sharedProfileId}"]`
     )
-    await sharedProfileRow.getByRole('button', { name: /^Open device/ }).click()
+    await sharedProfileRow.getByRole('button', { name: /^New device/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     await waitFor(
       () => getSnapshot(restartApp),
@@ -2224,7 +2246,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await clickAppMenuCommand(restartApp, 'profiles-manage')
-    await sharedProfileRow.getByRole('button', { name: /^Open device/ }).click()
+    await sharedProfileRow.getByRole('button', { name: /^New device/ }).click()
     await expect(profilesDialog).toHaveCount(0)
     const sharedState = await waitFor(
       () => getSnapshot(restartApp),
@@ -2233,6 +2255,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     const sharedPanes = sharedState.panes.filter((pane) => pane.profileId === sharedProfileId)
     expect(new Set(sharedPanes.map((pane) => pane.id)).size).toBe(2)
+    const sharedProfileLabel = sharedPanes[0]?.profileLabel
+    if (!sharedProfileLabel) {
+      throw new Error('Shared profile label is unavailable')
+    }
+    await expect(restartShell.locator('.global-pane-bar .global-pane-profile')).toHaveText(
+      `${sharedProfileLabel} · 2 devices`
+    )
+    await expect(
+      restartShell.locator('.global-pane-bar .global-pane-profile')
+    ).toHaveAttribute('title', `Browser profile: ${sharedProfileLabel} (shared by 2 devices)`)
     for (const pane of sharedPanes) {
       await expect(
         restartShell.locator(`.pane-card[data-pane-id="${pane.id}"] .pane-profile`)

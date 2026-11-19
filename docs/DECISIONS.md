@@ -1323,6 +1323,36 @@ Record material technical decisions here. Keep entries short but include context
 
 
 
+## ADR-044 — Make errors, profile sharing, and shortcut semantics explicit
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** A UI review found four concrete problems: invalid addresses only showed a red border because the live status was visually hidden; `Cmd+R` used generic Electron View roles and could reload the whole shell; shared-profile usage disappeared from Canvas because the header profile label is hidden; and “device” was doing double duty for both a browser frame and a viewport preset. Maximize also became hard to find after the header button removal.
+
+- **Decision:**
+  1. Render address validation errors as a compact inline danger message in the toolbar, while retaining the screen-reader live region and `aria-describedby` relationship. Do not add a floating overlay below the toolbar because native views would cover it.
+  2. Remove generic View-menu reload/force-reload roles. Map `Cmd/Ctrl+R` to Reload Device and add `Cmd/Ctrl+L` Focus Address. Keep `Cmd/Ctrl+Alt+Shift+R` for Reload All.
+  3. Pass the active profile's device count into the toolbar and show `Profile N · M devices` plus a shared-profile tooltip when the count is greater than one.
+  4. Rename add-menu sections to viewport language (`Start with viewport`, `Phone viewports`, `Tablet viewports`, `Desktop viewports`) and rename the profile action to `New device`. Explain that new devices and duplicates receive fresh profiles.
+  5. Add **Maximize/Restore Device** and **Copy URL** to the native device actions menu. Maximize requests are routed back to the shell with the pane ID so the action always targets the menu's pane.
+
+- **Alternatives considered:**
+  - **Floating error popover below the toolbar.** Rejected; native `WebContentsView`s would cover it.
+  - **Keep the generic View reload roles.** Rejected; reloading the trusted shell is never the intended device action.
+  - **Show the shared count only in the profile dialog.** Rejected; profile sharing changes cookie/storage behavior and must be visible while using a device.
+  - **Rename panes back to browsers.** Rejected; the user chose device-first copy. Viewport language removes the ambiguity without another rename.
+  - **Use the active-pane command for menu maximize.** Rejected; routing the pane ID avoids applying the toggle to a different selection.
+
+- **Consequences:**
+  - Invalid addresses now consume toolbar width temporarily; long messages truncate with a full-text tooltip and remain fully announced.
+  - `Cmd+R` is consistent whether shell chrome or a website has focus.
+  - The toolbar makes shared-profile usage visible in Canvas without re-enabling the hidden header metadata.
+  - Native pane-menu items remain outside Playwright automation and need a manual GUI pass.
+
+- **Evidence / verification:**
+  - E2e asserts visible and announced address errors, Escape recovery, `Cmd/Ctrl+L`/`Cmd/Ctrl+R` menu accelerators and focus behavior, shared-profile toolbar copy, and the renamed add/profile flows.
+  - Unit tests, typecheck, lint, build, and the existing e2e suite pass. A visual pass at 1280 × 860 and 720 × 560 confirms the inline error fits without toolbar overflow.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded

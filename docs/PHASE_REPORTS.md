@@ -569,7 +569,7 @@ The MVP is complete. These items are post-MVP hardening and validation, not Phas
 | `npm run typecheck` | Passed (`tsc` and `vue-tsc`). |
 | `npm run lint` | Passed with no warnings or errors. |
 | `npm run test:unit` | Passed: 11 files, 126 tests in 407 ms. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 15.9 s. The device test rejects an unknown preset, creates a mobile 390 × 844 DPR 3 pane, verifies its viewport, preset control, and fit emulation, and closes it cleanly. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.0 s. The device test rejects an unknown preset, creates a mobile 390 × 844 DPR 3 pane, verifies its viewport, preset control, and fit emulation, and closes it cleanly. |
 | `npm run build` | Passed: main 118.06 kB, preload 6.06 kB, renderer JS 272.39 kB, CSS 23.44 kB. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
 
@@ -768,3 +768,24 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual check | Rendered a three-device Canvas at 1280 × 860: each header showed back, forward, reload, actions, and close; the iPhone frame stayed readable and the menu trigger remained visible. |
 
 **Known behavior / limitations:** Maximize is no longer visible in the header; it lives in the native Device menu. Rotation applies only to fixed viewports. Screenshot capture always opens a native save dialog, so it is not part of the raw OS-dialog-free workflow. Delete closes from shell focus only; a focused website keeps normal keyboard input. OS-level Cmd+D delivery is not automated, but the native accelerator and command routing are verified.
+
+## Post-MVP — Toolbar clarity, visible errors, and shortcut semantics
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Address validation messages now appear inline in the toolbar instead of only as a red border and screen-reader status. The generic Electron View reload/force-reload roles were removed; `Cmd/Ctrl+R` now reloads the selected device and `Cmd/Ctrl+L` focuses its address through the native Device menu. The active toolbar shows `Profile N · M devices` and a shared-profile tooltip when a profile is shared. The add menu now says **Start with viewport** and groups presets as phone, tablet, and desktop viewports; the profile action is **New device** and explains fresh-profile defaults. The native device actions menu gained **Copy URL** and **Maximize Device/Restore Device**, with maximize routed back to the shell by pane ID.
+
+**Files changed:** `src/main/browser-manager.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/shared/ipc.ts`, `src/shared/viewports.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-044), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | Passed. |
+| `npm run lint` | Passed with no warnings or errors. |
+| `npm run test:unit` | Passed: 16 files / 157 tests. |
+| `npm run build` | Passed: main 148.65 kB, preload 9.20 kB, renderer JS 329.05 kB, shell CSS 27.61 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.0 s. Added coverage for visible/announced address errors, `Cmd/Ctrl+L` focus, `Cmd/Ctrl+R`/`Cmd/Ctrl+L` accelerator metadata, shared-profile toolbar copy, and the viewport-language add menu. |
+| Visual check | Invalid `javascript:` input displays a readable inline danger message at 1280 × 860 and 720 × 560 without toolbar overflow; Escape restores the current URL. |
+
+**Known behavior / limitations:** Long address errors truncate with a full-text tooltip. Inline errors temporarily consume toolbar width and squeeze the address input at the minimum window width. Native pane-menu clicks for Copy URL and Maximize/Restore are not automated by Playwright and need a manual GUI pass.

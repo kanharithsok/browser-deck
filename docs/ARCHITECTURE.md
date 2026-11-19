@@ -102,7 +102,7 @@ Maximize is renderer-only temporary state layered over the current Canvas arrang
 
 ## Keyboard and menu commands
 
-A native **Device** menu defines accelerators and sends typed commands to the trusted shell. The renderer tracks an active pane from shell pointer/focus and native pane focus notifications; the active card gets a subtle accent outline and `aria-current="true"`. Commands cover add, duplicate, close, reload active/all, and toggle maximize. The shell remains the only frame that receives these events; remote pages have no bridge. Canvas add/context menus are custom shell components, not native menus, so they can match the app's visual language; their actions call the same validated IPC and renderer operations.
+A native **Device** menu defines accelerators (`Cmd/Ctrl+L` focus address, `Cmd/Ctrl+R` reload, `Cmd/Ctrl+D` duplicate, `Delete`/`Backspace` close from shell focus) and sends typed commands to the trusted shell. The renderer tracks an active pane from shell pointer/focus and native pane focus notifications; the active card gets a subtle accent outline and `aria-current="true"`. Commands cover add, duplicate, close, reload active/all, and toggle maximize. The shell remains the only frame that receives these events; remote pages have no bridge. Canvas add/context menus are custom shell components, not native menus, so they can match the app's visual language; their actions call the same validated IPC and renderer operations.
 
 Menu command routing is tested by invoking menu items from the Electron main process; raw key-chord automation remains a follow-up.
 
@@ -129,11 +129,11 @@ Emulation is applied only after a page has reached `did-stop-loading`. Enabling 
 
 The emulated surface remains inside the native pane bounds; only its CSS layout and rendering scale are emulated. Fixed viewports always scale to fit, and the scale is recomputed from the current native bounds whenever the pane frame, window, aspect, or maximize state changes. Responsive panes use the pane content size directly. Optical rotation is a per-viewport `rotated` flag: fixed viewports swap their effective width and height for `enableDeviceEmulation`, fit scaling, canvas frame math, and viewport labels. Responsive panes cannot rotate. Optional user-agent overrides are intentionally not added in this slice, and no UA spoofing is performed.
 
-The native device actions menu also exposes **Rotate Viewport** and **Capture Screenshot…**. Rotation is disabled for responsive viewports. Screenshot capture calls `webContents.capturePage()`, opens a native save dialog, writes the PNG to the user-selected path, and reports failures through a native error box. The IPC handler validates the trusted shell sender and pane ID; it never accepts a filesystem path from the renderer.
+The native device actions menu also exposes **Copy URL**, **Rotate Viewport**, **Capture Screenshot…**, and **Maximize/Restore Device**. Rotation is disabled for responsive viewports. Screenshot capture calls `webContents.capturePage()`, opens a native save dialog, writes the PNG to the user-selected path, and reports failures through a native error box. The IPC handler validates the trusted shell sender and pane ID; it never accepts a filesystem path from the renderer. Maximize requests are routed back to the shell with the pane ID.
 
 The renderer exposes preset and custom width/height/DPR controls through the shared pane navigation component in the top toolbar. Invalid custom values are rejected in the shell and never reach IPC. The selector groups phone, tablet, and desktop presets. Choosing Custom replaces the address row with an inline width/height/DPR editor in the same 42 px toolbar; Apply or Cancel returns to the address without changing the toolbar height.
 
-The toolbar **+** control opens a custom in-shell device menu built from the shared preset catalog. Selecting a device calls `paneflow:add-pane-with-viewport`; main validates the viewport, creates a fresh profile, and creates the pane with that viewport. The menu is grouped into Phones, Tablets, and Desktop and shows CSS dimensions as muted metadata. Right-clicking empty Canvas opens a second custom menu with Add device, Fit all devices, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance.
+The toolbar **+** control opens a custom in-shell device menu built from the shared preset catalog. Selecting a device calls `paneflow:add-pane-with-viewport`; main validates the viewport, creates a fresh profile, and creates the pane with that viewport. The menu is grouped into Phone viewports, Tablet viewports, and Desktop viewports and shows CSS dimensions as muted metadata. Right-clicking empty Canvas opens a second custom menu with Add device, Fit all devices, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance.
 
 The bottom canvas bar's appearance control opens the in-shell System/Light/Dark menu; the custom Canvas menu exposes the same three choices through a validated `paneflow:set-theme` call, and the native View menu remains available. Main keeps `nativeTheme.themeSource`, persisted preference, native chrome, and the shell's resolved `data-theme` synchronized. Each pane's webContents receives the resolved `prefers-color-scheme` through the debugger's `Emulation.setEmulatedMedia`, so loaded websites react without a reload. Workspace and profile management are native menu items that send shell commands to open the existing dialogs.
 
@@ -177,7 +177,7 @@ The shell exposes a **Profiles** toolbar dialog. Opening it hides all native pan
 
 The main process supplies labels, creation dates, and pane IDs for each profile. Rename persists metadata and emits a pane-state refresh so live headers show the new label. Clear and delete confirm how many panes use the profile, accept an explicit `closePanes` flag, destroy those panes, verify usage is empty, then clear the session and optionally remove metadata. Clear calls `clearStorageData`, `clearCache`, and `clearAuthCache` on the profile partition. Delete also removes `profiles.json` metadata and best-effort removes `Partitions/paneflow-profile-<id>`. No cookies, tokens, or raw storage are exposed in the dialog or IPC responses.
 
-The profile manager's **Open device** action explicitly creates a new pane with the selected profile through validated IPC. Those panes share the same persistent partition, cookies, and site storage. Device headers show a `· N devices` suffix when the profile is shared, and the manager usage line lists the count and pane titles. The toolbar Add device control, including its device-size menu, still creates a fresh profile. Clearing/deleting an in-use profile requires confirmation and closes all panes that reference it before session data is cleared.
+The profile manager's **New device** action explicitly creates a new pane with the selected profile through validated IPC. Those panes share the same persistent partition, cookies, and site storage. The top toolbar shows a `· N devices` suffix when the active profile is shared, and the manager usage line lists the count and pane titles. The toolbar Add device control, including its viewport menu, still creates a fresh profile. Clearing/deleting an in-use profile requires confirmation and closes all panes that reference it before session data is cleared.
 
 ## Browser pane lifecycle
 
@@ -220,6 +220,8 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:reload` / `reload-all` | Reload one or all panes |
 | `paneflow:set-pane-bounds` | Validated native view rectangles and visible/hidden state |
 | `paneflow:set-pane-viewport` | Validated per-pane viewport preset, custom size, and DPR |
+| `paneflow:rotate-pane-viewport` | Toggle a fixed viewport between portrait and landscape |
+| `paneflow:capture-pane-screenshot` | Capture the pane to a PNG chosen through a native Save dialog |
 | `paneflow:add-pane-with-viewport` | Validated viewport plus a fresh profile for a new pane |
 | `paneflow:set-theme` | Validated System/Light/Dark preference from the custom Canvas or bottom-bar appearance menu |
 | `paneflow:capture-pane-snapshots` | In-memory JPEG snapshots for canvas panning and partially visible panes |
@@ -245,6 +247,7 @@ The preload exposes `window.paneflow` only to the trusted shell. Channels are ex
 | `paneflow:send-pane-to-back` | Reorder a native pane view to the bottom above the shell |
 | `paneflow:pane-command` | Trusted menu/shortcut command for the active pane |
 | `paneflow:pane-focused` | Main → shell notification when a native pane gains focus |
+| `paneflow:pane-maximize-requested` | Main → shell request to maximize/restore a specific pane from its native menu |
 | `paneflow:show-pane-menu` | Native pane actions menu |
 | `paneflow:state-changed` | Main → shell state snapshots |
 | `paneflow:request-measurement` | Main → shell re-measure request |
