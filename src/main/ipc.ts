@@ -3,6 +3,7 @@ import type { CanvasSize } from '../shared/geometry'
 import {
   IPC_CHANNELS,
   type AddPaneMenuResult,
+  type PaneSnapshotsResult,
   type ProfileListResult,
   type ShellState,
   type ScriptResult,
@@ -10,6 +11,7 @@ import {
   type WorkspaceListResult,
   type WorkspaceTransferResult
 } from '../shared/ipc'
+import { isPaneChromeStyle } from '../shared/pane-chrome'
 import { isTrustedShellDocumentUrl } from '../shared/shell'
 import {
   DEFAULT_WORKSPACE_ID,
@@ -28,6 +30,8 @@ interface IpcContext {
   getWorkspaceLayout: () => WorkspaceLayout
   getWorkspaceIdentity: () => WorkspaceIdentity
   getThemePreference: () => ThemePreference
+  getResolvedTheme: () => 'light' | 'dark'
+  showThemeMenu: (x: number, y: number) => Promise<ScriptResult>
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
@@ -58,12 +62,13 @@ function isTrustedSender(event: IpcMainInvokeEvent, context: IpcContext): boolea
   return isTrustedShellDocumentUrl(frame.url, context.getDevServerUrl())
 }
 
-function emptyShellState(): ShellState {
+function emptyShellState(resolvedTheme: 'light' | 'dark'): ShellState {
   return {
     panes: [],
     layout: defaultWorkspaceLayout([]),
     workspace: { id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME },
-    theme: 'system'
+    theme: 'system',
+    resolvedTheme
   }
 }
 
@@ -81,15 +86,16 @@ function readFiniteNumber(value: unknown): number | null {
 export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.getState, (event): ShellState => {
     if (!isTrustedSender(event, context)) {
-      return emptyShellState()
+      return emptyShellState(context.getResolvedTheme())
     }
     const layout = context.getWorkspaceLayout()
     const workspace = context.getWorkspaceIdentity()
     const theme = context.getThemePreference()
+    const resolvedTheme = context.getResolvedTheme()
     const manager = context.getBrowserManager()
     return manager
-      ? { ...manager.snapshot(), layout, workspace, theme }
-      : { panes: [], layout, workspace, theme }
+      ? { ...manager.snapshot(), layout, workspace, theme, resolvedTheme }
+      : { panes: [], layout, workspace, theme, resolvedTheme }
   })
 
   ipcMain.handle(IPC_CHANNELS.addPane, async (event, payload: unknown): Promise<ScriptResult> => {
@@ -477,11 +483,55 @@ export function registerIpcHandlers(context: IpcContext): void {
       const request = payload as Record<string, unknown>
       const x = readFiniteNumber(request.x)
       const y = readFiniteNumber(request.y)
-      if (x === null || y === null) {
+      const paneChrome = request.paneChrome
+      const showPaneChromePreview = request.showPaneChromePreview
+      if (
+        x === null ||
+        y === null ||
+        !isPaneChromeStyle(paneChrome) ||
+        typeof showPaneChromePreview !== 'boolean'
+      ) {
         return { ok: false, error: 'Invalid menu request.' }
       }
 
-      return manager.showAddPaneMenu(x, y)
+      return manager.showAddPaneMenu(x, y, paneChrome, showPaneChromePreview)
+    }
+  )
+
+  ipcMain.handle(IPC_CHANNELS.showThemeMenu, async (event, payload: unknown): Promise<ScriptResult> => {
+    if (!isTrustedSender(event, context)) {
+      return unauthorized
+    }
+
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      return { ok: false, error: 'Invalid menu request.' }
+    }
+
+    const request = payload as Record<string, unknown>
+    const x = readFiniteNumber(request.x)
+    const y = readFiniteNumber(request.y)
+    if (x === null || y === null) {
+      return { ok: false, error: 'Invalid menu request.' }
+    }
+
+    return context.showThemeMenu(x, y)
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.capturePaneSnapshots,
+    async (event): Promise<PaneSnapshotsResult> => {
+      if (!isTrustedSender(event, context)) {
+        return { ok: false, error: 'Unauthorized sender.' }
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return { ok: false, error: 'Pane manager is not ready.' }
+      }
+      try {
+        return { ok: true, snapshots: await manager.captureSnapshots() }
+      } catch {
+        return { ok: false, error: 'Could not capture pane snapshots.' }
+      }
     }
   )
 

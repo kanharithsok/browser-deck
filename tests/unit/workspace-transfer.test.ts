@@ -46,7 +46,11 @@ function workspace(): WorkspaceData {
       freeform: {
         [PANE_A]: { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
       },
-      freeformOrder: [PANE_A, PANE_B]
+      freeformOrder: [PANE_A, PANE_B],
+      canvas: {
+        [PANE_A]: { x: 40, y: 60 },
+        [PANE_B]: { x: 700, y: 60 }
+      }
     },
     updatedAt: '2026-11-19T00:00:00.000Z'
   }
@@ -76,6 +80,10 @@ describe('workspace transfer serialization', () => {
     })
     expect(transfer.layout.freeform).toEqual({
       '0': { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
+    })
+    expect(transfer.layout.canvas).toEqual({
+      '0': { x: 40, y: 60 },
+      '1': { x: 700, y: 60 }
     })
     expect(JSON.stringify(transfer)).not.toContain('profileId')
     expect(JSON.stringify(transfer)).not.toContain(PROFILE_A)
@@ -116,6 +124,10 @@ describe('workspace transfer serialization', () => {
     expect(materialized.layout.freeformOrder).toEqual([PANE_C, PANE_D])
     expect(materialized.layout.freeform).toEqual({
       [PANE_C]: { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
+    })
+    expect(materialized.layout.canvas).toEqual({
+      [PANE_C]: { x: 40, y: 60 },
+      [PANE_D]: { x: 700, y: 60 }
     })
   })
 })

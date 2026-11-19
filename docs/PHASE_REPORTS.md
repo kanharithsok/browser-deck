@@ -576,3 +576,50 @@ The MVP is complete. These items are post-MVP hardening and validation, not Phas
 **Automated coverage:** The accessibility test verifies the device-size button's accessible name, menu semantics, and presence. The browser-pane e2e verifies main-process viewport validation, pane creation with the selected preset, fit emulation, fresh state, and cleanup.
 
 **Manual GUI verification still outstanding:** Selecting an item directly from the native popup menu is not automated by Playwright; the toolbar control, menu construction, and post-selection creation path are covered, but the native menu interaction needs a manual GUI check.
+
+## Post-MVP — Minimal pane chrome, appearance menu, and live pane color scheme
+
+**Date:** 2026-11-19
+
+**Status:** Implemented; final pane-chrome choice pending.
+
+**Change:** Replaced the two-row bordered pane header with a frameless, single-row pane bar that wraps only at narrow widths. The bar keeps title, profile, address, viewport, navigation, and actions; inactive panes de-emphasize profile and actions. Added an appearance button that opens a native System/Light/Dark menu, with the native View menu kept in sync. The shell now uses a main-provided resolved theme, and loaded website panes receive the effective scheme as a live `prefers-color-scheme` change through CDP media emulation, without reloading. Added a temporary app-wide pane-chrome preview under the Add pane chevron menu: Quiet bar (default), Canvas label, and Global bar. Slimmed the toolbar by hiding the pane count visually, making Profiles icon-only, removing the Columns text label, and reducing the toolbar/header heights. Reduced global workspace padding/gap and dialog copy/width.
+
+**Files changed:** `src/shared/pane-chrome.ts`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `src/main/browser-manager.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, unit/e2e tests, `SPEC.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-030/031), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 12 unit files / 128 tests, and all 13 light + 13 dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.4 s. Accessibility/axe suite passed; main integration passed through restart, viewport, theme, workspace, profile, and leak checks. |
+| `npm run build` | Passed: main 122.13 kB, preload 6.20 kB, renderer JS 281.53 kB, CSS 26.77 kB. |
+| Pane scheme probe | `nativeTheme.themeSource` Dark/Light changed `matchMedia('(prefers-color-scheme: dark)')` inside an already-loaded pane without a reload. |
+| Visual variants | Rendered Quiet bar, Canvas label, and Global bar against the same two-pane workspace; verified 32 px default headers, active/inactive behavior, narrow header wrapping, and the C global bar. |
+
+**Automated coverage:** E2e verifies the appearance button's accessible name/menu semantics, deterministic shell `data-theme`, persistence, live pane color-scheme changes, restart restoration, single-row header wrapping at five columns, focus order, axe WCAG/best-practice checks, maximize/restore, native bounds alignment, and all existing workspace/profile/session behavior. Unit tests cover the pane-chrome preview type and labels.
+
+**Manual GUI verification still outstanding:** Selecting System/Light/Dark directly from the toolbar appearance menu, and selecting a pane-chrome preview item from the native Add pane menu, are not automatable through Playwright. The controls, validated IPC paths, persistence, and rendered states are covered; the native menu clicks need a manual pass. Final choice of pane chrome is pending.
+
+**Known behavior / limitations:** The pane-chrome preview is intentionally temporary and app-wide; C cannot be mixed per pane. The preview is stored in shell localStorage, not workspace files. CDP media emulation keeps a debugger attached to panes, so opening pane DevTools can detach the emulation until the next navigation or theme change. Websites that force their own color scheme may not visibly change.
+
+## Post-MVP — Infinite Canvas first slice
+
+**Date:** 2026-11-19
+
+**Status:** Implemented; panning and snapshots complete, zoom/frames deferred.
+
+**Change:** Added Canvas as a third workspace layout. It uses a dotted infinite backdrop, world-coordinate pane positions persisted in workspace layout, a global active-pane address/navigation bar, compact per-pane labels, background-drag panning, and a Hand tool for panning from anywhere. Native pane views are hidden during movement and shown as recent JPEG snapshots; after the gesture, fully visible panes restore live native views and partially visible panes remain snapshots. Clicking a partially visible pane centers it. Canvas zoom, device bezels, and frame resizing are intentionally deferred.
+
+**Files changed:** `src/shared/canvas.ts`, `src/shared/workspace.ts`, `src/shared/workspace-transfer.ts`, `src/shared/ipc.ts`, `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/main/workspace-store.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/assets/app.css`, canvas/workspace unit tests, browser-pane e2e, `SPEC.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-032), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 13 unit files / 132 tests, all 13 light + 13 dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.3 s. Canvas pan/hide/restore, Hand-tool state, accessibility/axe, and the full existing integration path passed. |
+| `npm run build` | Passed: main 125.53 kB, preload 6.35 kB, renderer JS 294.01 kB, CSS 28.15 kB. |
+| Canvas visual check | Rendered two live fixture frames on the dotted backdrop with the global bar; header labels sit directly on the canvas and the active frame has a restrained accent outline. |
+
+**Automated coverage:** Unit tests cover frame sizing, default arrangement, canvas position validation, workspace normalization, and position persistence. E2e verifies the dotted workspace, global bar, native-view hiding during a pan, restoration of visible native bounds, Hand-tool state, and return to Grid.
+
+**Manual GUI verification still outstanding:** Panning with the Hand tool directly over a frame, clicking a partially visible frame to center it, and visual snapshot quality with real third-party pages. Canvas zoom, device bezels, and frame resizing are not implemented.
+
+**Known behavior / limitations:** Pages are static snapshots while panning; snapshots may be stale until the next canvas entry, pan completion, or refresh. Partially visible panes are visual-only until centered. The pan offset is not persisted.

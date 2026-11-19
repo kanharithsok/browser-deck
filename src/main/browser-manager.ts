@@ -14,6 +14,11 @@ import type {
   ScriptResult,
   ShellSnapshot
 } from '../shared/ipc'
+import {
+  PANE_CHROME_STYLES,
+  paneChromeLabel,
+  type PaneChromeStyle
+} from '../shared/pane-chrome'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
 import { MAX_URL_LENGTH, isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
 import {
@@ -32,6 +37,8 @@ import {
 import type { ProfileStore } from './profile-store'
 import { getProfileSession } from './session-policy'
 
+export type PaneColorScheme = 'light' | 'dark'
+
 interface PaneRecord {
   id: string
   profile: BrowserProfile
@@ -49,6 +56,8 @@ interface PaneRecord {
   emulationEnabled: boolean
   appliedScale: number
   pageReady: boolean
+  lastColorScheme: PaneColorScheme | null
+  colorSchemeErrorLogged: boolean
   destroyed: boolean
 }
 
@@ -56,6 +65,7 @@ interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
   onPaneRenameRequested?: (paneId: string) => void
+  getColorScheme: () => PaneColorScheme
 }
 
 export interface PaneInitialization {
@@ -373,6 +383,13 @@ export class BrowserManager {
     return { ok: true }
   }
 
+  setColorScheme(scheme: PaneColorScheme): void {
+    for (const record of this.panes.values()) {
+      record.lastColorScheme = null
+      this.applyColorScheme(record, scheme)
+    }
+  }
+
   setViewport(paneId: string, input: unknown): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
@@ -391,7 +408,12 @@ export class BrowserManager {
     return { ok: true }
   }
 
-  showAddPaneMenu(x: number, y: number): Promise<AddPaneMenuResult> {
+  showAddPaneMenu(
+    x: number,
+    y: number,
+    currentPaneChrome: PaneChromeStyle,
+    showPaneChromePreview: boolean
+  ): Promise<AddPaneMenuResult> {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       return Promise.resolve({ ok: false, error: 'Invalid menu position.' })
     }
@@ -402,6 +424,7 @@ export class BrowserManager {
 
     return new Promise((resolve) => {
       let selected: ViewportPresetId | null = null
+      let selectedPaneChrome: PaneChromeStyle | undefined
       const template: MenuItemConstructorOptions[] = [
         {
           label: 'Responsive',
@@ -415,7 +438,21 @@ export class BrowserManager {
           click: () => {
             selected = preset.id
           }
-        }))
+        })),
+        ...(showPaneChromePreview
+          ? [
+              { type: 'separator' as const },
+              { label: 'Pane chrome preview (all panes)', enabled: false },
+              ...PANE_CHROME_STYLES.map((style) => ({
+                label: paneChromeLabel(style),
+                type: 'radio' as const,
+                checked: style === currentPaneChrome,
+                click: () => {
+                  selectedPaneChrome = style
+                }
+              }))
+            ]
+          : [])
       ]
 
       const menu = Menu.buildFromTemplate(template)
@@ -424,7 +461,12 @@ export class BrowserManager {
           window: this.window,
           x: Math.max(0, Math.round(x)),
           y: Math.max(0, Math.round(y)),
-          callback: () => resolve({ ok: true, preset: selected })
+          callback: () =>
+            resolve({
+              ok: true,
+              preset: selected,
+              ...(selectedPaneChrome ? { paneChrome: selectedPaneChrome } : {})
+            })
         })
       } catch {
         resolve({ ok: false, error: 'Could not open the pane size menu.' })
@@ -609,6 +651,29 @@ export class BrowserManager {
     }
   }
 
+  async captureSnapshots(): Promise<Record<string, string>> {
+    const snapshots: Record<string, string> = {}
+    await Promise.all(
+      [...this.panes.values()].map(async (record) => {
+        const webContents = this.liveWebContents(record)
+        if (!webContents || record.url === 'about:blank') {
+          return
+        }
+        try {
+          const image = await webContents.capturePage()
+          if (image.isEmpty()) {
+            return
+          }
+          const jpeg = image.toJPEG(82)
+          snapshots[record.id] = `data:image/jpeg;base64,${jpeg.toString('base64')}`
+        } catch {
+          // A snapshot is a progressive enhancement for canvas panning.
+        }
+      })
+    )
+    return snapshots
+  }
+
   async readCookie(paneId: string): Promise<string | null> {
     const record = this.panes.get(paneId)
     const webContents = record ? this.liveWebContents(record) : null
@@ -702,6 +767,8 @@ export class BrowserManager {
       emulationEnabled: false,
       appliedScale: 0,
       pageReady: false,
+      lastColorScheme: null,
+      colorSchemeErrorLogged: false,
       destroyed: false
     }
 
@@ -715,9 +782,10 @@ export class BrowserManager {
     }
 
     this.panes.set(record.id, record)
-    view.setBackgroundColor('#ffffff')
+    view.setBackgroundColor(this.options.getColorScheme() === 'dark' ? '#101010' : '#ffffff')
     view.setBorderRadius(8)
     view.setVisible(false)
+    this.applyColorScheme(record, this.options.getColorScheme())
 
     // Touch the session before loading so the remote policy applies to the
     // very first request, not just later navigations.
@@ -742,12 +810,15 @@ export class BrowserManager {
       record.isLoading = false
       record.pageReady = true
       this.applyEmulation(record)
+      this.applyColorScheme(record)
       this.emitState()
     })
 
     webContents.on('did-navigate', (_event, url) => {
       record.url = url
       record.error = null
+      record.lastColorScheme = null
+      this.applyColorScheme(record)
       this.syncVisibility(record)
       this.emitState()
     })
@@ -755,6 +826,10 @@ export class BrowserManager {
     webContents.on('did-navigate-in-page', (_event, url) => {
       record.url = url
       this.emitState()
+    })
+
+    webContents.on('dom-ready', () => {
+      this.applyColorScheme(record)
     })
 
     webContents.on('page-title-updated', (event, title) => {
@@ -822,6 +897,42 @@ export class BrowserManager {
     }
 
     this.emitState()
+  }
+
+  private applyColorScheme(record: PaneRecord, scheme = this.options.getColorScheme()): void {
+    const webContents = this.liveWebContents(record)
+    if (!webContents || record.lastColorScheme === scheme) {
+      return
+    }
+
+    record.lastColorScheme = scheme
+    record.view.setBackgroundColor(scheme === 'dark' ? '#101010' : '#ffffff')
+
+    const apply = async (): Promise<void> => {
+      try {
+        if (!webContents.debugger.isAttached()) {
+          webContents.debugger.attach('1.3')
+          webContents.debugger.once('detach', () => {
+            record.lastColorScheme = null
+          })
+        }
+        await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+          media: '',
+          features: [{ name: 'prefers-color-scheme', value: scheme }]
+        })
+      } catch (error) {
+        record.lastColorScheme = null
+        if (!record.colorSchemeErrorLogged) {
+          record.colorSchemeErrorLogged = true
+          console.warn(
+            `Could not apply the ${scheme} color scheme to pane ${record.id}.`,
+            error
+          )
+        }
+      }
+    }
+
+    void apply()
   }
 
   private prepareForNavigation(record: PaneRecord): void {

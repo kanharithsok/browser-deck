@@ -1,3 +1,4 @@
+import type { PaneChromeStyle } from './pane-chrome'
 import type { ProfileSummary } from './profiles'
 import type { PaneViewport, ViewportPresetId } from './viewports'
 import type {
@@ -38,6 +39,8 @@ export const IPC_CHANNELS = {
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
   showAddPaneMenu: 'paneflow:show-add-pane-menu',
+  showThemeMenu: 'paneflow:show-theme-menu',
+  capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneRenameRequested: 'paneflow:pane-rename-requested',
@@ -108,6 +111,7 @@ export interface ShellState extends ShellSnapshot {
   layout: WorkspaceLayout
   workspace: WorkspaceIdentity
   theme: ThemePreference
+  resolvedTheme: 'light' | 'dark'
 }
 
 export interface PaneMenuRequest {
@@ -119,10 +123,21 @@ export interface PaneMenuRequest {
 export interface AddPaneMenuRequest {
   x: number
   y: number
+  paneChrome: PaneChromeStyle
+  showPaneChromePreview: boolean
 }
 
 export type AddPaneMenuResult =
-  | { ok: true; preset: ViewportPresetId | null }
+  | { ok: true; preset: ViewportPresetId | null; paneChrome?: PaneChromeStyle }
+  | { ok: false; error: string }
+
+export interface ThemeMenuRequest {
+  x: number
+  y: number
+}
+
+export type PaneSnapshotsResult =
+  | { ok: true; snapshots: Record<string, string> }
   | { ok: false; error: string }
 
 export interface PaneFlowApi {
@@ -157,6 +172,8 @@ export interface PaneFlowApi {
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
   showAddPaneMenu(request: AddPaneMenuRequest): Promise<AddPaneMenuResult>
+  showThemeMenu(request: ThemeMenuRequest): Promise<ScriptResult>
+  capturePaneSnapshots(): Promise<PaneSnapshotsResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void

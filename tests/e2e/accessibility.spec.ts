@@ -251,8 +251,10 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(layoutGroup).toBeVisible()
       const gridButton = layoutGroup.getByRole('button', { name: 'Grid' })
       const freeformButton = layoutGroup.getByRole('button', { name: 'Freeform' })
+      const canvasButton = layoutGroup.getByRole('button', { name: 'Canvas' })
       await expect(gridButton).toHaveAttribute('aria-pressed', 'true')
       await expect(freeformButton).toHaveAttribute('aria-pressed', 'false')
+      await expect(canvasButton).toHaveAttribute('aria-pressed', 'false')
 
       const columnSelect = banner.getByRole('combobox', { name: 'Grid columns' })
       await expect(columnSelect).toBeVisible()
@@ -280,6 +282,11 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(reloadAll).toHaveAccessibleName('Reload all panes')
       await expect(reloadAll).toHaveAttribute('title', 'Reload all panes')
 
+      const appearanceTrigger = banner.getByRole('button', { name: /^Appearance:/ })
+      await expect(appearanceTrigger).toHaveAccessibleName('Appearance: System')
+      await expect(appearanceTrigger).toHaveAttribute('aria-haspopup', 'menu')
+      await expect(appearanceTrigger).toHaveAttribute('aria-expanded', 'false')
+
       await shellPage.evaluate(() => document.body.focus())
       await shellPage.keyboard.press('Tab')
       const tabFocus = await readFocus(shellPage)
@@ -292,11 +299,13 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(axPairs).toContain('banner:')
       expect(axPairs).toContain('main:Browser workspace')
       expect(axPairs).toContain('group:Layout mode')
+      expect(axPairs).toContain('button:Canvas')
       expect(axPairs).toContain('button:Switch workspace, current Workspace')
       expect(axPairs).toContain('button:Profiles')
       expect(axPairs).toContain('button:Add pane')
       expect(axPairs).toContain('button:Add pane with device size')
       expect(axPairs).toContain('button:Reload all panes')
+      expect(axPairs).toContain('button:Appearance: System')
       expect(axPairs).toContain('combobox:Grid columns')
     })
 
@@ -370,8 +379,19 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(viewportFocus.outlineStyle).toBe('solid')
 
       await shellPage.keyboard.press('Tab')
+      const actionFocus = await readFocus(shellPage)
+      expect(actionFocus.ariaLabel).toBe('Maximize pane')
+      await expect(firstCard).toHaveAttribute('aria-current', 'true')
+
+      await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Pane actions')
+
+      await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Close pane')
+
+      await shellPage.keyboard.press('Tab')
       const nextCardFocus = await readFocus(shellPage)
-      expect(nextCardFocus.ariaLabel).toBe('Maximize pane')
+      expect(nextCardFocus.ariaLabel).toBe('Reload pane')
       await expect(secondCard).toHaveAttribute('aria-current', 'true')
       await expect(firstCard).not.toHaveAttribute('aria-current', 'true')
       await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)
@@ -453,7 +473,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(dialog).toHaveCount(0)
       await expect(profilesTrigger).toHaveAttribute('aria-expanded', 'false')
       const restoredFocus = await readFocus(shellPage)
-      expect(restoredFocus.text).toBe('Profiles')
+      expect(restoredFocus.ariaLabel).toBe('Profiles')
       expect(restoredFocus.focusVisible).toBe(true)
       expect(restoredFocus.outlineStyle).toBe('solid')
     })

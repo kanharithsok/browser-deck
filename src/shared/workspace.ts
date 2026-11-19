@@ -1,4 +1,8 @@
 import {
+  isValidCanvasPosition,
+  type CanvasPosition
+} from './canvas'
+import {
   GRID_MAX_COLUMNS,
   GRID_MIN_COLUMNS,
   type NormalizedRect
@@ -21,7 +25,7 @@ const PANE_ID_PATTERN =
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/
 
-export type WorkspaceLayoutMode = 'grid' | 'freeform'
+export type WorkspaceLayoutMode = 'grid' | 'freeform' | 'canvas'
 
 export interface WorkspacePaneDefinition {
   id: string
@@ -38,6 +42,8 @@ export interface WorkspaceLayout {
   gridOrder: string[]
   freeform: Record<string, NormalizedRect>
   freeformOrder: string[]
+  /** World positions for the infinite canvas. Missing panes get an arranged position. */
+  canvas?: Record<string, CanvasPosition>
 }
 
 export interface WorkspaceData {
@@ -207,7 +213,8 @@ export function defaultWorkspaceLayout(paneIds: readonly string[] = []): Workspa
     columns: 2,
     gridOrder: [...ids],
     freeform: {},
-    freeformOrder: [...ids]
+    freeformOrder: [...ids],
+    canvas: {}
   }
 }
 
@@ -279,7 +286,11 @@ export function normalizeWorkspaceLayout(
 
   const record = input as Record<string, unknown>
   const mode: WorkspaceLayoutMode =
-    record.mode === 'freeform' || record.mode === 'grid' ? record.mode : fallback.mode
+    record.mode === 'freeform' ||
+    record.mode === 'grid' ||
+    record.mode === 'canvas'
+      ? record.mode
+      : fallback.mode
   const columns =
     typeof record.columns === 'number' &&
     Number.isInteger(record.columns) &&
@@ -303,12 +314,26 @@ export function normalizeWorkspaceLayout(
     }
   }
 
+  const canvas: Record<string, CanvasPosition> = {}
+  if (typeof record.canvas === 'object' && record.canvas !== null && !Array.isArray(record.canvas)) {
+    for (const [paneId, value] of Object.entries(record.canvas)) {
+      if (!allowedIds.has(paneId) || !isValidCanvasPosition(value)) {
+        continue
+      }
+      canvas[paneId] = {
+        x: Math.round(value.x),
+        y: Math.round(value.y)
+      }
+    }
+  }
+
   return {
     mode,
     columns,
     gridOrder: gridOrder ?? fallback.gridOrder,
     freeform,
-    freeformOrder: freeformOrder ?? fallback.freeformOrder
+    freeformOrder: freeformOrder ?? fallback.freeformOrder,
+    canvas
   }
 }
 

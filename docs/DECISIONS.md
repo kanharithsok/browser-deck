@@ -886,6 +886,101 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e verifies the toolbar device button is present and accessible, rejects an unknown preset, creates a pane with the mobile 390 × 844 DPR 3 preset, verifies the new pane's viewport and fit emulation, and closes it cleanly.
 
+## ADR-030 — Website panes follow the effective app appearance through CDP media emulation
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** The app-wide appearance preference already persisted System/Light/Dark and updated native chrome and shell tokens. Remote `WebContentsView` pages did not follow it: in Electron 45 on this machine, changing `nativeTheme.themeSource` or reloading a pane left `prefers-color-scheme` unchanged. The shell also remained light in System mode because its media query did not reliably receive the OS appearance.
+
+- **Decision:**
+  1. Add an Appearance menu button to the toolbar. It opens a native radio menu (System, Light, Dark) because a DOM popover would extend over native pane views.
+  2. Keep `nativeTheme.themeSource` as the source of truth for window chrome and persistence, and expose a resolved `light`/`dark` value in shell state. The shell always applies an explicit `data-theme`, including System mode.
+  3. For every browser pane, attach Electron's debugger and send `Emulation.setEmulatedMedia` with the resolved `prefers-color-scheme`. Apply it on pane creation, load completion, navigation, load, and theme changes.
+  4. When the preference is System, reapply the resolved scheme when `nativeTheme` reports an OS appearance change. Never reload panes to apply a theme.
+  5. Set each native view's background color to match the scheme so transparent pages do not flash the wrong surface.
+
+- **Alternatives considered:**
+  - **Rely only on `nativeTheme.themeSource`.** Rejected; it did not update existing or newly created remote renderers in the tested environment.
+  - **Reload all panes on theme change.** Rejected; it loses page state and makes appearance switching disruptive.
+  - **Inject CSS or classes into remote pages.** Rejected; it cannot change the `prefers-color-scheme` media query that sites actually read.
+  - **Keep System mode on the CSS media query.** Rejected; the shell and panes could disagree with native chrome.
+  - **Per-pane theme overrides.** Not introduced; appearance remains application-wide.
+
+- **Consequences:**
+  - Panes receive a real media-query change without reloading; pages that deliberately force a color scheme may still look unchanged.
+  - The app keeps a debugger attached to each pane for color-scheme emulation. Pane DevTools still opens in a separate window; if another debugger client detaches the app's debugger, the scheme is reattached on the next load or theme change.
+  - Shell theme styling is deterministic and no longer depends on Chromium media propagation.
+  - The resolved theme is part of the shell state contract.
+
+- **Evidence / verification:**
+  - E2e selects Dark from the native menu, verifies shell tokens and persistence, and verifies `matchMedia('(prefers-color-scheme: dark)')` becomes true inside a loaded pane without reloading it. It repeats the pane check after restart.
+  - The appearance button's accessible name and menu semantics are covered by the accessibility e2e; selecting items from the native menu remains a manual GUI check.
+
+## ADR-031 — Pane chrome preview modes are an app-wide temporary comparison
+
+- **Status:** Accepted for preview
+- **Date:** 2026-11-19
+- **Context:** The current two-row pane header is denser than the desired minimal direction. Three alternatives need comparison in the running app before choosing one: A (quiet single-row bar), B (Figma-like canvas label), and C (global browser bar). C cannot be mixed per pane because the address and navigation belong to the active pane.
+
+- **Decision:**
+  1. Add a temporary app-wide pane-chrome preference with A as default, persisted in shell localStorage under a preview-only key.
+  2. Offer A/B/C under the Add pane chevron's native menu, labeled “Pane chrome preview (all panes)”, so the comparison is available when creating panes. New panes use the current style.
+  3. A keeps title, profile, compact URL, viewport, navigation, and actions in one wrapping row that becomes two rows at narrow widths.
+  4. B shows only title/profile/viewport while a pane is inactive and reveals navigation, address, and viewport when it becomes active.
+  5. C moves address, navigation, active-pane context, and the active viewport control into a global bar; pane headers keep title/profile and actions, with viewport labels on inactive panes only.
+  6. Keep A as the default for the existing e2e and accessibility baseline. The chosen final style will replace this preview switch and the unused modes.
+
+- **Alternatives considered:**
+  - **Per-pane A/B/C selection.** Rejected; C is a global navigation model and mixing it with per-pane address bars would be incoherent.
+  - **DOM chrome picker.** Rejected; it would be covered by native pane views.
+  - **Ship all three permanently.** Rejected; this is a design comparison, not a product feature.
+
+- **Consequences:**
+  - The renderer temporarily carries three chrome layouts and a preview-only storage key.
+  - The Add pane menu now has a second, non-creation section; selecting a chrome style changes every pane without adding one.
+  - The final cleanup should remove the switch, localStorage key, and unused variants.
+  - Native menu item selection is not automatable through Playwright, so the switch itself needs a manual GUI pass.
+
+- **Evidence / verification:**
+  - `npm run typecheck`, `npm run lint`, unit tests, and the default-A e2e suite pass.
+  - Rendered all three variants against the same two-pane workspace and checked header height, wrapping, active/inactive behavior, and the C global bar.
+  - The Add pane/Appearance native menu interactions remain manual GUI checks.
+
+## ADR-032 — Canvas layout uses snapshot-assisted native panning
+
+- **Status:** Accepted for first Canvas slice
+- **Date:** 2026-11-19
+- **Context:** Responsively and Figma present a clean infinite canvas with a dotted backdrop and world-space pan/zoom. Figma renders the editor scene itself in WebGL; Responsively transforms DOM `<webview>` elements inside a CSS-transformed world. PaneFlow uses native `WebContentsView`s for remote pages, which cannot be CSS-transformed or clipped by the shell, and cannot be overlaid with DOM chrome. A direct copy would either break the native security/session architecture or let pane content slide under the toolbar.
+
+- **Decision:**
+  1. Add Canvas as a third layout alongside Grid and Freeform.
+  2. Store per-pane world positions in `WorkspaceLayout.canvas`; derive frame size from the pane viewport (560 × 700 for responsive, exact dimensions for fixed/custom viewports) plus a 32px label row.
+  3. Draw a 20px radial-gradient dot field in the workspace; move its background position with the pan offset.
+  4. Pan by dragging empty canvas. A Hand tool hides all native views and lets the user pan from anywhere. The pan offset is transient viewport state, not persisted.
+  5. While panning or using the Hand tool, hide native views and show recent in-memory JPEG snapshots. On release, restore live native views for frames fully inside the workspace; partially visible frames remain snapshots.
+  6. Clicking a partially visible frame centers it and restores its native view.
+  7. Use the existing global active-pane bar and compact per-pane labels in Canvas mode.
+  8. Defer canvas zoom, device bezels, and frame resizing.
+
+- **Alternatives considered:**
+  - **Use `<webview>`/iframes to get a live CSS-transformed world.** Rejected; violates the accepted native-view architecture and weakens security.
+  - **Keep native views visible while panning.** Rejected; they cannot be clipped by the workspace and would cover the toolbar or disappear at edges.
+  - **Render live page pixels into a canvas.** Rejected; no supported lossless interactive path for `WebContentsView` content.
+  - **Clamp panning so all panes stay visible.** Rejected; it is not an infinite canvas.
+  - **Add zoom immediately.** Deferred; native view scaling and clipping need a separate native-emulation proof.
+
+- **Consequences:**
+  - Panning previews are visual snapshots; pages are not interactive during the gesture.
+  - Snapshots can be stale until the next capture (canvas entry, pan end, or explicit refresh).
+  - Fully visible panes remain live native views; partially visible panes are visual-only until centered.
+  - Canvas positions survive restart; pan position resets.
+  - The canvas does not yet match Figma/Responsively zoom, device frames, or live interaction during motion.
+
+- **Evidence / verification:**
+  - Unit tests cover frame sizing, default row arrangement, canvas position validation, workspace normalization, and persistence.
+  - E2e switches to Canvas, checks the dotted workspace and global bar, verifies native views hide during a pan and restore afterward, verifies Hand-tool hiding, and switches back to Grid.
+  - `npm run test:e2e` passes with the Canvas step; snapshots are captured for both fixture panes.
+
 ## ADR template
 
 ### ADR-NNN — Title
