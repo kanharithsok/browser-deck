@@ -204,6 +204,16 @@ async function resetCanvasZoomFromBar(
   await expect(menu).toHaveCount(0)
 }
 
+async function fitAllDevices(app: ElectronApplication): Promise<void> {
+  const minimap = app
+    .windows()
+    .find((page) => page.url() === SHELL_MINIMAP_URL)
+  if (!minimap) {
+    throw new Error('Canvas overview is unavailable')
+  }
+  await minimap.getByRole('button', { name: 'Fit all devices' }).click()
+}
+
 async function getMinimapState(app: ElectronApplication): Promise<{
   visible: boolean
   bounds: PaneViewRect
@@ -704,11 +714,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const toolbarChrome = await shellPage.locator('.toolbar').evaluate((element) => ({
       region: getComputedStyle(element).getPropertyValue('-webkit-app-region'),
       left: element.getBoundingClientRect().left,
-      brandLeft: element.querySelector('.brand')?.getBoundingClientRect().left ?? 0
+      controlsLeft: element.querySelector('.global-pane-bar')?.getBoundingClientRect().left ?? 0
     }))
     expect(toolbarChrome.region).toBe('drag')
     expect(toolbarChrome.left).toBe(0)
-    expect(toolbarChrome.brandLeft).toBeGreaterThanOrEqual(76)
+    expect(toolbarChrome.controlsLeft).toBeGreaterThanOrEqual(76)
 
     const aliceDomRect = (await readDomPaneRects(app)).find((entry) => entry.paneId === alicePaneId)
     const aliceViewport = await alicePage.evaluate(() => ({
@@ -793,7 +803,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       accelerator: 'CmdOrCtrl+K',
       enabled: true
     })
-    const findDeviceButton = shellPage.getByRole('button', {
+    const findDeviceButton = zoomPage.getByRole('button', {
       name: 'Find device',
       exact: true
     })
@@ -921,7 +931,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Reload All preserves the selected device instead of letting incidental
     // native focus events select the first pane.
-    await shellPage.getByRole('button', { name: 'Reload all devices' }).click()
+    await zoomPage.getByRole('button', { name: 'Reload all devices' }).click()
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes.every((pane) => !pane.isLoading),
@@ -1122,8 +1132,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .not.toBe(minimapBackgroundBefore)
 
     // Fit all from the persistent overview brings every pane back into view.
-    await expect(shellPage.getByRole('button', { name: 'Fit all devices to view' })).toBeVisible()
-    await minimapPage.getByRole('button', { name: 'Fit all devices' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
     const fittedWorkspace = await shellPage.locator('.workspace').boundingBox()
     const fittedCards = await shellPage.locator('.pane-card').evaluateAll((cards) =>
@@ -1165,6 +1174,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // device menu. Choosing a device creates a fresh pane with that viewport.
     const addButton = shellPage.locator('.toolbar .add-pane-button')
     expect((await addButton.textContent())?.trim()).toBe('')
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
     await addButton.click()
     const addMenu = shellPage.getByRole('menu', { name: 'Add device' })
     await expect(addMenu).toBeVisible()
@@ -1191,6 +1202,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (pane) => pane.viewport.preset === 'iphone-15-pro'
     )
     expect(menuAddedPane).toBeTruthy()
+    // Adding a device reveals it without changing the current Canvas zoom.
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
     await expect(shellPage.locator('.global-pane-bar .viewport-select')).toHaveValue(
       'iphone-15-pro'
     )
@@ -1203,7 +1216,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes.length === 2,
       'device pane from the toolbar menu to close'
     )
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForAlignedBounds(app)
 
     // Right-click empty canvas opens the custom canvas menu. It can add a pane,
@@ -1264,7 +1277,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Bottom zoom bar: step controls and a percentage dropdown that can set
     // exact levels or run Fit all / Reset.
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForAlignedBounds(app)
     const zoomLabelBeforeStep = await zoomPage.locator('#value').textContent()
     await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
@@ -1284,6 +1297,32 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('50%')
     await expect.poll(async () => (await getZoomState(app as ElectronApplication))?.visible).toBe(true)
     await resetCanvasZoomFromBar(shellPage, zoomPage)
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
+
+    // Native View-menu zoom shortcuts route to the same Canvas zoom path.
+    expect(await readAppMenuItem(app, 'canvas-zoom-in')).toEqual({
+      id: 'canvas-zoom-in',
+      accelerator: 'CmdOrCtrl+=',
+      enabled: true
+    })
+    expect(await readAppMenuItem(app, 'canvas-zoom-out')).toEqual({
+      id: 'canvas-zoom-out',
+      accelerator: 'CmdOrCtrl+-',
+      enabled: true
+    })
+    expect(await readAppMenuItem(app, 'canvas-zoom-reset')).toEqual({
+      id: 'canvas-zoom-reset',
+      accelerator: 'CmdOrCtrl+0',
+      enabled: true
+    })
+    await clickAppMenuCommand(app, 'canvas-zoom-in')
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('110%')
+    await clickAppMenuCommand(app, 'canvas-zoom-out')
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
+    await clickAppMenuCommand(app, 'canvas-zoom-in')
+    await clickAppMenuCommand(app, 'canvas-zoom-in')
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('120%')
+    await clickAppMenuCommand(app, 'canvas-zoom-reset')
     await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
 
     // Clicking empty canvas clears the active pane without moving the
@@ -1346,7 +1385,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(mobileFitEmulation?.scale).toBeLessThanOrEqual(1)
 
     // A second pane can hold a different emulated viewport at the same time.
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await focusPane(shellPage, bobPaneId as string)
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('tablet')
     await waitFor(
@@ -1358,7 +1397,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect.poll(aliceMetrics).toMatchObject({ width: 390, height: 844, dpr: 3 })
 
     // Device presets use their real CSS dimensions and device pixel ratios.
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await focusPane(shellPage, alicePaneId as string)
     const aliceViewportSelect = shellPage.locator('.global-pane-bar .viewport-select')
     await aliceViewportSelect.selectOption('pixel-8')
@@ -1372,6 +1411,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(pixelEmulation?.enabled).toBe(true)
     expect(pixelEmulation?.scale).toBeGreaterThan(0)
     expect(pixelEmulation?.scale).toBeLessThanOrEqual(1)
+    // The viewport control is wide enough for full preset labels, while the
+    // fixed width prevents the toolbar from reflowing as presets change.
+    const viewportBox = await aliceViewportSelect.boundingBox()
+    expect(viewportBox?.width).toBeLessThanOrEqual(190)
+    expect(
+      await aliceViewportSelect.evaluate(
+        (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim()
+      )
+    ).toBe('Google Pixel 8 — 412 × 915')
+    await expect(aliceViewportSelect).toHaveAttribute('title', /412 × 915/)
 
     await aliceViewportSelect.selectOption('custom')
     const customRow = shellPage.locator('.global-pane-bar .viewport-custom')
@@ -1461,7 +1510,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[1]?.viewport.preset === 'responsive',
       'responsive viewport state for the second pane'
     )
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
 
     // Device actions must stay available at every canvas zoom. At 80% these two
@@ -1480,7 +1529,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[1]?.viewport.preset === 'iphone-15-pro',
       'iPhone 15 Pro viewport for action visibility'
     )
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await resetCanvasZoomFromBar(shellPage, zoomPage)
     await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
     await zoomPage.getByRole('button', { name: 'Zoom out' }).click()
@@ -1512,7 +1561,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         state.panes[1]?.viewport.preset === 'responsive',
       'responsive viewports before zoom emulation check'
     )
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
 
     // Responsive panes scale their live views through canvas zoom. Returning
@@ -1666,7 +1715,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     expect(rejectedUnknownRename.ok).toBe(false)
 
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
     const namedAliceCard = shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
     await namedAliceCard.locator('.pane-title').dblclick()
@@ -1741,7 +1790,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       height: 915,
       deviceScaleFactor: 2.625
     })
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
     await expect(
       shellPage.locator('.global-pane-bar .viewport-select')
@@ -1763,7 +1812,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await waitForAlignedBounds(app)
 
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForAlignedBounds(app)
     const resolvedTheme = (await getSnapshot(app as ElectronApplication)).resolvedTheme
     expect(['light', 'dark']).toContain(resolvedTheme)
@@ -1786,7 +1835,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'address bar navigation'
     )
     await shellPage
-      .locator('.global-pane-bar')
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
       .getByRole('button', { name: 'Go back' })
       .click()
     await waitFor(
@@ -1918,7 +1967,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }, bobPaneId as string)
     expect(bobWebContentsId).not.toBeNull()
 
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
     await shellPage
       .locator('.pane-card')
@@ -2003,7 +2052,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Make the persisted workspace distinctive: an iPhone SE viewport and a
     // horizontal canvas move. The restart must restore both.
-    await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForAlignedBounds(app)
     await focusPane(shellPage, alicePaneId as string)
     await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-se')
@@ -2055,9 +2104,45 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!persisted) {
       throw new Error('Persisted workspace is unavailable')
     }
-    const persistedCanvas = persisted.layout.canvas?.[alicePaneId as string]
+    const persistedCanvas = (await getSnapshot(app as ElectronApplication)).layout.canvas?.[
+      alicePaneId as string
+    ]
     if (!persistedCanvas) {
       throw new Error('Persisted canvas position is unavailable')
+    }
+    await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) => {
+        const position = workspace?.layout.canvas?.[alicePaneId as string]
+        return (
+          position?.x === persistedCanvas.x &&
+          position.y === persistedCanvas.y
+        )
+      },
+      'final canvas position to persist'
+    )
+
+    // The last camera and selected device must survive a relaunch. Use a
+    // distinctive 50% zoom and a non-zero pan, then verify both after restart.
+    await resetCanvasZoomFromBar(shellPage, zoomPage)
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
+    await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
+    await shellPage
+      .getByRole('menu', { name: 'Zoom' })
+      .getByRole('menuitemradio', { name: '50%', exact: true })
+      .click()
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('50%')
+    await shellPage.locator('.workspace').dispatchEvent('wheel', { deltaX: 120, deltaY: 80 })
+    const persistedWithCamera = await waitFor(
+      () => readPersistedWorkspace(userDataDir),
+      (workspace) =>
+        workspace?.layout.view?.zoom === 0.5 &&
+        workspace.layout.view.activePaneId === alicePaneId,
+      'camera and selected device to persist'
+    )
+    const persistedView = persistedWithCamera?.layout.view
+    if (!persistedView) {
+      throw new Error('Persisted camera view is unavailable')
     }
 
     await app.evaluate(({ BaseWindow }) => {
@@ -2138,6 +2223,15 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         await session.fromPartition(`persist:paneflow-profile-${profileId}`).cookies.flushStore()
       }
     }, firstProfileIds)
+
+    // Change the camera immediately before quitting. The proactive save must
+    // capture this final state even though the debounce has not elapsed.
+    await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
+    await shellPage
+      .getByRole('menu', { name: 'Zoom' })
+      .getByRole('menuitemradio', { name: '75%', exact: true })
+      .click()
+    await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('75%')
 
     await app.close()
     app = null
@@ -2272,8 +2366,49 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!restartShell) {
       throw new Error('Restarted shell page is unavailable')
     }
+    const restartZoomPage = restartedLayout.find((page) => page.url() === SHELL_ZOOM_URL)
+    if (!restartZoomPage) {
+      throw new Error('Restarted Canvas zoom bar is unavailable')
+    }
 
-    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
+    // The restored camera and selection must match the state at close, before
+    // any later test step runs Fit all.
+    const restoredView = restarted.layout.view
+    if (!restoredView) {
+      throw new Error('Restored camera view is unavailable')
+    }
+    expect(restoredView.zoom).toBe(0.75)
+    expect(restoredView.activePaneId).toBe(alicePaneId)
+    await expect.poll(() => restartZoomPage.locator('#value').textContent()).toBe('75%')
+    await expect
+      .poll(() => restartShell.locator('.pane-card-active').getAttribute('data-pane-id'))
+      .toBe(alicePaneId)
+    const restoredFrame = restarted.layout.canvas?.[alicePaneId as string]
+    if (!restoredFrame) {
+      throw new Error('Restored Canvas frame is unavailable')
+    }
+    const restoredSlot = await restartShell.evaluate((paneId) => {
+      const card = document.querySelector(`.pane-card[data-pane-id="${paneId}"]`)
+      const slot = card?.parentElement
+      if (!(slot instanceof HTMLElement)) {
+        return null
+      }
+      return {
+        left: Number.parseFloat(slot.style.left),
+        top: Number.parseFloat(slot.style.top)
+      }
+    }, alicePaneId as string)
+    expect(restoredSlot).not.toBeNull()
+    expect(restoredSlot?.left).toBeCloseTo(
+      restoredView.pan.x + restoredFrame.x * restoredView.zoom,
+      0
+    )
+    expect(restoredSlot?.top).toBeCloseTo(
+      restoredView.pan.y + restoredFrame.y * restoredView.zoom,
+      0
+    )
+
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(restartApp)
     const restartedAliceCard = restartShell.locator(
       `.pane-card[data-pane-id="${alicePaneId}"]`
@@ -2318,7 +2453,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[0]?.viewport.preset === 'responsive',
       'responsive viewport after restart verification'
     )
-    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(restartApp)
 
     // Profile manager: usage, rename, clear, and safe delete.
@@ -2422,7 +2557,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       ).toContainText('2 devices')
     }
 
-    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(restartApp)
     for (const [index, pane] of sharedPanes.entries()) {
       await setPaneAddress(restartShell, pane.id, `${fixture.url}/pane/shared?slot=${index}`)
@@ -2850,7 +2985,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes.length === 2,
       'Canvas stress panes to close'
     )
-    await restartShell.getByRole('button', { name: 'Fit all devices to view' }).click()
+    await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(restartApp)
 
     // The active pane is visible in chrome and exposed to assistive tech.

@@ -1495,6 +1495,104 @@ Record material technical decisions here. Keep entries short but include context
   - E2e selects the second pane, invokes Reload All, waits for both panes to finish loading, and verifies the second pane is still selected.
   - Typecheck, lint, unit tests, build, and the full Playwright suite pass.
 
+## ADR-050 — Bottom canvas bar owns Find and Reload All
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The top toolbar had accumulated Find device, Reload all, Fit all, and Add at its right edge. The Fit all corner icon looked like a maximize control, and the user wanted the top right to contain only Add while the other actions live near the zoom controls at the bottom.
+
+- **Decision:**
+  1. Remove Find device, Reload all, and Fit all from the top toolbar.
+  2. Keep only the active-device controls and Add in the top toolbar.
+  3. Move Find device and Reload all into the bottom canvas bar.
+  4. Keep Fit all in the overview header and the zoom percentage menu; do not add a redundant bottom-bar Fit all button.
+  5. Extend the validated `CanvasZoomAction` contract with `find-device` and `reload-all`, and widen the bottom bar from 280 to 352 DIP.
+
+- **Alternatives considered:**
+  - **Keep Fit all in the top toolbar.** Rejected; its corner icon looked like maximize and the user asked for only Add at the top right.
+  - **Move Find and Reload into the native menu bar.** Rejected; they are frequent workspace actions and belong near the other canvas controls.
+  - **Add Fit all to the bottom bar too.** Rejected; the overview and zoom menu already provide it without making the bar wider.
+
+- **Consequences:**
+  - The top toolbar is quieter; the bottom bar is wider and has six visible controls plus the percentage menu.
+  - The bottom bar's trusted zoom view now owns two more validated actions.
+  - Find and Reload remain keyboard-accessible through `Cmd/Ctrl+K` and `Cmd/Ctrl+Alt+Shift+R`.
+
+- **Evidence / verification:**
+  - E2e opens the device palette from the bottom bar, invokes Reload All from the bottom bar, and verifies the bottom-bar accessible names and bounds.
+  - Accessibility checks cover the new bottom-bar controls; top-toolbar checks confirm only Add remains on the right.
+  - Typecheck, lint, unit tests, build, and the full Playwright suite pass.
+
+## ADR-051 — Compact centered top-bar address and explicit macOS app name
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The top toolbar repeated navigation already present in every pane header, the address field and viewport select were small and visually indistinct, and clicks inside the titlebar control row could start a window drag. In development the macOS application menu also said “Electron” while the toolbar repeated the PaneFlow name.
+
+- **Decision:**
+  1. Remove back, forward, and reload from the top bar; each device header remains the only navigation home.
+  2. Mark the whole top navigation row as a no-drag region, and use larger controls with visible inset surfaces and pointer cursors.
+  3. Center a shorter address field (max 400 px) with the viewport select in the available toolbar space. Center the URL text while idle and left-align it while editing. Keep the viewport select attached to the address field and give it a fixed default width of 184 px so changing presets never reflows the bar; step the width down at narrow toolbar sizes. Keep full preset names and CSS dimensions in the closed label, with a tooltip for any truncated text.
+  4. Keep the active-device context anchored at the far left rather than attaching it to the address field. The bar reads as three stable zones: device context, address plus viewport, and Add.
+  5. Remove the visible PaneFlow brand from the toolbar and keep a visually hidden level-one heading for accessibility.
+  6. Replace the default macOS `appMenu` role with an explicit PaneFlow application menu and set the About panel name to PaneFlow.
+
+- **Alternatives considered:**
+  - **Keep navigation in both the header and top bar.** Rejected; it was redundant and consumed the space needed for a usable address field.
+  - **Keep only the input/button elements as no-drag.** Rejected; gaps and form padding still initiated window drags.
+  - **Use a very wide Safari-style field.** Rejected; the user asked for a shorter, minimal field.
+  - **Let the viewport select size to its current label.** Rejected; the bar shifted whenever the preset changed, and long labels pushed the select toward Add.
+  - **Move the viewport select next to Add.** Rejected; the viewport is a property of the active device/page, so it belongs with the address. Add remains a separate global action.
+  - **Attach the device context to the address field.** Rejected; pane titles vary in length, which would shift the address field, and it would leave an empty titlebar region on the left.
+  - **Rely on `app.setName` for the menu title.** Rejected; in development the native app-menu role still used the Electron bundle name.
+
+- **Consequences:**
+  - Window dragging remains available from the toolbar background, active-device context, and titlebar inset.
+  - The address field is easier to target and visually reads as editable.
+  - The viewport select stays put as presets change and remains next to the address it affects.
+  - Navigation is available only where the device is, not duplicated globally.
+  - The macOS application menu identifies PaneFlow in both development and packaged runs.
+
+- **Evidence / verification:**
+  - E2e verifies the hidden shell heading, address focus order, bottom-bar Find/Reload actions, and absence of top-bar navigation controls.
+  - E2e verifies the viewport select keeps a fixed compact width, shows the full preset label and CSS dimensions, and exposes the dimensions in its tooltip.
+  - Visual checks confirm the centered short URL field, the full-width preset label at 1280 px, the responsive selector at 720 px, and no visible PaneFlow brand in the toolbar.
+  - The running app reports the macOS application menu label as `PaneFlow`.
+
+## ADR-052 — Restore the last Canvas camera and selection per workspace
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Every workspace opened with a fit-all camera and selected its first device. That is useful for a new workspace, but it discards the pan, zoom, and device a user was working with. For a spatial tool, reopening the app or switching back to a workspace should resume the same view. Window bounds, pane positions, URLs, and viewports already persisted.
+
+- **Decision:**
+  1. Store an optional `view` on each workspace layout with the Canvas `pan`, `zoom`, and `activePaneId`. A null active pane means the user cleared the selection.
+  2. Save discrete camera changes (zoom actions, Fit all, Reset), pan/wheel gesture ends, and selection changes immediately. Continuous gestures also use a short debounce, and a best-effort save runs while the shell unloads.
+  3. Restore the saved view synchronously when the workspace loads or becomes active. Run the fit-all path only when the workspace has no saved view.
+  4. Apply a pane's first native bounds even while the pane is hidden, so a restored camera that leaves it partially offscreen does not block its initial page load.
+  5. Suppress incidental native focus events for a short window after restoring a workspace so the saved active device is not replaced while recreated views settle.
+  6. Add native View-menu Canvas zoom commands: `Cmd/Ctrl+=` (in), `Cmd/Ctrl+-` (out), and `Cmd/Ctrl+0` (reset 100%).
+
+- **Alternatives considered:**
+  - **Keep fitting on every open.** Rejected; it loses the user's place and makes launch feel like a reset.
+  - **Persist only pan and zoom globally.** Rejected; each workspace has its own spatial arrangement and should resume independently.
+  - **Persist the world point at the viewport center.** Rejected; pixel pan is exact for the restored window bounds and avoids changing the camera when the window size changes.
+  - **Rely on `beforeunload` for the final state.** Rejected as the only mechanism; quitting may destroy the renderer without running page unload handlers. Proactive saves at interaction boundaries are required.
+  - **Auto-fit when the saved camera shows no panes.** Rejected for now; it contradicts the user's request to restore exactly what they saw. Fit all remains one click away.
+  - **Load hidden panes only when they become fully visible.** Rejected; a restored offscreen pane would stay blank indefinitely. First bounds are now enough to start the load.
+
+- **Consequences:**
+  - Reopening the app and switching workspaces preserve the last camera and selected device.
+  - Workspaces created before this schema have no saved view and fit once; after the first camera/selection change they remember the view.
+  - Duplicated and imported workspaces start fitted because their transfer/materialization paths do not copy the camera.
+  - A stale saved camera can point at empty world space or leave panes offscreen. Fit all in the overview and zoom menu is the recovery action.
+  - The active device is restored after launch without focusing its address input.
+
+- **Evidence / verification:**
+  - Unit tests cover valid camera views, zoom clamping, unknown active-pane IDs, invalid coordinates, and workspace parse round-trips.
+  - E2e sets 50% zoom and a pan, then 75% immediately before quitting, relaunches, and verifies the final zoom, pan-derived pane position, and selected device. It also confirms a partially offscreen restored pane finishes loading.
+  - E2e asserts the native View-menu accelerators and routes Zoom In, Zoom Out, and Reset through the same Canvas zoom path.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded

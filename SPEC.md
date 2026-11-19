@@ -147,9 +147,9 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** brand, the active pane's address/navigation/viewport controls, find-device, Fit all, reload-all, and the compact **+** add-pane control with its device menu. Keep this a stable single row.
+1. **Top toolbar:** the active pane's compact centered address and viewport controls, and the compact **+** add-pane control with its device menu. Back, forward, and reload live in each device header. Keep this a stable single row.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
-3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, and appearance.
+3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, find-device, reload-all, and appearance.
 4. **Pane chrome:** compact single-row title and actions, with back, forward, reload, contextual actions, and close visible; lower-priority actions such as rotate and screenshot live in the contextual menu.
 5. **Empty state:** one clear action to add the first browser device. Never show fake sample websites as if they were live pages.
 6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
@@ -170,7 +170,7 @@ Supported device actions:
 - Navigate to a URL, back, forward, and reload.
 - Rotate a fixed viewport between portrait and landscape.
 - Capture a screenshot of one device to a user-selected PNG file.
-- Reload all devices from the workspace toolbar.
+- Reload all devices from the bottom canvas bar.
 - Change viewport preset or custom dimensions.
 - Open DevTools for an individual pane when native-view composition supports it cleanly; this may follow the first stable MVP slice.
 
@@ -197,6 +197,7 @@ Use standard platform conventions and document the final shortcuts. At minimum, 
 - Focus the selected pane address (`Cmd/Ctrl+L`).
 - Reload the selected pane (`Cmd/Ctrl+R`).
 - Reload all panes.
+- Zoom the Canvas in and out, and reset to 100% (`Cmd/Ctrl+=`, `Cmd/Ctrl+-`, `Cmd/Ctrl+0`).
 - Switch workspace.
 
 Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and tested before being shown in menus.
@@ -232,7 +233,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
-- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center canvas bar with Hand, zoom-out and zoom-in buttons, a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%), and appearance. Keep this bar and the overview visible while its zoom or appearance menu is open. Canvas zoom scales the whole pane as a unit (frame, header chrome, and page content) while the declared viewport stays fixed; do not reflow or change the page's CSS viewport dimensions.
+- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center canvas bar with Hand, zoom-out and zoom-in buttons, a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%), find-device, reload-all, and appearance. Keep this bar and the overview visible while its zoom or appearance menu is open. Canvas zoom scales the whole pane as a unit (frame, header chrome, and page content) while the declared viewport stays fixed; do not reflow or change the page's CSS viewport dimensions.
 - Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
 - Clicking empty canvas with the primary button and without dragging clears the active pane. Interacting with a pane, its header, or the minimap restores selection.
 - Keep the top toolbar and its active-pane controls mounted at a stable height in Canvas. When no pane is selected, show a quiet empty state instead of removing the controls, so selecting or clearing a pane never moves or resizes the canvas.
@@ -244,10 +245,10 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
-- Provide a Fit all panes action in the top toolbar, in the overview, and in the zoom menu. It must bring every pane back inside the workspace.
-- Use the top toolbar for active-pane address, navigation, and viewport controls, with compact labels on each frame.
+- Provide a Fit all panes action in the overview and in the zoom menu. It must bring every pane back inside the workspace.
+- Use the top toolbar for the active-pane compact address and viewport controls, with back, forward, and reload in each device header.
 - Provide the + device menu and right-click canvas context menu described in §7.3.
-- Persist canvas positions per workspace. Pan offset, zoom, and a cleared active-pane selection are viewport state and may reset.
+- Persist canvas positions and the last Canvas camera (pan and zoom) plus the active-device selection per workspace. Restore that view when the workspace is reopened or switched; only fit when the workspace has no saved camera.
 - Device bezels and pane frame resizing are not required.
 
 ### 7.5 Canvas-only layout

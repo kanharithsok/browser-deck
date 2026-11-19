@@ -375,11 +375,11 @@ export class BrowserManager {
         continue
       }
       record.shellVisible = update.visible
-      if (update.visible) {
+      const firstBounds = !record.hasBounds
+      if (update.visible || firstBounds) {
         record.view.setBounds(update.rect)
       }
-      const firstBounds = !record.hasBounds && update.visible
-      record.hasBounds = record.hasBounds || update.visible
+      record.hasBounds = record.hasBounds || firstBounds
       this.syncVisibility(record)
       this.applyEmulation(record)
 

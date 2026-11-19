@@ -108,6 +108,10 @@ let devServerUrl: URL | null = null
 let workspaceMenuRefreshToken = 0
 
 app.setName('PaneFlow')
+app.setAboutPanelOptions({
+  applicationName: 'PaneFlow',
+  applicationVersion: app.getVersion()
+})
 registerShellScheme()
 
 const userDataOverride = process.env.PANEFLOW_USER_DATA_DIR
@@ -724,8 +728,20 @@ function buildApplicationMenu(): void {
     }
   }
 
+  const macAppMenu: MenuItemConstructorOptions[] = [
+    { role: 'about' },
+    { type: 'separator' },
+    { role: 'services' },
+    { type: 'separator' },
+    { role: 'hide' },
+    { role: 'hideOthers' },
+    { role: 'unhide' },
+    { type: 'separator' },
+    { role: 'quit' }
+  ]
+
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [{ label: 'PaneFlow', submenu: macAppMenu }] : []),
     { role: 'fileMenu' },
     {
       label: 'Workspace',
@@ -822,6 +838,25 @@ function buildApplicationMenu(): void {
     {
       label: 'View',
       submenu: [
+        {
+          id: 'canvas-zoom-in',
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+=',
+          click: () => sendCommand('zoom-in')
+        },
+        {
+          id: 'canvas-zoom-out',
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => sendCommand('zoom-out')
+        },
+        {
+          id: 'canvas-zoom-reset',
+          label: 'Reset Zoom',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => sendCommand('zoom-reset')
+        },
+        { type: 'separator' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
         {

@@ -73,6 +73,9 @@ export type PaneCommand =
   | 'find-device'
   | 'reload-pane'
   | 'reload-all'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'zoom-reset'
   | 'open-profiles'
   | 'open-workspaces'
 

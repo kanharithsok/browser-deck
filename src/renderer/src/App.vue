@@ -225,6 +225,9 @@ let suppressPaneFocusUntil = 0
 let layoutPersistenceReady = false
 let layoutRestored = false
 let lastSavedLayoutKey = ''
+let canvasViewReady = false
+let canvasViewSaveTimer: ReturnType<typeof setTimeout> | null = null
+const CANVAS_VIEW_SAVE_DELAY = 150
 
 const paneCountLabel = computed(() => {
   const count = panes.value.length
@@ -823,6 +826,7 @@ function blurActiveShellControl(): void {
 function selectPane(paneId: string | null): void {
   activePaneId.value = paneId
   paneSelectionCleared.value = paneId === null
+  saveCanvasViewNow()
 }
 
 function clearPaneSelection(): void {
@@ -852,6 +856,15 @@ function readWorkspaceSize(): void {
   const height = Math.max(0, Math.round(workspace.clientHeight))
   if (width !== workspaceSize.value.width || height !== workspaceSize.value.height) {
     workspaceSize.value = { width, height }
+  }
+  if (
+    !canvasViewReady &&
+    panes.value.length > 0 &&
+    currentWorkspaceId.value !== null &&
+    width > 0 &&
+    height > 0
+  ) {
+    requestAnimationFrame(() => restoreCanvasViewWhenReady())
   }
 }
 
@@ -1207,6 +1220,7 @@ function finishCanvasPan(event?: PointerEvent): void {
   if (deselect) {
     clearPaneSelection()
   }
+  saveCanvasViewNow()
   void nextTick(async () => {
     await measurePanes()
     scheduleSnapshotRefresh()
@@ -1354,6 +1368,7 @@ function resetCanvasZoom(): void {
   }
   const rect = workspace.getBoundingClientRect()
   setCanvasZoomAtPoint(1, rect.left + rect.width / 2, rect.top + rect.height / 2)
+  saveCanvasViewNow()
 }
 
 function zoomCanvasAtCenter(zoom: number): void {
@@ -1363,6 +1378,7 @@ function zoomCanvasAtCenter(zoom: number): void {
   }
   const rect = workspace.getBoundingClientRect()
   setCanvasZoomAtPoint(zoom, rect.left + rect.width / 2, rect.top + rect.height / 2)
+  saveCanvasViewNow()
 }
 
 function applyCanvasZoomAction(action: CanvasZoomAction): void {
@@ -1407,20 +1423,40 @@ function applyCanvasZoomAction(action: CanvasZoomAction): void {
     case 'reset':
       zoomCanvasAtCenter(1)
       break
+    case 'find-device':
+      openDevicePalette()
+      break
+    case 'reload-all':
+      void reloadAll()
+      break
   }
 }
 
-function fitCanvasWhenReady(attempts = 5): void {
-  if (layoutMode.value !== 'canvas' || panes.value.length === 0) {
+function restoreCanvasViewWhenReady(attempts = 5): void {
+  if (canvasViewReady) {
+    return
+  }
+  if (layoutMode.value !== 'canvas') {
+    canvasViewReady = true
+    return
+  }
+  if (panes.value.length === 0) {
+    canvasZoom.value = 1
+    canvasPan.value = { x: 0, y: 0 }
+    syncCanvasZoomToMain(1)
+    canvasViewReady = true
+    scheduleCanvasViewSave()
     return
   }
   if (workspaceSize.value.width < 1 || workspaceSize.value.height < 1) {
     if (attempts > 0) {
-      requestAnimationFrame(() => fitCanvasWhenReady(attempts - 1))
+      requestAnimationFrame(() => restoreCanvasViewWhenReady(attempts - 1))
     }
     return
   }
   fitCanvasToPanes()
+  canvasViewReady = true
+  scheduleCanvasViewSave()
 }
 
 function beginCanvasWheelGesture(): void {
@@ -1443,6 +1479,7 @@ function scheduleCanvasWheelEnd(): void {
     canvasWheelEndTimer = null
     isCanvasPanning.value = false
     document.body.classList.remove('paneflow-canvas-panning')
+    saveCanvasViewNow()
     void nextTick(async () => {
       await measurePanes()
       scheduleSnapshotRefresh()
@@ -1510,6 +1547,7 @@ function fitCanvasToPanes(): void {
     y: Math.round(workspaceSize.value.height / 2 - (minY + worldHeight / 2) * zoom)
   }
   syncCanvasZoomToMain(zoom)
+  saveCanvasViewNow()
   void nextTick(scheduleMeasure)
   scheduleSnapshotRefresh(300)
 }
@@ -1545,11 +1583,56 @@ function focusCanvasPane(paneId: string): void {
   scheduleSnapshotRefresh(300)
 }
 
+function revealCanvasPane(paneId: string): void {
+  const frame = canvasFrames.value.get(paneId)
+  if (!frame) {
+    return
+  }
+  const zoom = canvasZoom.value
+  const screenWidth = frame.width * zoom
+  const screenHeight = frame.height * zoom
+  const left = canvasPan.value.x + frame.x * zoom
+  const top = canvasPan.value.y + frame.y * zoom
+  const viewportWidth = workspaceSize.value.width
+  const viewportHeight = workspaceSize.value.height
+  const margin = Math.min(CANVAS_FIT_PADDING, Math.max(16, Math.min(viewportWidth, viewportHeight) / 10))
+
+  let dx = 0
+  let dy = 0
+  if (screenWidth > viewportWidth - margin * 2) {
+    dx = Math.round((viewportWidth - screenWidth) / 2 - left)
+  } else if (left < margin) {
+    dx = Math.round(margin - left)
+  } else if (left + screenWidth > viewportWidth - margin) {
+    dx = Math.round(viewportWidth - margin - (left + screenWidth))
+  }
+  if (screenHeight > viewportHeight - margin * 2) {
+    dy = Math.round((viewportHeight - screenHeight) / 2 - top)
+  } else if (top < margin) {
+    dy = Math.round(margin - top)
+  } else if (top + screenHeight > viewportHeight - margin) {
+    dy = Math.round(viewportHeight - margin - (top + screenHeight))
+  }
+
+  selectPane(paneId)
+  if (dx === 0 && dy === 0) {
+    return
+  }
+  canvasPan.value = {
+    x: canvasPan.value.x + dx,
+    y: canvasPan.value.y + dy
+  }
+  saveCanvasViewNow()
+  void nextTick(scheduleMeasure)
+  scheduleSnapshotRefresh(300)
+}
+
 function recenterCanvasAt(worldX: number, worldY: number): void {
   canvasPan.value = {
     x: Math.round(workspaceSize.value.width / 2 - worldX * canvasZoom.value),
     y: Math.round(workspaceSize.value.height / 2 - worldY * canvasZoom.value)
   }
+  saveCanvasViewNow()
   void nextTick(scheduleMeasure)
 }
 
@@ -1710,18 +1793,58 @@ function buildWorkspaceLayout(): WorkspaceLayout {
       return position ? [[pane.id, { x: position.x, y: position.y }]] : []
     })
   )
+  const view = canvasViewReady
+    ? {
+        pan: {
+          x: Math.round(canvasPan.value.x),
+          y: Math.round(canvasPan.value.y)
+        },
+        zoom: canvasZoom.value,
+        activePaneId:
+          activePaneId.value && ids.has(activePaneId.value) ? activePaneId.value : null
+      }
+    : undefined
   return {
     mode: 'canvas',
     columns: gridColumns.value,
     gridOrder: paneOrder.value.filter((paneId) => ids.has(paneId)),
     freeform,
     freeformOrder: freeformOrder.value.filter((paneId) => ids.has(paneId)),
-    canvas
+    canvas,
+    ...(view ? { view } : {})
   }
 }
 
+function scheduleCanvasViewSave(): void {
+  if (!layoutPersistenceReady || !canvasViewReady) {
+    return
+  }
+  if (canvasViewSaveTimer !== null) {
+    clearTimeout(canvasViewSaveTimer)
+  }
+  canvasViewSaveTimer = setTimeout(() => {
+    canvasViewSaveTimer = null
+    void saveWorkspaceLayout()
+  }, CANVAS_VIEW_SAVE_DELAY)
+}
+
+function saveCanvasViewNow(): void {
+  if (!layoutPersistenceReady || !canvasViewReady) {
+    return
+  }
+  if (canvasViewSaveTimer !== null) {
+    clearTimeout(canvasViewSaveTimer)
+    canvasViewSaveTimer = null
+  }
+  void saveWorkspaceLayout()
+}
+
+function flushCanvasView(): void {
+  saveCanvasViewNow()
+}
+
 async function saveWorkspaceLayout(): Promise<void> {
-  if (!layoutPersistenceReady) {
+  if (!layoutPersistenceReady || !canvasViewReady) {
     return
   }
 
@@ -1764,6 +1887,24 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
   canvasPositions.value = Object.fromEntries(
     Object.entries(layout.canvas ?? {}).filter(([paneId]) => ids.has(paneId))
   )
+  if (layout.view) {
+    canvasPan.value = { x: layout.view.pan.x, y: layout.view.pan.y }
+    canvasZoom.value = layout.view.zoom
+    syncCanvasZoomToMain(layout.view.zoom)
+    canvasViewReady = true
+    // Recreated native views can emit incidental focus events while the
+    // window is showing; keep the restored selection until that settles.
+    suppressPaneFocusUntil = Date.now() + 1000
+    if (layout.view.activePaneId && ids.has(layout.view.activePaneId)) {
+      activePaneId.value = layout.view.activePaneId
+      paneSelectionCleared.value = false
+    } else {
+      activePaneId.value = null
+      paneSelectionCleared.value = true
+    }
+  } else {
+    canvasViewReady = false
+  }
 }
 
 function applyThemeToDocument(): void {
@@ -1800,10 +1941,15 @@ function applyState(state: ShellState): void {
     devicePaletteIndex.value = 0
     layoutMode.value = 'canvas'
     gridColumns.value = DEFAULT_GRID_COLUMNS
-      activePaneId.value = null
+    activePaneId.value = null
     paneSelectionCleared.value = false
     layoutRestored = false
     layoutPersistenceReady = false
+    canvasViewReady = false
+    if (canvasViewSaveTimer !== null) {
+      clearTimeout(canvasViewSaveTimer)
+      canvasViewSaveTimer = null
+    }
     suspendedPaneIds.value = new Set()
   }
   const previousIds = new Set(panes.value.map((pane) => pane.id))
@@ -1865,10 +2011,13 @@ function applyState(state: ShellState): void {
       // The target workspace already has persisted layout state. Re-enable
       // saves without writing it back during the switch.
       layoutPersistenceReady = true
+      if (canvasViewReady) {
+        scheduleCanvasViewSave()
+      }
     }
     if (addedPane) {
       if (layoutMode.value === 'canvas') {
-        focusCanvasPane(addedPane.id)
+        revealCanvasPane(addedPane.id)
       }
       focusPaneAddress(addedPane.id)
     } else if (removedPane && document.activeElement === document.body) {
@@ -1876,7 +2025,7 @@ function applyState(state: ShellState): void {
     }
     scheduleMeasure()
     if (workspaceChanged) {
-      requestAnimationFrame(() => fitCanvasWhenReady())
+      requestAnimationFrame(() => restoreCanvasViewWhenReady())
     }
   })
 }
@@ -2998,6 +3147,15 @@ function handlePaneCommand(command: PaneCommand): void {
     case 'reload-all':
       void reloadAll()
       break
+    case 'zoom-in':
+      zoomCanvasAtCenter(canvasZoom.value + CANVAS_ZOOM_STEP)
+      break
+    case 'zoom-out':
+      zoomCanvasAtCenter(canvasZoom.value - CANVAS_ZOOM_STEP)
+      break
+    case 'zoom-reset':
+      resetCanvasZoom()
+      break
     case 'open-profiles':
       openProfiles()
       break
@@ -3385,6 +3543,13 @@ watch(
   }
 )
 
+watch(
+  () => [canvasPan.value.x, canvasPan.value.y, canvasZoom.value, activePaneId.value] as const,
+  () => {
+    scheduleCanvasViewSave()
+  }
+)
+
 watch(paneChrome, (style) => {
   persistPaneChromePreference(style)
   void nextTick(scheduleMeasure)
@@ -3468,6 +3633,7 @@ onMounted(async () => {
   window.addEventListener('keydown', onCanvasSpaceDown)
   window.addEventListener('keyup', onCanvasSpaceUp)
   window.addEventListener('blur', onWindowBlur)
+  window.addEventListener('beforeunload', flushCanvasView)
   readWorkspaceSize()
 
   try {
@@ -3514,6 +3680,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onCanvasSpaceDown)
   window.removeEventListener('keyup', onCanvasSpaceUp)
   window.removeEventListener('blur', onWindowBlur)
+  window.removeEventListener('beforeunload', flushCanvasView)
   document.body.classList.remove('paneflow-dragging')
   document.body.classList.remove('paneflow-canvas-panning')
   document.body.classList.remove('paneflow-canvas-pane-dragging')
@@ -3525,6 +3692,10 @@ onBeforeUnmount(() => {
   if (canvasWheelEndTimer !== null) {
     clearTimeout(canvasWheelEndTimer)
     canvasWheelEndTimer = null
+  }
+  if (canvasViewSaveTimer !== null) {
+    clearTimeout(canvasViewSaveTimer)
+    canvasViewSaveTimer = null
   }
   if (minimapStateTimer !== null) {
     clearTimeout(minimapStateTimer)
@@ -3545,7 +3716,7 @@ onBeforeUnmount(() => {
     :data-layout-mode="layoutMode"
   >
     <header class="toolbar">
-      <h1 class="brand">PaneFlow</h1>
+      <h1 class="sr-only">PaneFlow</h1>
 
       <GlobalPaneBar
         v-if="showGlobalPaneBar"
@@ -3555,42 +3726,12 @@ onBeforeUnmount(() => {
         :profile-pane-count="
           activePane ? (profilePaneCounts.get(activePane.profileId) ?? 1) : 1
         "
-        :show-canvas-tools="layoutMode === 'canvas'"
-        :fit-all-disabled="panes.length === 0"
         :has-panes="panes.length > 0"
         @set-viewport="onGlobalPaneSetViewport"
         @layout-changed="onPaneLayoutChanged"
-        @fit-all="fitCanvasToPanes"
       />
 
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
-      <button
-        class="icon-button toolbar-icon"
-        type="button"
-        title="Find device (Cmd/Ctrl+K)"
-        aria-label="Find device"
-        aria-keyshortcuts="Meta+K Control+K"
-        :disabled="panes.length === 0"
-        @click="openDevicePalette"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="7" cy="7" r="4.5" />
-          <path d="m10.5 10.5 3 3" />
-        </svg>
-      </button>
-      <button
-        class="icon-button toolbar-icon"
-        type="button"
-        title="Reload all devices"
-        aria-label="Reload all devices"
-        :disabled="panes.length === 0"
-        @click="reloadAll"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M13.2 6.4A5.5 5.5 0 1 0 13.5 8" />
-          <path d="M13.4 3.2v3.4H10" />
-        </svg>
-      </button>
       <button
         class="icon-button toolbar-icon add-pane-button"
         type="button"
@@ -4259,13 +4400,6 @@ onBeforeUnmount(() => {
 .toolbar .address-input,
 .toolbar .custom-field input {
   user-select: text;
-}
-
-.brand {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
 }
 
 .sr-only {

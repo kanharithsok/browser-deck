@@ -17,12 +17,14 @@ export type CanvasZoomAction =
   | { type: 'menu' }
   | { type: 'toggle-hand' }
   | { type: 'appearance' }
+  | { type: 'find-device' }
+  | { type: 'reload-all' }
 
 export const CANVAS_MIN_ZOOM = 0.25
 export const CANVAS_MAX_ZOOM = 2
 export const CANVAS_ZOOM_STEP = 0.1
 export const CANVAS_ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
-export const CANVAS_ZOOM_BAR_WIDTH = 280
+export const CANVAS_ZOOM_BAR_WIDTH = 352
 export const CANVAS_ZOOM_BAR_HEIGHT = 40
 export const CANVAS_ZOOM_MARGIN = 12
 export const CANVAS_ZOOM_MENU_WIDTH = 224
@@ -95,6 +97,12 @@ export function parseCanvasZoomAction(value: unknown): CanvasZoomAction | null {
   }
   if (record.type === 'appearance') {
     return { type: 'appearance' }
+  }
+  if (record.type === 'find-device') {
+    return { type: 'find-device' }
+  }
+  if (record.type === 'reload-all') {
+    return { type: 'reload-all' }
   }
   return null
 }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
 import {
   VIEWPORT_CATEGORY_LABELS,
+  findViewportPreset,
   parsePaneViewport,
   viewportFromPreset,
   viewportPresetsInCategory,
@@ -39,6 +40,16 @@ const customDeviceScaleFactor = ref(
   props.pane.viewport.preset === 'custom' ? props.pane.viewport.deviceScaleFactor : 1
 )
 const viewportError = ref<string | null>(null)
+
+const selectedPresetLabel = computed(() => {
+  if (selectedPreset.value === 'responsive') {
+    return 'Responsive viewport'
+  }
+  if (selectedPreset.value === 'custom') {
+    return 'Custom viewport'
+  }
+  return findViewportPreset(selectedPreset.value)?.label ?? selectedPreset.value
+})
 
 function displayAddress(url: string): string {
   return url === 'about:blank' ? '' : url
@@ -191,63 +202,11 @@ async function submitAddress(): Promise<void> {
   addressInput.value?.blur()
 }
 
-function goBack(): void {
-  if (props.pane.canGoBack) {
-    void window.paneflow.back(props.pane.id).catch(() => undefined)
-  }
-}
-
-function goForward(): void {
-  if (props.pane.canGoForward) {
-    void window.paneflow.forward(props.pane.id).catch(() => undefined)
-  }
-}
-
-function reload(): void {
-  void window.paneflow.reload(props.pane.id).catch(() => undefined)
-}
 </script>
 
 <template>
   <div class="pane-nav-row" :class="{ 'pane-nav-row-editing': customOpen }">
     <template v-if="!customOpen">
-      <button
-        class="icon-button nav-button"
-        type="button"
-        title="Back"
-        aria-label="Go back"
-        :disabled="!pane.canGoBack"
-        @click="goBack"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M9.5 3.5 5 8l4.5 4.5" />
-        </svg>
-      </button>
-      <button
-        class="icon-button nav-button"
-        type="button"
-        title="Forward"
-        aria-label="Go forward"
-        :disabled="!pane.canGoForward"
-        @click="goForward"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M6.5 3.5 11 8l-4.5 4.5" />
-        </svg>
-      </button>
-      <button
-        class="icon-button nav-button"
-        type="button"
-        title="Reload device"
-        aria-label="Reload device"
-        @click="reload"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M12.6 6.3A5 5 0 1 0 13 8" />
-          <path d="M12.8 3.3v3.2H9.6" />
-        </svg>
-      </button>
-
       <form class="address-form" @submit.prevent="submitAddress">
         <input
           ref="addressInput"
@@ -282,6 +241,7 @@ function reload(): void {
       <select
         class="viewport-select"
         :value="selectedPreset"
+        :title="`Viewport preset: ${selectedPresetLabel}`"
         :aria-label="`Viewport preset for device ${pane.title}`"
         @change="onPresetChange"
       >
@@ -371,8 +331,9 @@ function reload(): void {
   flex: 1 1 320px;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
+  -webkit-app-region: no-drag;
 }
 
 .icon-button {
@@ -380,11 +341,12 @@ function reload(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border-radius: 4px;
   color: var(--text-muted);
+  cursor: pointer;
 }
 
 .icon-button:hover:not(:disabled) {
@@ -402,31 +364,27 @@ function reload(): void {
   stroke-linejoin: round;
 }
 
-.nav-button {
-  width: 24px;
-  height: 24px;
-}
-
 .address-form {
   flex: 1 1 120px;
   min-width: 80px;
-  margin-left: 3px;
+  -webkit-app-region: no-drag;
 }
 
 .address-input {
   width: 100%;
-  height: 24px;
-  padding: 0 7px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+  border-radius: 5px;
+  background: var(--surface-inset);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 11.5px;
   text-overflow: ellipsis;
 }
 
 .address-input:hover {
-  background: var(--surface-inset);
+  border-color: var(--border);
+  background: var(--surface-raised);
 }
 
 .address-input::placeholder {
@@ -461,18 +419,20 @@ function reload(): void {
 
 .viewport-select {
   flex: none;
-  width: 86px;
-  height: 24px;
-  margin-left: 3px;
+  width: 184px;
+  min-width: 0;
+  height: 28px;
   border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
+  border-radius: 5px;
+  background: var(--surface-inset);
   color: var(--text-muted);
+  cursor: pointer;
   font-size: 10.5px;
 }
 
 .viewport-select:hover {
-  background: var(--surface-inset);
+  border-color: var(--border);
+  background: var(--surface-raised);
 }
 
 .viewport-select:focus-visible {
@@ -482,8 +442,8 @@ function reload(): void {
 
 .custom-edit-button {
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
 }
 
 .viewport-custom {
@@ -574,9 +534,27 @@ function reload(): void {
   line-height: 1.4;
 }
 
-@container (max-width: 320px) {
+@container (max-width: 900px) {
   .viewport-select {
-    width: 78px;
+    width: 160px;
+  }
+}
+
+@container (max-width: 760px) {
+  .viewport-select {
+    width: 140px;
+  }
+}
+
+@container (max-width: 640px) {
+  .viewport-select {
+    width: 112px;
+  }
+}
+
+@container (max-width: 480px) {
+  .viewport-select {
+    width: 88px;
   }
 }
 </style>
