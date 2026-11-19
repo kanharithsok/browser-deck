@@ -723,6 +723,12 @@ function buildApplicationMenu(): void {
     }
   }
 
+  const focusShell = (): void => {
+    if (shellView && !shellView.webContents.isDestroyed()) {
+      shellView.webContents.focus()
+    }
+  }
+
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
     { role: 'fileMenu' },
@@ -790,7 +796,19 @@ function buildApplicationMenu(): void {
           id: 'pane-focus-address',
           label: 'Focus Address',
           accelerator: 'CmdOrCtrl+L',
-          click: () => sendCommand('focus-address')
+          click: () => {
+            focusShell()
+            sendCommand('focus-address')
+          }
+        },
+        {
+          id: 'pane-find',
+          label: 'Find Device…',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => {
+            focusShell()
+            sendCommand('find-device')
+          }
         },
         {
           id: 'pane-reload',

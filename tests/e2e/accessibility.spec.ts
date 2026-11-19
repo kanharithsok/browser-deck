@@ -286,6 +286,10 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(addPaneButton).toBeEnabled()
       await expect(addPaneButton).toHaveAttribute('aria-haspopup', 'menu')
       await expect(addPaneButton).toHaveAttribute('aria-expanded', 'false')
+      const findDevice = banner.getByRole('button', { name: 'Find device' })
+      await expect(findDevice).toHaveAccessibleName('Find device')
+      await expect(findDevice).toHaveAttribute('title', 'Find device (Cmd/Ctrl+K)')
+      await expect(findDevice).toHaveAttribute('aria-keyshortcuts', 'Meta+K Control+K')
       const reloadAll = banner.getByRole('button', { name: 'Reload all devices' })
       await expect(reloadAll).toHaveAccessibleName('Reload all devices')
       await expect(reloadAll).toHaveAttribute('title', 'Reload all devices')
@@ -307,6 +311,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(axPairs).toContain('main:Browser workspace')
       expect(axPairs).toContain('button:Reload device')
       expect(axPairs).toContain('button:Fit all devices to view')
+      expect(axPairs).toContain('button:Find device')
       expect(axPairs).toContain('button:Add device')
       expect(axPairs).toContain('button:Reload all devices')
       expect(axPairs.some((pair) => pair.startsWith('textbox:Address for '))).toBe(true)
@@ -479,6 +484,9 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       await shellPage.keyboard.press('Tab')
       expect((await readFocus(shellPage)).ariaLabel).toBe('Fit all devices to view')
+
+      await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Find device')
 
       await shellPage.keyboard.press('Tab')
       expect((await readFocus(shellPage)).ariaLabel).toBe('Reload all devices')

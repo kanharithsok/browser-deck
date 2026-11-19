@@ -173,3 +173,5 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] Maximize/Restore and Copy URL are present in the native device actions menu. (Implemented in the native pane menu; direct native menu clicks remain a manual GUI check.)
 - [x] Add/profile copy distinguishes devices from viewport presets. (E2e checks `Start with viewport`, `Phone viewports`, `Tablet viewports`, `Desktop viewports`, and the persisted profile action is now `New device`.)
 - [x] Blocked popups, downloads, and permission requests are visible. (E2e clicks the fixture popup and notification actions and triggers a blob download; each pane header shows the matching notice.)
+- [x] `Cmd/Ctrl+K` opens a searchable device palette. (E2e opens it from the native Device menu, verifies the overlay hides native views/minimap/zoom bar, filters by title, selects with Enter, centers the device, and returns focus. Escape and the no-match state are also covered.)
+- [x] The toolbar exposes the palette and search matches are highlighted. (E2e checks the Find device toolbar button, viewport badges, title/query highlighting, and the no-match state.)

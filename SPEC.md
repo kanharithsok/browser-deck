@@ -148,7 +148,7 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** brand, the active pane's address/navigation/viewport controls, Fit all, reload-all, and the compact **+** add-pane control with its device menu. Keep this a stable single row.
+1. **Top toolbar:** brand, the active pane's address/navigation/viewport controls, find-device, Fit all, reload-all, and the compact **+** add-pane control with its device menu. Keep this a stable single row.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
 3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, and appearance.
 4. **Pane chrome:** compact single-row title and actions, with back, forward, reload, contextual actions, and close visible; lower-priority actions such as rotate and screenshot live in the contextual menu.
@@ -195,6 +195,7 @@ Use standard platform conventions and document the final shortcuts. At minimum, 
 - Add pane.
 - Duplicate selected pane (`Cmd/Ctrl+D`).
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
+- Find a device by name, host, profile, or viewport (`Cmd/Ctrl+K`).
 - Focus the selected pane address (`Cmd/Ctrl+L`).
 - Reload the selected pane (`Cmd/Ctrl+R`).
 - Reload all panes.

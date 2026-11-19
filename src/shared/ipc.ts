@@ -70,6 +70,7 @@ export type PaneCommand =
   | 'duplicate-pane'
   | 'close-pane'
   | 'focus-address'
+  | 'find-device'
   | 'reload-pane'
   | 'reload-all'
   | 'toggle-maximize'
