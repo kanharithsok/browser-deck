@@ -63,6 +63,7 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.showAddPaneMenu, request),
   showThemeMenu: (request) => ipcRenderer.invoke(IPC_CHANNELS.showThemeMenu, request),
   capturePaneSnapshots: () => ipcRenderer.invoke(IPC_CHANNELS.capturePaneSnapshots),
+  setCanvasZoom: (zoom: number) => ipcRenderer.invoke(IPC_CHANNELS.setCanvasZoom, zoom),
   onStateChanged: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: ShellState): void => {
       listener(state)

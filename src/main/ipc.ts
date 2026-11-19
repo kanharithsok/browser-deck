@@ -535,6 +535,26 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
+  ipcMain.handle(IPC_CHANNELS.setCanvasZoom, (event, payload: unknown): ScriptResult => {
+    if (!isTrustedSender(event, context)) {
+      return unauthorized
+    }
+    const manager = context.getBrowserManager()
+    if (!manager) {
+      return unavailable
+    }
+    if (
+      typeof payload !== 'number' ||
+      !Number.isFinite(payload) ||
+      payload < 0.5 ||
+      payload > 2
+    ) {
+      return { ok: false, error: 'Invalid canvas zoom.' }
+    }
+    manager.setCanvasZoom(payload)
+    return { ok: true }
+  })
+
   ipcMain.handle(IPC_CHANNELS.showPaneMenu, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {
       return unauthorized

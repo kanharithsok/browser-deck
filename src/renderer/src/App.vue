@@ -4,6 +4,7 @@ import GlobalPaneBar from './components/GlobalPaneBar.vue'
 import PaneCard from './components/PaneCard.vue'
 import {
   CANVAS_GAP,
+  CANVAS_HEADER_HEIGHT,
   CANVAS_ORIGIN,
   defaultCanvasPositions,
   canvasFrameSize,
@@ -48,6 +49,9 @@ import {
 
 type LayoutMode = 'grid' | 'freeform' | 'canvas'
 type ProfileActionKind = 'clear' | 'delete'
+
+const CANVAS_MIN_ZOOM = 0.5
+const CANVAS_MAX_ZOOM = 2
 
 interface CanvasDragState {
   startX: number
@@ -95,7 +99,9 @@ const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
 const canvasPositions = ref<Record<string, CanvasPosition>>({})
 const canvasPan = ref<CanvasPosition>({ x: 0, y: 0 })
+const canvasZoom = ref(1)
 const canvasHandMode = ref(false)
+const spaceHandMode = ref(false)
 const isCanvasPanning = ref(false)
 const isCanvasPaneDragging = ref(false)
 const canvasDrag = ref<CanvasDragState | null>(null)
@@ -188,6 +194,8 @@ const activePane = computed(
 const effectivePaneChrome = computed<PaneChromeStyle>(() =>
   layoutMode.value === 'canvas' ? 'c' : paneChrome.value
 )
+
+const canvasHandActive = computed(() => canvasHandMode.value || spaceHandMode.value)
 
 const defaultCanvasLayout = computed(() => defaultCanvasPositions(orderedPanes.value))
 
@@ -326,6 +334,18 @@ function requestPaneRename(paneId: string): void {
   }
 }
 
+function blurActiveShellControl(): void {
+  const active = document.activeElement
+  if (active instanceof HTMLElement && active !== document.body) {
+    active.blur()
+  }
+}
+
+function selectCanvasLayout(): void {
+  layoutMode.value = 'canvas'
+  blurActiveShellControl()
+}
+
 function recoverFocus(): void {
   const target =
     document.querySelector<HTMLInputElement>('[data-pane-id] .address-input') ??
@@ -388,11 +408,13 @@ function paneSlotStyle(paneId: string): Record<string, string> {
   }
 
   if (canvasFrame) {
+    const zoom = canvasZoom.value
+    const contentHeight = canvasFrame.height - CANVAS_HEADER_HEIGHT
     return {
-      left: `${canvasFrame.x + canvasPan.value.x}px`,
-      top: `${canvasFrame.y + canvasPan.value.y}px`,
-      width: `${canvasFrame.width}px`,
-      height: `${canvasFrame.height}px`,
+      left: `${canvasPan.value.x + canvasFrame.x * zoom}px`,
+      top: `${canvasPan.value.y + canvasFrame.y * zoom}px`,
+      width: `${canvasFrame.width * zoom}px`,
+      height: `${contentHeight * zoom + CANVAS_HEADER_HEIGHT}px`,
       zIndex:
         canvasPaneDrag.value?.paneId === paneId
           ? '1000'
@@ -484,6 +506,7 @@ function ensureFreeformGeometry(): void {
 
 let snapshotRequest = 0
 let snapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let canvasWheelEndTimer: ReturnType<typeof setTimeout> | null = null
 
 async function refreshPaneSnapshots(): Promise<void> {
   if (layoutMode.value !== 'canvas' || panes.value.length === 0) {
@@ -686,6 +709,7 @@ function beginCanvasPan(event: PointerEvent): void {
     return
   }
   event.preventDefault()
+  blurActiveShellControl()
   const captureTarget = event.currentTarget
   if (captureTarget instanceof Element) {
     try {
@@ -748,6 +772,7 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
   }
 
   event.preventDefault()
+  blurActiveShellControl()
   activePaneId.value = paneId
   const captureTarget = event.currentTarget
   if (captureTarget instanceof Element) {
@@ -780,8 +805,8 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
   canvasPositions.value = {
     ...canvasPositions.value,
     [drag.paneId]: {
-      x: Math.round(drag.base.x + (event.clientX - drag.startX)),
-      y: Math.round(drag.base.y + (event.clientY - drag.startY))
+      x: Math.round(drag.base.x + (event.clientX - drag.startX) / canvasZoom.value),
+      y: Math.round(drag.base.y + (event.clientY - drag.startY) / canvasZoom.value)
     }
   }
 }
@@ -818,15 +843,99 @@ function toggleCanvasHand(): void {
   setCanvasHandMode(!canvasHandMode.value)
 }
 
+function syncCanvasZoomToMain(zoom: number): void {
+  void window.paneflow.setCanvasZoom(zoom).catch(() => undefined)
+}
+
+function setCanvasZoomAtPoint(nextZoom: number, clientX: number, clientY: number): void {
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    return
+  }
+  const zoom = Math.min(CANVAS_MAX_ZOOM, Math.max(CANVAS_MIN_ZOOM, nextZoom))
+  if (Math.abs(zoom - canvasZoom.value) < 0.0001) {
+    return
+  }
+
+  const rect = workspace.getBoundingClientRect()
+  const localX = clientX - rect.left
+  const localY = clientY - rect.top
+  const oldZoom = canvasZoom.value
+  const worldX = (localX - canvasPan.value.x) / oldZoom
+  const worldY = (localY - canvasPan.value.y) / oldZoom
+  canvasPan.value = {
+    x: localX - worldX * zoom,
+    y: localY - worldY * zoom
+  }
+  canvasZoom.value = zoom
+  syncCanvasZoomToMain(zoom)
+  void nextTick(scheduleMeasure)
+  scheduleSnapshotRefresh(300)
+}
+
+function resetCanvasZoom(): void {
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    return
+  }
+  const rect = workspace.getBoundingClientRect()
+  setCanvasZoomAtPoint(1, rect.left + rect.width / 2, rect.top + rect.height / 2)
+}
+
+function beginCanvasWheelGesture(): void {
+  if (canvasHandActive.value || isCanvasPanning.value || isCanvasPaneDragging.value) {
+    return
+  }
+  isCanvasPanning.value = true
+  document.body.classList.add('paneflow-canvas-panning')
+  void nextTick(scheduleMeasure)
+  if (Object.keys(paneSnapshots.value).length === 0) {
+    scheduleSnapshotRefresh(0)
+  }
+}
+
+function scheduleCanvasWheelEnd(): void {
+  if (canvasWheelEndTimer !== null) {
+    clearTimeout(canvasWheelEndTimer)
+  }
+  canvasWheelEndTimer = setTimeout(() => {
+    canvasWheelEndTimer = null
+    isCanvasPanning.value = false
+    document.body.classList.remove('paneflow-canvas-panning')
+    void nextTick(async () => {
+      await measurePanes()
+      scheduleSnapshotRefresh()
+    })
+  }, 160)
+}
+
 function onWorkspaceWheel(event: WheelEvent): void {
   if (layoutMode.value !== 'canvas' || maximizedPaneId.value) {
     return
   }
   event.preventDefault()
+
+  if (canvasHandActive.value || event.ctrlKey || event.metaKey) {
+    if (!canvasHandActive.value) {
+      beginCanvasWheelGesture()
+    }
+    setCanvasZoomAtPoint(
+      canvasZoom.value * Math.exp(-event.deltaY * 0.0015),
+      event.clientX,
+      event.clientY
+    )
+    if (!canvasHandActive.value) {
+      scheduleCanvasWheelEnd()
+    }
+    return
+  }
+
+  beginCanvasWheelGesture()
   canvasPan.value = {
     x: canvasPan.value.x - event.deltaX,
     y: canvasPan.value.y - event.deltaY
   }
+  scheduleCanvasWheelEnd()
 }
 
 function centerCanvasPane(paneId: string): void {
@@ -834,12 +943,67 @@ function centerCanvasPane(paneId: string): void {
   if (!frame) {
     return
   }
+  const contentHeight = frame.height - CANVAS_HEADER_HEIGHT
+  const screenWidth = frame.width * canvasZoom.value
+  const screenHeight = contentHeight * canvasZoom.value + CANVAS_HEADER_HEIGHT
   canvasPan.value = {
-    x: Math.round((workspaceSize.value.width - frame.width) / 2) - frame.x,
-    y: Math.round((workspaceSize.value.height - frame.height) / 2) - frame.y
+    x: Math.round((workspaceSize.value.width - screenWidth) / 2) - frame.x * canvasZoom.value,
+    y: Math.round((workspaceSize.value.height - screenHeight) / 2) - frame.y * canvasZoom.value
   }
   activePaneId.value = paneId
   void nextTick(scheduleMeasure)
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'input, textarea, select, button, a, [contenteditable="true"], [role="button"]'
+    ) !== null
+  )
+}
+
+function setSpaceHandMode(active: boolean): void {
+  if (spaceHandMode.value === active) {
+    return
+  }
+  spaceHandMode.value = active
+  void nextTick(scheduleMeasure)
+}
+
+function onCanvasSpaceDown(event: KeyboardEvent): void {
+  if (
+    event.code !== 'Space' ||
+    event.repeat ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  ) {
+    return
+  }
+  if (
+    layoutMode.value !== 'canvas' ||
+    maximizedPaneId.value ||
+    profilesOpen.value ||
+    workspacesOpen.value ||
+    isEditableTarget(event.target)
+  ) {
+    return
+  }
+  event.preventDefault()
+  setSpaceHandMode(true)
+}
+
+function onCanvasSpaceUp(event: KeyboardEvent): void {
+  if (event.code !== 'Space' || !spaceHandMode.value) {
+    return
+  }
+  event.preventDefault()
+  setSpaceHandMode(false)
+}
+
+function onWindowBlur(): void {
+  setSpaceHandMode(false)
 }
 
 function isResizeHandle(value: string | undefined): value is ResizeHandle {
@@ -950,7 +1114,10 @@ function applyState(state: ShellState): void {
     freeformOrder.value = []
     canvasPositions.value = {}
     canvasPan.value = { x: 0, y: 0 }
+    canvasZoom.value = 1
+    syncCanvasZoomToMain(1)
     canvasHandMode.value = false
+    spaceHandMode.value = false
     isCanvasPanning.value = false
     isCanvasPaneDragging.value = false
     canvasDrag.value = null
@@ -1877,7 +2044,7 @@ function onWorkspacePointerDown(event: PointerEvent): void {
       return
     }
     const canvasCard = target.closest('[data-pane-id]')
-    if (canvasHandMode.value || !(canvasCard instanceof HTMLElement)) {
+    if (canvasHandActive.value || !(canvasCard instanceof HTMLElement)) {
       beginCanvasPan(event)
       return
     }
@@ -2008,7 +2175,7 @@ async function measurePanes(): Promise<void> {
       workspacesOpen.value ||
       isCanvasPanning.value ||
       isCanvasPaneDragging.value ||
-      canvasHandMode.value
+      canvasHandActive.value
     const visible =
       !nativeViewsHidden &&
       (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
@@ -2082,10 +2249,12 @@ watch(layoutMode, (mode) => {
 
   if (mode !== 'canvas') {
     canvasHandMode.value = false
+    spaceHandMode.value = false
     isCanvasPanning.value = false
     isCanvasPaneDragging.value = false
     canvasDrag.value = null
     canvasPaneDrag.value = null
+    syncCanvasZoomToMain(1)
     window.removeEventListener('pointermove', onCanvasPointerMove)
     window.removeEventListener('pointerup', finishCanvasPan)
     window.removeEventListener('pointercancel', finishCanvasPan)
@@ -2094,6 +2263,8 @@ watch(layoutMode, (mode) => {
     window.removeEventListener('pointercancel', finishCanvasPaneDrag)
     document.body.classList.remove('paneflow-canvas-panning')
     document.body.classList.remove('paneflow-canvas-pane-dragging')
+  } else {
+    syncCanvasZoomToMain(canvasZoom.value)
   }
 
   void nextTick(() => {
@@ -2153,7 +2324,12 @@ watch(
       )
       .join('|'),
   () => {
-    if (layoutMode.value === 'canvas' && !isCanvasPanning.value && !canvasHandMode.value) {
+    if (
+      layoutMode.value === 'canvas' &&
+      !isCanvasPanning.value &&
+      !isCanvasPaneDragging.value &&
+      !canvasHandActive.value
+    ) {
       scheduleSnapshotRefresh(600)
     }
   }
@@ -2184,6 +2360,9 @@ onMounted(async () => {
     resizeObserver.observe(workspaceEl.value)
   }
   window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('keydown', onCanvasSpaceDown)
+  window.addEventListener('keyup', onCanvasSpaceUp)
+  window.addEventListener('blur', onWindowBlur)
   readWorkspaceSize()
 
   try {
@@ -2218,6 +2397,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
   window.removeEventListener('pointercancel', finishCanvasPaneDrag)
+  window.removeEventListener('keydown', onCanvasSpaceDown)
+  window.removeEventListener('keyup', onCanvasSpaceUp)
+  window.removeEventListener('blur', onWindowBlur)
   document.body.classList.remove('paneflow-dragging')
   document.body.classList.remove('paneflow-canvas-panning')
   document.body.classList.remove('paneflow-canvas-pane-dragging')
@@ -2225,6 +2407,10 @@ onBeforeUnmount(() => {
   if (snapshotRefreshTimer !== null) {
     clearTimeout(snapshotRefreshTimer)
     snapshotRefreshTimer = null
+  }
+  if (canvasWheelEndTimer !== null) {
+    clearTimeout(canvasWheelEndTimer)
+    canvasWheelEndTimer = null
   }
   if (measureFrame !== 0) {
     window.cancelAnimationFrame(measureFrame)
@@ -2281,7 +2467,7 @@ onBeforeUnmount(() => {
           type="button"
           :class="{ active: layoutMode === 'canvas' }"
           :aria-pressed="layoutMode === 'canvas'"
-          @click="layoutMode = 'canvas'"
+          @click="selectCanvasLayout"
         >
           Canvas
         </button>
@@ -2290,16 +2476,25 @@ onBeforeUnmount(() => {
       <button
         v-if="layoutMode === 'canvas'"
         class="icon-button toolbar-icon hand-tool"
-        :class="{ active: canvasHandMode }"
+        :class="{ active: canvasHandActive }"
         type="button"
-        title="Hand tool"
+        title="Hand tool (hold Space)"
         aria-label="Hand tool"
-        :aria-pressed="canvasHandMode"
+        :aria-pressed="canvasHandActive"
         @click="toggleCanvasHand"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <path d="M8 2.2v4.1M3.8 4.8l2.9 2.9M12.2 4.8 9.3 7.7M2.2 10.2l3.4 3.4h4.8l3.4-3.4" />
         </svg>
+      </button>
+      <button
+        v-if="layoutMode === 'canvas'"
+        class="toolbar-button canvas-zoom"
+        type="button"
+        title="Reset canvas zoom"
+        @click="resetCanvasZoom"
+      >
+        {{ Math.round(canvasZoom * 100) }}%
       </button>
 
       <label v-if="panes.length > 0 && layoutMode === 'grid'" class="grid-control">
@@ -2427,7 +2622,7 @@ onBeforeUnmount(() => {
       :class="{
         'workspace-canvas': layoutMode === 'canvas',
         'canvas-panning': isCanvasPanning,
-        'canvas-hand': canvasHandMode
+        'canvas-hand': canvasHandActive
       }"
       :style="canvasWorkspaceStyle"
       aria-label="Browser workspace"
@@ -3014,6 +3209,13 @@ onBeforeUnmount(() => {
 .hand-tool.active {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.canvas-zoom {
+  min-width: 46px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .toolbar-button {

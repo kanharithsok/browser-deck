@@ -41,6 +41,7 @@ export const IPC_CHANNELS = {
   showAddPaneMenu: 'paneflow:show-add-pane-menu',
   showThemeMenu: 'paneflow:show-theme-menu',
   capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
+  setCanvasZoom: 'paneflow:set-canvas-zoom',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneRenameRequested: 'paneflow:pane-rename-requested',
@@ -174,6 +175,7 @@ export interface PaneFlowApi {
   showAddPaneMenu(request: AddPaneMenuRequest): Promise<AddPaneMenuResult>
   showThemeMenu(request: ThemeMenuRequest): Promise<ScriptResult>
   capturePaneSnapshots(): Promise<PaneSnapshotsResult>
+  setCanvasZoom(zoom: number): Promise<ScriptResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void

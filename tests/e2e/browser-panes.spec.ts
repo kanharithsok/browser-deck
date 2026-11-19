@@ -723,6 +723,45 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await alicePage.locator('#popup-button').click()
     await expect(alicePage.locator('#output')).toContainText('Popup denied by PaneFlow.')
 
+    // Space temporarily enables the Hand tool and wheel zoom. Zooming out keeps
+    // the responsive viewport intact while scaling the native views.
+    await shellPage.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await shellPage.keyboard.down('Space')
+    await expect(shellPage.locator('.workspace')).toHaveClass(/canvas-hand/)
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
+      .toBe(true)
+    const wheelWorkspace = await shellPage.locator('.workspace').boundingBox()
+    if (!wheelWorkspace) {
+      throw new Error('Canvas wheel workspace is unavailable')
+    }
+    await shellPage.mouse.move(
+      wheelWorkspace.x + wheelWorkspace.width / 2,
+      wheelWorkspace.y + wheelWorkspace.height / 2
+    )
+    await shellPage.mouse.wheel(0, 220)
+    await expect
+      .poll(() => shellPage.locator('.canvas-zoom').textContent())
+      .not.toBe('100%')
+    await shellPage.keyboard.up('Space')
+    await waitForVisibleAlignedBounds(app)
+    const zoomedEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(zoomedEmulation?.enabled).toBe(true)
+    expect(zoomedEmulation?.scale ?? 1).toBeLessThan(1)
+    await shellPage.locator('.canvas-zoom').click()
+    await waitForVisibleAlignedBounds(app)
+    const resetEmulation = await getEmulationState(app, alicePaneId as string)
+    expect(resetEmulation?.enabled).toBe(false)
+
+    // Wheel panning must hide native views for the gesture and restore them at
+    // the new screen positions; otherwise a moved pane's live content drifts.
+    const beforeWheelPan = await firstCanvasCard.boundingBox()
+    await shellPage.mouse.move(wheelWorkspace.x + 8, wheelWorkspace.y + 8)
+    await shellPage.mouse.wheel(0, 20)
+    await waitForVisibleAlignedBounds(app)
+    const afterWheelPan = await firstCanvasCard.boundingBox()
+    expect(afterWheelPan?.y).not.toBe(beforeWheelPan?.y)
+
     const canvasBefore = await shellPage.locator('.pane-card').first().boundingBox()
     if (!canvasBefore) {
       throw new Error('Canvas pane bounds are unavailable')

@@ -961,7 +961,7 @@ Record material technical decisions here. Keep entries short but include context
   6. Clicking a partially visible frame centers it and restores its native view.
   7. Use the existing global active-pane bar and compact per-pane labels in Canvas mode.
   8. Drag a pane's header/label area to move that pane in world coordinates. Website content stays in the native view and keeps normal page interaction; dragging content does not move the frame or canvas.
-  9. Defer canvas zoom, device bezels, and frame resizing.
+  9. Defer device bezels and frame resizing. Canvas zoom is covered by ADR-033.
 
 - **Alternatives considered:**
   - **Use `<webview>`/iframes to get a live CSS-transformed world.** Rejected; violates the accepted native-view architecture and weakens security.
@@ -975,12 +975,45 @@ Record material technical decisions here. Keep entries short but include context
   - Snapshots can be stale until the next capture (canvas entry, pan end, or explicit refresh).
   - Fully visible panes remain live native views; partially visible panes are visual-only until centered.
   - Canvas positions survive restart; pan position resets.
-  - The canvas does not yet match Figma/Responsively zoom, device bezels, or live interaction during motion.
+  - The canvas does not yet match device bezels or live interaction during motion. Zoom and the temporary Space hand tool are covered by ADR-033.
 
 - **Evidence / verification:**
   - Unit tests cover frame sizing, default row arrangement, canvas position validation, workspace normalization, and persistence.
   - E2e switches to Canvas, checks the dotted workspace and global bar, verifies native views hide during a pan and restore afterward, verifies Hand-tool hiding, and switches back to Grid.
   - `npm run test:e2e` passes with the Canvas step; snapshots are captured for both fixture panes.
+
+## ADR-033 — Canvas zoom uses device emulation and Space is a temporary Hand tool
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** Canvas panning works, but users need Figma/Responsively-style temporary hand navigation and wheel zoom. Native `WebContentsView`s cannot be CSS-transformed. A naive wheel handler also moved the canvas and snapshots without hiding native views, leaving live page content at stale screen positions.
+
+- **Decision:**
+  1. Holding Space while shell chrome has focus temporarily enables the Hand tool; releasing Space restores the previous manual Hand state. The Hand button remains available.
+  2. In Canvas mode, wheel panning uses a short hide/measure gesture: hide native views, move the shell world, then restore fully visible native views after wheel idle. This prevents native content drift.
+  3. While the Hand tool is active, wheel input zooms between 50% and 200% around the cursor. Ctrl/Cmd+wheel also zooms outside Hand mode.
+  4. Pane frames, positions, and snapshots scale in the shell. Main receives the zoom through `paneflow:set-canvas-zoom`; responsive panes use fixed 560 × 700 device emulation at that scale, while fixed/custom viewports derive their fit scale from the scaled native bounds.
+  5. A toolbar percentage resets zoom to 100% around the workspace center.
+  6. Zoom and pan are viewport state, not workspace state. Pane positions remain persisted.
+
+- **Alternatives considered:**
+  - **CSS-transform native views.** Rejected; native views cannot follow a shell transform.
+  - **Use `webContents.setZoomFactor`.** Rejected; it changes the CSS viewport and responsive breakpoints.
+  - **Snapshot-only zoom.** Rejected as the default; live native views are restored whenever a frame fits fully.
+  - **Keep all panes interactive while partially visible.** Rejected; native views cannot be clipped to the workspace.
+  - **Intercept Space in remote pages.** Rejected; it would break spaces in website text fields.
+
+- **Consequences:**
+  - Zoom persists until reset or leaving/re-entering the workspace; it is not saved.
+  - At zoom levels where a frame cannot fit fully inside the workspace, its live native view is hidden and the snapshot remains. This is most visible when zooming in.
+  - Space only works while shell chrome has focus; a focused website keeps normal keyboard behavior.
+  - Wheel panning now briefly replaces pages with snapshots, fixing stale native content after a moved pane.
+  - Canvas positions remain stable in world coordinates while zoom changes.
+
+- **Evidence / verification:**
+  - E2e holds Space, verifies the Hand class and hidden native views, wheel-zooms out, verifies the page CSS viewport stays 560 × 700 while pane emulation scale drops below 1, resets zoom, and verifies emulation disables.
+  - E2e wheel-pans and verifies visible native bounds realign with the DOM after the gesture.
+  - Existing content-interaction, pane-header drag, background pan, and Hand-tool checks continue to pass.
 
 ## ADR template
 

@@ -244,14 +244,15 @@ Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and t
 ### 7.4 Canvas mode
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
-- Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Support trackpad/wheel panning while the Hand tool is active.
+- Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
+- While the Hand tool is active, use the mouse wheel to zoom between 50% and 200% around the cursor. Show the zoom level with a reset control. Keep the page's CSS viewport stable while visually scaling native views through device emulation.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
 - Keep pages live as native views when their content rectangle is fully inside the workspace.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
 - Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.
 - Use a workspace-level address and navigation bar for the active pane, with compact labels on each frame.
-- Persist canvas positions per workspace. Pan offset is viewport state and may reset.
-- Canvas zoom, device bezels, and freeform frame resizing are not required for the first Canvas slice.
+- Persist canvas positions per workspace. Pan offset and zoom are viewport state and may reset.
+- Device bezels and freeform frame resizing are not required for the first Canvas slice.
 
 ### 7.5 Switching modes
 
