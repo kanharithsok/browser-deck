@@ -12,6 +12,7 @@ import type {
   CanvasMinimapState
 } from '../shared/minimap'
 import type { PaneViewport } from '../shared/viewports'
+import type { CanvasZoomAction, CanvasZoomState } from '../shared/zoom'
 import type { WorkspaceLayout } from '../shared/workspace'
 
 const api: PaneFlowApi = {
@@ -88,6 +89,26 @@ const api: PaneFlowApi = {
     ipcRenderer.on(IPC_CHANNELS.canvasMinimapActionRequested, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.canvasMinimapActionRequested, wrapped)
+    }
+  },
+  sendCanvasZoomAction: (action) =>
+    ipcRenderer.invoke(IPC_CHANNELS.canvasZoomAction, action),
+  onCanvasZoomState: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, state: CanvasZoomState): void => {
+      listener(state)
+    }
+    ipcRenderer.on(IPC_CHANNELS.canvasZoomState, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.canvasZoomState, wrapped)
+    }
+  },
+  onCanvasZoomAction: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, action: CanvasZoomAction): void => {
+      listener(action)
+    }
+    ipcRenderer.on(IPC_CHANNELS.canvasZoomActionRequested, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.canvasZoomActionRequested, wrapped)
     }
   },
   onStateChanged: (listener) => {

@@ -984,7 +984,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-033 — Canvas zoom uses device emulation and Space is a temporary Hand tool
 
-- **Status:** Accepted
+- **Status:** Accepted; zoom range and controls superseded by ADR-038
 - **Date:** 2026-11-19
 - **Context:** Canvas panning works, but users need Figma/Responsively-style temporary hand navigation and wheel zoom. Native `WebContentsView`s cannot be CSS-transformed. A naive wheel handler also moved the canvas and snapshots without hiding native views, leaving live page content at stale screen positions.
 
@@ -1138,6 +1138,40 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - Unit tests cover the viewport preset catalog and device/selection metadata.
   - E2e verifies the **+** control has only a plus, opens the 10-item Add menu, shows section headings, creates an iPhone 15 Pro pane, closes with Escape, restores the minimap, opens the right-click menu, switches to Add pane, toggles Hand mode, and changes appearance. Accessibility e2e verifies menu semantics, ArrowDown focus, and Escape close.
+
+## ADR-038 — Canvas zoom bar is a native overlay, and workspaces fit on open
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** The top-right percentage button was a small reset affordance, not a zoom control. Responsively-style zoom needs persistent zoom-out/zoom-in buttons and an exact percentage menu. The shell DOM cannot render a persistent bar above native pane views, so the bar must be a trusted native overlay. Users also lose orientation when a workspace opens at a saved pan far from its panes, and the active-pane bar stays visible after clicking empty canvas.
+
+- **Decision:**
+  1. Add a trusted `WebContentsView` rendered from `zoom.html`, pinned to the bottom center at 204 × 40 DIP with a 12 px margin, above pane views and the minimap.
+  2. Show zoom-out and zoom-in buttons with a 10% step and a percentage button between them. Clicking the percentage button opens the standard in-shell `AppMenu` above the bar with 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%).
+  3. Extend the Canvas zoom range to 25–200%. The shell clamps every wheel, step, preset, and reset action and applies it around the workspace center for button/menu actions.
+  4. Hide the zoom bar and minimap while any shell menu or dialog is open. The zoom menu hides intersecting native pane views through the existing menu path; the bar returns when the menu closes.
+  5. Validate the zoom bar sender separately from the shell and minimap. State flows main → bar; actions flow bar → main → shell. Main only accepts the built `paneflow://shell/zoom.html` document or the validated development origin.
+  6. Fit all panes when a workspace first appears and after switching workspaces, using a short ready/retry loop until the workspace has non-zero size. Do not refit on ordinary state updates.
+  7. A primary click on empty canvas with less than 4 px of movement clears the active pane and hides its global bar. Panning, middle-button drags, pointer cancellation, and clicks that start on a pane do not clear it. Selecting a pane, its header, or a minimap frame restores selection. The cleared state is transient.
+  8. Remove the top-right percentage control and make all top-right toolbar buttons borderless.
+
+- **Alternatives considered:**
+  - **Keep zoom controls in the shell DOM.** Rejected; native pane views cover the bottom-center shell area.
+  - **Render the dropdown inside the zoom view.** Rejected for this slice; expanding the native view to the full window would block the entire canvas and duplicate the menu styling. The shell menu already handles intersection hiding and keyboard behavior.
+  - **Use discrete buttons only.** Rejected; exact presets and Fit all/Reset are useful and requested.
+  - **Fit on every state update.** Rejected; it would fight user pan/zoom during pane changes.
+  - **Keep the active pane after an empty click.** Rejected; the global bar and outline then imply a selection the user did not make.
+
+- **Consequences:**
+  - The bar occupies a small bottom-center rectangle and intercepts input there.
+  - The window owns one more persistent webContents that is not part of pane or workspace persistence.
+  - Opening the zoom menu briefly hides the bar and snapshots intersecting panes, matching other custom menus.
+  - Zoom range increases from 50–200% to 25–200%; very small zoom can make pane chrome and snapshots harder to read.
+  - The cleared active-pane state is not persisted and does not modify workspace data.
+
+- **Evidence / verification:**
+  - Unit tests cover zoom clamping, presets, state/action validation, and trusted zoom document URLs in production and development.
+  - E2e verifies the bar's bottom-center bounds, step control, 7 preset radio items, Fit all, Reset, startup fit, empty-canvas deselection/reselection, and borderless top-right toolbar buttons. Accessibility e2e verifies the bar's named controls, the menu's keyboard focus, Escape dismissal, and an axe audit of the bar.
 
 ## ADR template
 

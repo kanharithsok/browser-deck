@@ -18,8 +18,15 @@ import {
 } from '../shared/minimap'
 import {
   isTrustedMinimapDocumentUrl,
-  isTrustedShellDocumentUrl
+  isTrustedShellDocumentUrl,
+  isTrustedZoomDocumentUrl
 } from '../shared/shell'
+import {
+  CANVAS_MAX_ZOOM,
+  CANVAS_MIN_ZOOM,
+  parseCanvasZoomAction,
+  type CanvasZoomAction
+} from '../shared/zoom'
 import {
   DEFAULT_WORKSPACE_ID,
   DEFAULT_WORKSPACE_NAME,
@@ -34,6 +41,7 @@ interface IpcContext {
   getBrowserManager: () => BrowserManager | null
   getShellWebContents: () => WebContents | null
   getMinimapWebContents: () => WebContents | null
+  getZoomWebContents: () => WebContents | null
   getDevServerUrl: () => string | null
   getCanvasSize: () => CanvasSize
   getWorkspaceLayout: () => WorkspaceLayout
@@ -46,6 +54,8 @@ interface IpcContext {
   setCanvasMinimapVisible: (visible: boolean) => void
   setCanvasMinimapCollapsed: (collapsed: boolean) => void
   forwardCanvasMinimapAction: (action: CanvasMinimapAction) => void
+  updateCanvasZoomState: () => void
+  forwardCanvasZoomAction: (action: CanvasZoomAction) => void
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
   listProfiles: () => Promise<ProfileListResult>
   renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
@@ -89,6 +99,21 @@ function isTrustedMinimapSender(
     return false
   }
   return isTrustedMinimapDocumentUrl(frame.url, context.getDevServerUrl())
+}
+
+function isTrustedZoomSender(
+  event: IpcMainInvokeEvent,
+  context: IpcContext
+): boolean {
+  const zoom = context.getZoomWebContents()
+  if (!zoom || zoom.isDestroyed() || event.sender !== zoom) {
+    return false
+  }
+  const frame = event.senderFrame
+  if (!frame || frame !== zoom.mainFrame) {
+    return false
+  }
+  return isTrustedZoomDocumentUrl(frame.url, context.getDevServerUrl())
 }
 
 function emptyShellState(resolvedTheme: 'light' | 'dark'): ShellState {
@@ -553,14 +578,30 @@ export function registerIpcHandlers(context: IpcContext): void {
     if (
       typeof payload !== 'number' ||
       !Number.isFinite(payload) ||
-      payload < 0.5 ||
-      payload > 2
+      payload < CANVAS_MIN_ZOOM ||
+      payload > CANVAS_MAX_ZOOM
     ) {
       return { ok: false, error: 'Invalid canvas zoom.' }
     }
     manager.setCanvasZoom(payload)
+    context.updateCanvasZoomState()
     return { ok: true }
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.canvasZoomAction,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedZoomSender(event, context)) {
+        return unauthorized
+      }
+      const action = parseCanvasZoomAction(payload)
+      if (!action) {
+        return { ok: false, error: 'Invalid canvas zoom action.' }
+      }
+      context.forwardCanvasZoomAction(action)
+      return { ok: true }
+    }
+  )
 
   ipcMain.handle(
     IPC_CHANNELS.updateCanvasMinimap,

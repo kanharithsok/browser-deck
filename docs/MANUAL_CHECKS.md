@@ -81,8 +81,12 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Dragging a pane header moves only that pane; dragging empty canvas pans the world. (E2e drags a label and verifies the other frame and canvas background position do not move.)
 - [x] Website content stays interactive in Canvas mode while the header remains the drag handle. (Native views are restored when fully visible; content events stay inside the page.)
 - [x] Holding Space temporarily enables the Hand tool and hides native views. (E2e holds Space, verifies the workspace Hand class and hidden native views, then releases it.)
-- [x] Hand-mode wheel zoom scales the canvas while preserving the page CSS viewport. (E2e wheel-zooms out, checks the 560 × 700 page metrics, verifies responsive pane emulation is enabled below 100%, resets zoom, and verifies it disables.)
+- [x] Hand-mode wheel zoom scales the canvas while preserving the page CSS viewport. (E2e wheel-zooms out, checks the 560 × 700 page metrics, verifies responsive pane emulation is enabled below 100%, resets zoom from the bottom bar, and verifies it disables.)
 - [x] Wheel panning realigns native views after the gesture. (E2e wheel-pans and verifies visible native bounds match the DOM at the new positions.)
+- [x] Canvas opens fitted to all panes. (E2e verifies both pane cards start inside the workspace; the same ready/retry path runs after a workspace switch.)
+- [x] Bottom zoom bar steps, presets, Fit all, and Reset work. (E2e checks the native bar at bottom center, zooms out, opens the 7-preset menu, selects 50%, then resets to 100%.)
+- [x] Clicking empty canvas clears the active pane and interacting with a pane restores it. (E2e clicks empty canvas, verifies no active card or global bar, then clicks a pane title and verifies both return.)
+- [x] Top-right toolbar buttons are borderless. (E2e checks the hand, Profiles, appearance, reload, and add buttons all compute to a 0 px border.)
 - [ ] Hand tool pans from over a pane. (E2e verifies the Hand tool hides native views and toggles state; pointer panning from inside a frame needs a manual GUI pass.)
 - [x] Canvas overview is always visible in Canvas, shows every pane and the current viewport, and Fit all brings all panes back. (E2e enters Canvas without opening anything, verifies the native panel at the bottom-right, both frame buttons and the viewport outline, clicks Fit all, and asserts both cards fit inside the workspace with native bounds aligned.)
 - [x] Canvas overview collapses and expands, recenters from empty map space, and hides while a custom menu or dialog is open. (E2e checks the native view height changes, the map hides/restores, the workspace background recenters, and the panel hides during menus.)
@@ -90,15 +94,15 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Canvas zoom at levels where frames no longer fit. (Implemented as snapshot preview; visual review of very high zoom and partially visible frames remains manual.)
 - [ ] Spacebar while a website page has focus. (Intentionally not intercepted to preserve typing/scrolling; expected to work only when shell chrome has focus.)
 - [ ] Partially visible canvas pane centers and restores live view when clicked. (Implemented; manual visual pass outstanding.)
-- [ ] Canvas zoom and device bezels. (Not implemented in the first Canvas slice.)
+- [ ] Device bezels. (Not implemented.)
 - [ ] Fill/crop display mode for panes whose aspect ratio differs from the viewport preset. (Not implemented; fixed viewports letterbox to keep the full viewport visible.)
 - [ ] Optional per-pane user-agent override. (Not implemented.)
 
 ## Accessibility and appearance
 
-Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/accessible-name checks, keyboard focus order and focus-visible assertions, dialog focus trapping and focus return, Chromium's CDP accessibility tree, and an axe-core WCAG 2.x/best-practice audit for the shell toolbar, pane cards, profile dialog, and workspace dialog. VoiceOver and other screen-reader behavior still require manual review; axe cannot verify spoken order, announcements, or whether a focus ring is meaningful to a particular user.
+Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/accessible-name checks, keyboard focus order and focus-visible assertions, dialog focus trapping and focus return, Chromium's CDP accessibility tree, and an axe-core WCAG 2.x/best-practice audit for the shell toolbar, pane cards, profile dialog, workspace dialog, and bottom zoom bar. VoiceOver and other screen-reader behavior still require manual review; axe cannot verify spoken order, announcements, or whether a focus ring is meaningful to a particular user.
 
-- [x] Icon-only controls have accessible names and tooltips. (Automated role/name checks for reload-all, pane actions, maximize/restore, close, and navigation; tooltips are asserted for shell reload-all, maximize, pane actions, close, and reload pane.)
+- [x] Icon-only controls have accessible names and tooltips. (Automated role/name checks for reload-all, pane actions, maximize/restore, close, navigation, and the bottom zoom-out/zoom-in/percentage controls; tooltips are asserted for shell reload-all, maximize, pane actions, close, and reload pane.)
 - [x] Keyboard focus is visible on shell controls. (Automated Tab/Shift+Tab assertions verify `:focus-visible` and a 2 px accent outline; the dialog container shows the same ring when opened from the keyboard.)
 - [x] Focus moves to the new pane after add and recovers to an address control after close. (Existing e2e assertions.)
 - [x] Tab order crosses the toolbar, pane controls, address, and viewport controls in DOM order without entering native content. (Automated forward/reverse focus assertions; disabled Back/Forward are skipped.)

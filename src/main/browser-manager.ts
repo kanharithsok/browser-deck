@@ -383,6 +383,10 @@ export class BrowserManager {
     }
   }
 
+  canvasZoomValue(): number {
+    return this.canvasZoom
+  }
+
   setCanvasZoom(zoom: number): void {
     if (this.canvasZoom === zoom) {
       return

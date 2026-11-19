@@ -13,6 +13,7 @@ import {
 } from '@playwright/test'
 import axe from 'axe-core'
 import type { ShellState } from '../../src/shared/ipc'
+import { SHELL_ZOOM_URL } from '../../src/shared/shell'
 import { startFixtureServer, type FixtureServer } from '../fixtures/server.cjs'
 
 interface TestHook {
@@ -123,6 +124,19 @@ async function findShellPage(app: ElectronApplication): Promise<Page> {
   return shellPage
 }
 
+async function findZoomPage(app: ElectronApplication): Promise<Page> {
+  const pages = await waitFor(
+    async () => app.windows(),
+    (windows) => windows.some((page) => page.url() === SHELL_ZOOM_URL),
+    'zoom bar page'
+  )
+  const zoomPage = pages.find((page) => page.url() === SHELL_ZOOM_URL)
+  if (!zoomPage) {
+    throw new Error('Zoom bar page is unavailable')
+  }
+  return zoomPage
+}
+
 async function readFocus(page: Page): Promise<FocusInfo> {
   return page.evaluate(() => {
     const active = document.activeElement
@@ -153,13 +167,17 @@ async function installAxe(page: Page): Promise<void> {
   }, axe.source)
 }
 
-async function auditWithAxe(page: Page): Promise<AxeViolation[]> {
-  const result = await page.evaluate(async () => {
+async function auditWithAxe(page: Page, selector?: string): Promise<AxeViolation[]> {
+  const result = await page.evaluate(async (selector) => {
     const axeApi = (window as unknown as { axe?: AxeApi }).axe
     if (!axeApi) {
       throw new Error('axe is not installed')
     }
-    return axeApi.run(document, {
+    const context = selector ? document.querySelector(selector) : document
+    if (!context) {
+      throw new Error(`Axe context ${selector ?? 'document'} is unavailable`)
+    }
+    return axeApi.run(context, {
       runOnly: {
         type: 'tag',
         values: [
@@ -173,7 +191,7 @@ async function auditWithAxe(page: Page): Promise<AxeViolation[]> {
         ]
       }
     })
-  })
+  }, selector ?? null)
 
   return result.violations.map((violation) => ({
     id: violation.id,
@@ -291,12 +309,54 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(axPairs).toContain('button:Appearance: System')
     })
 
+    await test.step('bottom zoom bar exposes named controls and a keyboard menu', async () => {
+      const zoomPage = await findZoomPage(app as ElectronApplication)
+      await installAxe(zoomPage)
+
+      const bar = zoomPage.getByRole('region', { name: 'Canvas zoom controls' })
+      await expect(bar).toBeVisible()
+      await expect(zoomPage.getByRole('button', { name: 'Zoom out' })).toBeVisible()
+      await expect(zoomPage.getByRole('button', { name: 'Choose zoom level' })).toBeVisible()
+      await expect(zoomPage.getByRole('button', { name: 'Zoom in' })).toBeVisible()
+      expect(await auditWithAxe(zoomPage, '.zoom-bar')).toEqual([])
+
+      await zoomPage.getByRole('button', { name: 'Choose zoom level' }).click()
+      const zoomMenu = shellPage.getByRole('menu', { name: 'Zoom' })
+      await expect(zoomMenu).toBeVisible()
+      await expect
+        .poll(() =>
+          shellPage.evaluate(
+            () => document.activeElement?.classList.contains('app-menu') ?? false
+          )
+        )
+        .toBe(true)
+      await shellPage.keyboard.press('ArrowDown')
+      const focusedItem = await shellPage.evaluate(() => {
+        const active = document.activeElement
+        return {
+          role: active?.getAttribute('role') ?? null,
+          text: (active?.textContent ?? '').trim()
+        }
+      })
+      expect(focusedItem.role).toBe('menuitemradio')
+      expect(focusedItem.text).toContain('25%')
+      await shellPage.keyboard.press('Escape')
+      await expect(zoomMenu).toHaveCount(0)
+    })
+
     await test.step('canvas add menu exposes menu semantics and keyboard close', async () => {
       const addButton = shellPage.locator('.toolbar .add-pane-button')
       await addButton.click()
       const menu = shellPage.getByRole('menu', { name: 'Add pane' })
       await expect(menu).toBeVisible()
       await expect(addButton).toHaveAttribute('aria-expanded', 'true')
+      await expect
+        .poll(() =>
+          shellPage.evaluate(
+            () => document.activeElement?.classList.contains('app-menu') ?? false
+          )
+        )
+        .toBe(true)
       await shellPage.keyboard.press('ArrowDown')
       const focusedItem = await shellPage.evaluate(() => {
         const active = document.activeElement

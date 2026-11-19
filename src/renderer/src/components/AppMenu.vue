@@ -3,10 +3,18 @@ import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { AppMenuModel } from '../menu'
 import MenuIcon from './MenuIcon.vue'
 
-const props = defineProps<{
-  model: AppMenuModel
-  anchor: { x: number; y: number; align: 'start' | 'end' }
-}>()
+const props = withDefaults(
+  defineProps<{
+    model: AppMenuModel
+    anchor: { x: number; y: number; align: 'start' | 'end' | 'center' }
+    placement?: 'below' | 'above'
+    width?: number
+  }>(),
+  {
+    placement: 'below',
+    width: undefined
+  }
+)
 
 const emit = defineEmits<{
   select: [id: string]
@@ -78,12 +86,20 @@ function position(): void {
 
   const width = element.offsetWidth
   const height = element.offsetHeight
-  let nextLeft = props.anchor.align === 'end' ? props.anchor.x - width : props.anchor.x
-  let nextTop = props.anchor.y
+  let nextLeft =
+    props.anchor.align === 'end'
+      ? props.anchor.x - width
+      : props.anchor.align === 'center'
+        ? props.anchor.x - width / 2
+        : props.anchor.x
+  let nextTop = props.placement === 'above' ? props.anchor.y - height : props.anchor.y
   const maxLeft = Math.max(MARGIN, window.innerWidth - width - MARGIN)
   nextLeft = Math.min(Math.max(MARGIN, nextLeft), maxLeft)
   if (nextTop + height > window.innerHeight - MARGIN) {
     nextTop = Math.max(MARGIN, window.innerHeight - height - MARGIN)
+  }
+  if (nextTop < MARGIN) {
+    nextTop = MARGIN
   }
   left.value = Math.round(nextLeft)
   top.value = Math.round(nextTop)
@@ -128,6 +144,7 @@ onBeforeUnmount(() => {
       :style="{
         left: `${left}px`,
         top: `${top}px`,
+        width: width ? `${width}px` : undefined,
         visibility: positioned ? 'visible' : 'hidden'
       }"
       @keydown="onKeydown"

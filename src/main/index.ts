@@ -38,9 +38,18 @@ import {
   buildShellCsp,
   isTrustedMinimapDocumentUrl,
   isTrustedShellDocumentUrl,
+  isTrustedZoomDocumentUrl,
   SHELL_ENTRY_URL,
-  SHELL_MINIMAP_URL
+  SHELL_MINIMAP_URL,
+  SHELL_ZOOM_URL
 } from '../shared/shell'
+import {
+  CANVAS_ZOOM_BAR_HEIGHT,
+  CANVAS_ZOOM_BAR_WIDTH,
+  CANVAS_ZOOM_MARGIN,
+  type CanvasZoomAction,
+  type CanvasZoomState
+} from '../shared/zoom'
 import {
   DEFAULT_WORKSPACE_ID,
   DEFAULT_WORKSPACE_NAME,
@@ -79,6 +88,10 @@ let minimapVisible = false
 let minimapCollapsed = false
 let minimapLoaded = false
 let lastCanvasMinimapState: CanvasMinimapState | null = null
+let zoomView: WebContentsView | null = null
+let zoomVisible = false
+let zoomLoaded = false
+let lastCanvasZoomState: CanvasZoomState | null = null
 let browserManager: BrowserManager | null = null
 let profileStore: ProfileStore | null = null
 let workspaceStore: WorkspaceStore | null = null
@@ -214,7 +227,7 @@ async function createInitialPanes(
 function createBrowserManager(window: BaseWindow, profiles: ProfileStore): BrowserManager {
   return new BrowserManager(window, profiles, {
     getColorScheme: paneColorScheme,
-    onPaneLayerChanged: () => raiseMinimapView(),
+    onPaneLayerChanged: () => raiseCanvasOverlays(),
     onStateChanged: () => {
       if (workspaceSwitching) {
         return
@@ -585,6 +598,7 @@ function applyThemePreference(theme: ThemePreference, persist = true): void {
   updateWindowBackground()
   refreshThemeMenu()
   browserManager?.setColorScheme(paneColorScheme())
+  forwardCanvasZoomState()
   if (persist) {
     const store = workspaceStore
     if (!store) {
@@ -843,6 +857,19 @@ function setCanvasMinimapCollapsed(collapsed: boolean): void {
   focusShellAfterMinimapAction()
 }
 
+function syncZoomBounds(window: BaseWindow, view: WebContentsView): void {
+  if (window.isDestroyed() || view.webContents.isDestroyed()) {
+    return
+  }
+  const content = window.getContentBounds()
+  view.setBounds({
+    x: Math.max(0, Math.round((content.width - CANVAS_ZOOM_BAR_WIDTH) / 2)),
+    y: Math.max(0, content.height - CANVAS_ZOOM_BAR_HEIGHT - CANVAS_ZOOM_MARGIN),
+    width: CANVAS_ZOOM_BAR_WIDTH,
+    height: CANVAS_ZOOM_BAR_HEIGHT
+  })
+}
+
 function raiseMinimapView(): void {
   if (
     !minimapVisible ||
@@ -857,15 +884,65 @@ function raiseMinimapView(): void {
   minimapView.setVisible(true)
 }
 
-function setCanvasMinimapVisible(visible: boolean): void {
-  minimapVisible = visible
-  if (!minimapView || minimapView.webContents.isDestroyed()) {
+function raiseZoomView(): void {
+  if (
+    !zoomVisible ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    !zoomView ||
+    zoomView.webContents.isDestroyed()
+  ) {
     return
   }
-  if (visible) {
-    raiseMinimapView()
-  } else {
-    minimapView.setVisible(false)
+  mainWindow.contentView.addChildView(zoomView)
+  zoomView.setVisible(true)
+}
+
+function raiseCanvasOverlays(): void {
+  raiseMinimapView()
+  raiseZoomView()
+}
+
+// The shell uses one visibility signal for both Canvas overlays so menus and
+// dialogs never leave a native bar floating above trusted DOM.
+function setCanvasMinimapVisible(visible: boolean): void {
+  const wasVisible = minimapVisible || zoomVisible
+  minimapVisible = visible
+  zoomVisible = visible
+  if (!visible) {
+    if (minimapView && !minimapView.webContents.isDestroyed()) {
+      minimapView.setVisible(false)
+    }
+    if (zoomView && !zoomView.webContents.isDestroyed()) {
+      zoomView.setVisible(false)
+    }
+    return
+  }
+  raiseCanvasOverlays()
+  if (!wasVisible) {
+    forwardCanvasZoomState()
+  }
+}
+
+function forwardCanvasZoomState(): void {
+  const state: CanvasZoomState = {
+    theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+    zoom: browserManager?.canvasZoomValue() ?? 1
+  }
+  lastCanvasZoomState = state
+  if (zoomLoaded && zoomView && !zoomView.webContents.isDestroyed()) {
+    zoomView.webContents.send(IPC_CHANNELS.canvasZoomState, state)
+  }
+}
+
+function forwardCanvasZoomAction(action: CanvasZoomAction): void {
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.webContents.send(IPC_CHANNELS.canvasZoomActionRequested, action)
+  }
+  // Keep focus on the bar for repeated keyboard steps. The shell menu takes
+  // focus itself when the percentage button asks it to open.
+  if (action.type === 'menu') {
+    focusShellAfterMinimapAction()
   }
 }
 
@@ -1049,6 +1126,61 @@ async function createWindow(): Promise<void> {
     console.error('Could not load the Canvas minimap.', error)
   })
 
+  const zoom = new WebContentsView({
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInSubFrames: false,
+      nodeIntegrationInWorker: false,
+      webviewTag: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      navigateOnDragDrop: false,
+      spellcheck: false
+    }
+  })
+  zoomView = zoom
+  zoom.setBackgroundColor('#00000000')
+  zoom.setVisible(false)
+  window.contentView.addChildView(zoom)
+  syncZoomBounds(window, zoom)
+
+  zoom.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+  })
+  zoom.webContents.on('will-redirect', (event) => {
+    if (!isTrustedZoomDocumentUrl(event.url, devServer?.origin ?? null)) {
+      event.preventDefault()
+    }
+  })
+  zoom.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  zoom.webContents.on('will-attach-webview', (event) => {
+    event.preventDefault()
+  })
+  zoom.webContents.on('did-finish-load', () => {
+    if (
+      zoom.webContents.isDestroyed() ||
+      !isTrustedZoomDocumentUrl(zoom.webContents.getURL(), devServer?.origin ?? null)
+    ) {
+      return
+    }
+    zoomLoaded = true
+    if (lastCanvasZoomState) {
+      zoom.webContents.send(IPC_CHANNELS.canvasZoomState, lastCanvasZoomState)
+    }
+    raiseZoomView()
+  })
+
+  const zoomUrl = devServer
+    ? new URL('zoom.html', devServer).toString()
+    : SHELL_ZOOM_URL
+  void zoom.webContents.loadURL(zoomUrl).catch((error: unknown) => {
+    console.error('Could not load the Canvas zoom bar.', error)
+  })
+
   const requestMeasurement = (): void => {
     if (!shell.webContents.isDestroyed()) {
       shell.webContents.send(IPC_CHANNELS.requestMeasurement)
@@ -1059,10 +1191,11 @@ async function createWindow(): Promise<void> {
     syncShellBounds(window, shell)
     if (minimapView && !minimapView.webContents.isDestroyed()) {
       syncMinimapBounds(window, minimapView)
-      if (minimapVisible) {
-        raiseMinimapView()
-      }
     }
+    if (zoomView && !zoomView.webContents.isDestroyed()) {
+      syncZoomBounds(window, zoomView)
+    }
+    raiseCanvasOverlays()
     requestMeasurement()
   }
 
@@ -1129,6 +1262,15 @@ async function createWindow(): Promise<void> {
     minimapLoaded = false
     lastCanvasMinimapState = null
 
+    if (zoomView && !zoomView.webContents.isDestroyed()) {
+      zoomView.webContents.removeAllListeners()
+      zoomView.webContents.close()
+    }
+    zoomView = null
+    zoomVisible = false
+    zoomLoaded = false
+    lastCanvasZoomState = null
+
     if (!shell.webContents.isDestroyed()) {
       shell.webContents.removeAllListeners()
       shell.webContents.close()
@@ -1168,6 +1310,14 @@ async function createWindow(): Promise<void> {
             bounds: minimapView.getBounds(),
             loaded: minimapLoaded,
             collapsed: minimapCollapsed
+          }
+        : null,
+    zoomState: () =>
+      zoomView && !zoomView.webContents.isDestroyed()
+        ? {
+            visible: zoomView.getVisible(),
+            bounds: zoomView.getBounds(),
+            loaded: zoomLoaded
           }
         : null
   })
@@ -1210,6 +1360,7 @@ app.whenReady().then(async () => {
     updateWindowBackground()
     refreshThemeMenu()
     browserManager?.setColorScheme(paneColorScheme())
+    forwardCanvasZoomState()
     sendShellState()
   })
   installShellContentPolicy(shellCsp)
@@ -1219,11 +1370,14 @@ app.whenReady().then(async () => {
     getBrowserManager: () => browserManager,
     getShellWebContents: () => shellView?.webContents ?? null,
     getMinimapWebContents: () => minimapView?.webContents ?? null,
+    getZoomWebContents: () => zoomView?.webContents ?? null,
     getDevServerUrl: () => devServerUrl?.origin ?? null,
     updateCanvasMinimapState: forwardCanvasMinimapState,
     setCanvasMinimapVisible,
     setCanvasMinimapCollapsed,
     forwardCanvasMinimapAction,
+    updateCanvasZoomState: forwardCanvasZoomState,
+    forwardCanvasZoomAction,
     getCanvasSize: canvasSize,
     getWorkspaceLayout: () => workspaceStore?.layout() ?? defaultWorkspaceLayout([]),
     getWorkspaceIdentity: () => ({

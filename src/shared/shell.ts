@@ -3,6 +3,7 @@ export const SHELL_HOST = 'shell'
 export const SHELL_ORIGIN = `${SHELL_SCHEME}://${SHELL_HOST}`
 export const SHELL_ENTRY_URL = `${SHELL_ORIGIN}/index.html`
 export const SHELL_MINIMAP_URL = `${SHELL_ORIGIN}/minimap.html`
+export const SHELL_ZOOM_URL = `${SHELL_ORIGIN}/zoom.html`
 
 /**
  * Builds the trusted shell CSP. Production has no remote network allowance.
@@ -82,6 +83,35 @@ export function isTrustedMinimapDocumentUrl(
     parsed.protocol === `${SHELL_SCHEME}:` &&
     parsed.hostname === SHELL_HOST &&
     parsed.pathname === '/minimap.html'
+  )
+}
+
+export function isTrustedZoomDocumentUrl(
+  rawUrl: string,
+  devServerUrl: string | null
+): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    return false
+  }
+
+  if (devServerUrl) {
+    try {
+      return (
+        parsed.origin === new URL(devServerUrl).origin &&
+        parsed.pathname === '/zoom.html'
+      )
+    } catch {
+      return false
+    }
+  }
+
+  return (
+    parsed.protocol === `${SHELL_SCHEME}:` &&
+    parsed.hostname === SHELL_HOST &&
+    parsed.pathname === '/zoom.html'
   )
 }
 
