@@ -786,6 +786,69 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(minimapPage.locator('.frame')).toHaveCount(2)
     await expect(minimapPage.locator('.viewport')).toBeVisible()
 
+    // Cmd/Ctrl+K opens a searchable device palette. The trusted overlay hides
+    // native views and both Canvas overlays while it is open.
+    expect(await readAppMenuItem(app, 'pane-find')).toEqual({
+      id: 'pane-find',
+      accelerator: 'CmdOrCtrl+K',
+      enabled: true
+    })
+    await clickAppMenuCommand(app, 'pane-find')
+    const devicePalette = shellPage.getByRole('dialog', { name: 'Find device' })
+    await expect(devicePalette).toBeVisible()
+    const devicePaletteInput = devicePalette.getByRole('combobox', {
+      name: 'Find device'
+    })
+    await expect(devicePaletteInput).toBeFocused()
+    await expect(devicePalette.getByRole('option')).toHaveCount(2)
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
+      .toBe(true)
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.visible)
+      .toBe(false)
+    await expect
+      .poll(async () => (await getZoomState(app as ElectronApplication))?.visible)
+      .toBe(false)
+
+    await devicePaletteInput.fill('Pane two')
+    await expect(devicePalette.getByRole('option')).toHaveCount(1)
+    await devicePaletteInput.press('Enter')
+    await expect(devicePalette).toHaveCount(0)
+    await expect(shellPage.locator('.pane-card-active')).toHaveAttribute(
+      'data-pane-id',
+      bobPaneId as string
+    )
+    await expect
+      .poll(() =>
+        shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')
+      )
+      .toMatch(/^Address for device /)
+    await waitForVisibleAlignedBounds(app)
+    await expect
+      .poll(async () =>
+        (await getViewStates(app as ElectronApplication)).some(
+          (state) => state.paneId === bobPaneId && state.visible
+        )
+      )
+      .toBe(true)
+    await expect
+      .poll(async () => (await getMinimapState(app as ElectronApplication))?.visible)
+      .toBe(true)
+
+    await clickAppMenuCommand(app, 'pane-find')
+    await expect(devicePalette).toBeVisible()
+    await devicePaletteInput.fill('no-such-device')
+    await expect(devicePalette.getByText('No matching devices.')).toBeVisible()
+    await devicePaletteInput.press('Escape')
+    await expect(devicePalette).toHaveCount(0)
+    await expect
+      .poll(() =>
+        shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')
+      )
+      .toMatch(/^Address for device /)
+    await waitForVisibleAlignedBounds(app)
+
     // A minimap frame centers and focuses its pane, then returns keyboard focus
     // to the shell instead of keeping it in the native overlay.
     await minimapPage.locator('.frame').nth(1).click()

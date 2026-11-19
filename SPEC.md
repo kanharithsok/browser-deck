@@ -195,6 +195,7 @@ Use standard platform conventions and document the final shortcuts. At minimum, 
 - Add pane.
 - Duplicate selected pane (`Cmd/Ctrl+D`).
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
+- Find a device by name, host, profile, or viewport (`Cmd/Ctrl+K`).
 - Focus the selected pane address (`Cmd/Ctrl+L`).
 - Reload the selected pane (`Cmd/Ctrl+R`).
 - Reload all panes.

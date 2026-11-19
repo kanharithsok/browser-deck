@@ -29,7 +29,9 @@ import type { ProfileSummary } from '../../shared/profiles'
 import {
   VIEWPORT_CATEGORY_LABELS,
   VIEWPORT_PRESETS,
+  findViewportPreset,
   isViewportPresetId,
+  viewportContentSize,
   viewportFromPreset,
   type PaneViewport,
   type ViewportPresetId
@@ -147,6 +149,11 @@ const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
 const appMenuMode = ref<'add' | 'canvas' | 'zoom' | 'appearance' | null>(null)
+const devicePaletteOpen = ref(false)
+const devicePaletteQuery = ref('')
+const devicePaletteIndex = ref(0)
+const devicePaletteInput = ref<HTMLInputElement | null>(null)
+const DEVICE_PALETTE_LIST_ID = 'device-palette-list'
 const appMenuAnchor = ref<{
   x: number
   y: number
@@ -316,6 +323,68 @@ const profilePaneCounts = computed(() => {
   }
   return counts
 })
+
+interface DevicePaletteResult {
+  pane: PaneState
+  title: string
+  detail: string
+  search: string
+}
+
+function paneHostname(url: string): string {
+  try {
+    return new URL(url).hostname || 'about:blank'
+  } catch {
+    return 'about:blank'
+  }
+}
+
+function devicePaletteViewportLabel(viewport: PaneViewport): string {
+  if (viewport.preset === 'responsive') {
+    return 'Responsive'
+  }
+  const preset = findViewportPreset(viewport.preset)
+  const size = viewportContentSize(viewport)
+  const name = preset ? preset.label.split(' — ')[0] : 'Custom'
+  return `${name} ${size.width} × ${size.height}`
+}
+
+const devicePaletteResults = computed<DevicePaletteResult[]>(() => {
+  const query = devicePaletteQuery.value.trim().toLowerCase()
+  return orderedPanes.value
+    .map((pane) => {
+      const hostname = paneHostname(pane.url)
+      const profileCount = profilePaneCounts.value.get(pane.profileId) ?? 1
+      const profile =
+        profileCount > 1
+          ? `${pane.profileLabel} · ${profileCount} devices`
+          : pane.profileLabel
+      const detail = `${hostname} · ${profile} · ${devicePaletteViewportLabel(pane.viewport)}`
+      return {
+        pane,
+        title: pane.title,
+        detail,
+        search: `${pane.title} ${detail}`.toLowerCase()
+      }
+    })
+    .filter((result) => !query || result.search.includes(query))
+    .sort((left, right) => {
+      const activeDelta =
+        Number(right.pane.id === activePaneId.value) -
+        Number(left.pane.id === activePaneId.value)
+      return activeDelta !== 0 ? activeDelta : left.title.localeCompare(right.title)
+    })
+})
+
+const devicePaletteSelected = computed(
+  () => devicePaletteResults.value[devicePaletteIndex.value] ?? null
+)
+
+const devicePaletteSelectedId = computed(() =>
+  devicePaletteSelected.value
+    ? `device-palette-option-${devicePaletteIndex.value}`
+    : undefined
+)
 
 const paneLayoutKey = computed(() => orderedPanes.value.map((pane) => pane.id).join('|'))
 const errorMessage = computed(() => actionError.value ?? layoutError.value)
@@ -1417,6 +1486,7 @@ function syncCanvasMinimapVisibility(): void {
     layoutMode.value === 'canvas' &&
     !profilesOpen.value &&
     !workspacesOpen.value &&
+    !devicePaletteOpen.value &&
     (appMenuMode.value === null ||
       appMenuMode.value === 'zoom' ||
       appMenuMode.value === 'appearance')
@@ -1496,6 +1566,7 @@ function onCanvasSpaceDown(event: KeyboardEvent): void {
     maximizedPaneId.value ||
     profilesOpen.value ||
     workspacesOpen.value ||
+    devicePaletteOpen.value ||
     isEditableTarget(event.target)
   ) {
     return
@@ -1636,6 +1707,9 @@ function applyState(state: ShellState): void {
     document.body.classList.remove('paneflow-canvas-pane-dragging')
     paneSnapshots.value = {}
     clearAllPaneNotices()
+    devicePaletteOpen.value = false
+    devicePaletteQuery.value = ''
+    devicePaletteIndex.value = 0
     layoutMode.value = 'canvas'
     gridColumns.value = DEFAULT_GRID_COLUMNS
     maximizedPaneId.value = null
@@ -1991,6 +2065,103 @@ function focusAfterDialog(): void {
   }
   document.querySelector<HTMLButtonElement>('.toolbar .add-pane-button')?.focus()
 }
+
+function ensureDevicePaletteSelectionVisible(): void {
+  void nextTick(() => {
+    document
+      .getElementById(`device-palette-option-${devicePaletteIndex.value}`)
+      ?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+function openDevicePalette(): void {
+  if (profilesOpen.value || workspacesOpen.value || appMenuMode.value !== null) {
+    return
+  }
+  if (devicePaletteOpen.value) {
+    devicePaletteInput.value?.focus()
+    devicePaletteInput.value?.select()
+    return
+  }
+  devicePaletteOpen.value = true
+  devicePaletteQuery.value = ''
+  devicePaletteIndex.value = 0
+  void nextTick(() => {
+    scheduleMeasure()
+    devicePaletteInput.value?.focus()
+  })
+}
+
+function closeDevicePalette(restoreFocus = true): void {
+  if (!devicePaletteOpen.value) {
+    return
+  }
+  devicePaletteOpen.value = false
+  devicePaletteQuery.value = ''
+  devicePaletteIndex.value = 0
+  void nextTick(() => {
+    scheduleMeasure()
+    if (restoreFocus) {
+      focusAfterDialog()
+    }
+  })
+}
+
+function chooseDevicePaletteResult(result: DevicePaletteResult | null): void {
+  if (!result) {
+    return
+  }
+  const paneId = result.pane.id
+  closeDevicePalette(false)
+  void nextTick(async () => {
+    focusCanvasPane(paneId)
+    await nextTick()
+    focusPaneAddress(paneId)
+  })
+}
+
+function onDevicePaletteKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeDevicePalette()
+    return
+  }
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    devicePaletteInput.value?.focus()
+    return
+  }
+  if (event.isComposing || event.keyCode === 229) {
+    return
+  }
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    const count = devicePaletteResults.value.length
+    if (count === 0) {
+      return
+    }
+    const offset = event.key === 'ArrowDown' ? 1 : -1
+    devicePaletteIndex.value =
+      (devicePaletteIndex.value + offset + count) % count
+    ensureDevicePaletteSelectionVisible()
+    return
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    chooseDevicePaletteResult(devicePaletteSelected.value)
+  }
+}
+
+watch(devicePaletteQuery, () => {
+  devicePaletteIndex.value = 0
+  ensureDevicePaletteSelectionVisible()
+})
+
+watch(devicePaletteResults, (results) => {
+  if (devicePaletteIndex.value >= results.length) {
+    devicePaletteIndex.value = Math.max(0, results.length - 1)
+  }
+})
 
 function openProfiles(): void {
   if (profilesOpen.value) {
@@ -2507,6 +2678,7 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
     event.repeat ||
     profilesOpen.value ||
     workspacesOpen.value ||
+    devicePaletteOpen.value ||
     appMenuMode.value !== null
   ) {
     return
@@ -2642,8 +2814,14 @@ function handlePaneCommand(command: PaneCommand): void {
   if (profilesOpen.value || workspacesOpen.value) {
     return
   }
+  if (devicePaletteOpen.value && command !== 'find-device') {
+    return
+  }
   const pane = currentPane()
   switch (command) {
+    case 'find-device':
+      openDevicePalette()
+      break
     case 'add-pane':
       void addPane()
       break
@@ -2927,6 +3105,7 @@ async function measurePanes(): Promise<void> {
       isDragging.value ||
       profilesOpen.value ||
       workspacesOpen.value ||
+      devicePaletteOpen.value ||
       isCanvasPanning.value ||
       isCanvasPaneDragging.value ||
       canvasHandActive.value ||
@@ -3048,6 +3227,11 @@ watch(workspacesOpen, () => {
 })
 
 watch(profilesOpen, () => {
+  syncCanvasMinimapVisibility()
+  void nextTick(scheduleMeasure)
+})
+
+watch(devicePaletteOpen, () => {
   syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
 })
@@ -3751,6 +3935,75 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
+    <div
+      v-if="devicePaletteOpen"
+      class="modal-backdrop device-palette-backdrop"
+      @click.self="closeDevicePalette()"
+    >
+      <section
+        class="device-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Find device"
+      >
+        <input
+          ref="devicePaletteInput"
+          v-model="devicePaletteQuery"
+          class="device-palette-input"
+          type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded="true"
+          :aria-controls="DEVICE_PALETTE_LIST_ID"
+          :aria-activedescendant="devicePaletteSelectedId"
+          aria-label="Find device"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="Find a device by name, host, profile, or viewport"
+          @keydown="onDevicePaletteKeydown"
+        />
+        <ul
+          :id="DEVICE_PALETTE_LIST_ID"
+          class="device-palette-list"
+          role="listbox"
+          aria-label="Devices"
+        >
+          <li
+            v-for="(result, index) in devicePaletteResults"
+            :id="`device-palette-option-${index}`"
+            :key="result.pane.id"
+            class="device-palette-option"
+            :class="{ 'device-palette-option-selected': index === devicePaletteIndex }"
+            role="option"
+            :aria-selected="index === devicePaletteIndex"
+            @mouseenter="devicePaletteIndex = index"
+            @mousedown.prevent
+            @click="chooseDevicePaletteResult(result)"
+          >
+            <span class="device-palette-title">{{ result.title }}</span>
+            <span class="device-palette-detail">{{ result.detail }}</span>
+          </li>
+        </ul>
+        <div
+          v-if="devicePaletteResults.length === 0"
+          class="device-palette-empty"
+          role="status"
+        >
+          {{
+            devicePaletteQuery.trim()
+              ? 'No matching devices.'
+              : 'No devices in this workspace.'
+          }}
+        </div>
+        <footer class="device-palette-footer" aria-hidden="true">
+          <span>↑↓ Navigate</span>
+          <span>Enter Open</span>
+          <span>Esc Close</span>
+        </footer>
+      </section>
+    </div>
+
     <AppMenu
       v-if="appMenuMode"
       :key="appMenuMode"
@@ -4050,6 +4303,107 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 24px;
   background: rgba(18, 18, 17, 0.35);
+}
+
+.device-palette-backdrop {
+  align-items: flex-start;
+  padding-top: 88px;
+  background: rgba(18, 18, 17, 0.28);
+}
+
+.device-palette {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(560px, calc(100vh - 120px));
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+
+.device-palette:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.device-palette-input {
+  flex: none;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.device-palette-input::placeholder {
+  color: var(--text-faint);
+}
+
+.device-palette-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.device-palette-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.device-palette-option-selected {
+  background: var(--accent-soft);
+}
+
+.device-palette-title {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-palette-detail {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-palette-option-selected .device-palette-detail {
+  color: var(--accent-strong);
+}
+
+.device-palette-empty {
+  padding: 24px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.device-palette-footer {
+  flex: none;
+  display: flex;
+  gap: 12px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .profiles-dialog {
