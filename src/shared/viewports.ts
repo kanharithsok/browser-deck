@@ -52,9 +52,9 @@ export const RESPONSIVE_VIEWPORT: PaneViewport = {
 }
 
 export const VIEWPORT_CATEGORY_LABELS: Record<ViewportPresetCategory, string> = {
-  phone: 'Phones',
-  tablet: 'Tablets',
-  desktop: 'Desktop'
+  phone: 'Phone viewports',
+  tablet: 'Tablet viewports',
+  desktop: 'Desktop viewports'
 }
 
 export const VIEWPORT_PRESETS: readonly ViewportPreset[] = [

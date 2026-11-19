@@ -31,7 +31,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Explicitly shared profiles share expected cookie/storage state. (E2e opens two panes from one profile, verifies shared localStorage, shared-count labels, and close-and-delete lifecycle.)
 - [x] Profile manager lists usage, renames, clears, and deletes profiles safely. (E2e verifies rename persistence, cookie clearing, metadata deletion, and native-view hiding while the dialog is open.)
 - [x] Clear/delete a profile while its panes are open via a close-and-delete flow. (E2e confirms Close panes & delete, verifies both panes close, the profile is removed, and the remaining pane aligns.)
-- [x] Assign an existing profile to a new pane. (Profile manager Open pane creates a shared-profile pane; the toolbar Add pane remains fresh-profile only.)
+- [x] Assign an existing profile to a new device. (Profile manager New device creates a shared-profile device; the toolbar Add device remains fresh-profile only.)
 - [x] Session-only cookie and `sessionStorage` limitations are documented. (`SPEC.md`, `README.md`, and architecture docs state the limits.)
 
 ## Workspace
@@ -63,7 +63,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Workspace export/import serialization excludes profiles and restores fresh identities. (Unit tests cover round-trip, profile stripping, fresh IDs, unsafe URLs/viewports, and invalid layout.)
 - [ ] Native workspace import/export dialogs. (Pure logic is unit-tested; the Save/Open dialog path is not automated or manually re-run in this slice.)
 - [ ] Workspace switching keeps background pages warm. (Switching destroys and recreates native views; pages reload.)
-- [x] Explicit profile assignment/sharing across panes. (Profile manager Open pane; shared count shown in pane headers and usage.)
+- [x] Explicit profile assignment/sharing across devices. (Profile manager New device; shared count shown in the toolbar and profile usage.)
 
 ## Viewport emulation
 
@@ -114,7 +114,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] The active pane is visible and announced. (Exactly one accent-bordered card with `aria-current="true"`; focus moves the active card.)
 - [x] Dialog triggers expose `aria-haspopup`/`aria-expanded` and named workspace state. (Automated before/after open assertions.)
 - [x] Profile and workspace dialogs expose names/descriptions, focus the dialog on open, trap Tab/Shift+Tab, close on Escape, and return focus to the trigger. (Automated keyboard-only test.)
-- [x] Repeated profile/workspace row actions have unique contextual accessible names. (Open pane, Rename, Clear, Delete, Switch, Duplicate now include the profile/workspace label.)
+- [x] Repeated profile/workspace row actions have unique contextual accessible names. (New device, Rename, Clear, Delete, Switch, and Duplicate include the profile/workspace label.)
 - [x] The shell has one level-1 heading and dialogs do not create duplicate banner landmarks. (Axe best-practice/landmark audit; dialog header wrappers changed from `<header>` to `<div>`.)
 - [x] Automated axe WCAG 2.0/2.1/2.2 A/AA plus best-practice audit passes for the shell and both dialogs. (axe-core 4.11.0 injected through CDP `Runtime.evaluate`, because the shell CSP blocks inline script injection.)
 - [ ] Keyboard focus can enter native browser content and return to chrome. (Native pane focus handoff is Phase 2; not automated.)
@@ -164,3 +164,11 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] Device rotation swaps the emulated viewport and canvas frame. (E2e rotates a custom 500 × 1000 viewport through the validated IPC path, verifies a 1000 × 500 page and rotated frame, then restores it.)
 - [x] Screenshot capture writes a PNG. (E2e patches the native save dialog, captures the selected device through the validated IPC path, and verifies the PNG signature.)
 - [x] Delete closes the selected device from shell focus, and text-entry focus is protected. (E2e presses Backspace in the address field without closing, then Delete to close the duplicate. Cmd+D is a native Device-menu accelerator and routing is tested; OS-level chord delivery is manual.)
+
+## Post-MVP — Toolbar clarity and shortcut semantics
+
+- [x] Address validation errors are visible in the toolbar. (E2e enters a rejected `javascript:` address, asserts the visible `.address-error` text and the screen-reader live region, and verifies Escape restores the URL.)
+- [x] Shared profiles are visible from Canvas. (E2e creates two devices with one profile and verifies the top toolbar reads `Profile N · 2 devices` with a shared-profile tooltip.)
+- [x] `Cmd/Ctrl+R` reloads the selected device and `Cmd/Ctrl+L` focuses its address. (Menu accelerators are asserted in e2e; Focus Address is invoked through the native menu command and its resulting DOM focus is checked.)
+- [x] Maximize/Restore and Copy URL are present in the native device actions menu. (Implemented in the native pane menu; direct native menu clicks remain a manual GUI check.)
+- [x] Add/profile copy distinguishes devices from viewport presets. (E2e checks `Start with viewport`, `Phone viewports`, `Tablet viewports`, `Desktop viewports`, and the persisted profile action is now `New device`.)

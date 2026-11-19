@@ -702,10 +702,15 @@ export function registerIpcHandlers(context: IpcContext): void {
     const x = readFiniteNumber(request.x)
     const y = readFiniteNumber(request.y)
 
-    if (!paneId || x === null || y === null) {
+    if (
+      !paneId ||
+      x === null ||
+      y === null ||
+      typeof request.maximized !== 'boolean'
+    ) {
       return { ok: false, error: 'Invalid menu request.' }
     }
 
-    return manager.showMenu(paneId, x, y)
+    return manager.showMenu(paneId, x, y, request.maximized)
   })
 }

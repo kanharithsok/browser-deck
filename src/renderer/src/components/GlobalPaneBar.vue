@@ -10,12 +10,14 @@ const props = withDefaults(
     showCanvasTools?: boolean
     fitAllDisabled?: boolean
     hasPanes?: boolean
+    profilePaneCount?: number
     variant?: 'bar' | 'toolbar'
   }>(),
   {
     showCanvasTools: false,
     fitAllDisabled: false,
     hasPanes: true,
+    profilePaneCount: 1,
     variant: 'bar'
   }
 )
@@ -30,6 +32,24 @@ const addressError = ref<string | null>(null)
 const statusId = computed(() =>
   props.pane ? `global-pane-status-${props.pane.id}` : 'global-pane-status-empty'
 )
+
+const profileLabelText = computed(() => {
+  if (!props.pane) {
+    return ''
+  }
+  return props.profilePaneCount > 1
+    ? `${props.pane.profileLabel} · ${props.profilePaneCount} devices`
+    : props.pane.profileLabel
+})
+
+const profileTooltip = computed(() => {
+  if (!props.pane) {
+    return undefined
+  }
+  return props.profilePaneCount > 1
+    ? `Browser profile: ${props.pane.profileLabel} (shared by ${props.profilePaneCount} devices)`
+    : `Browser profile: ${props.pane.profileLabel}`
+})
 </script>
 
 <template>
@@ -47,7 +67,7 @@ const statusId = computed(() =>
         ></span>
         <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
         <span class="global-pane-title">{{ pane.title }}</span>
-        <span class="global-pane-profile">{{ pane.profileLabel }}</span>
+        <span class="global-pane-profile" :title="profileTooltip">{{ profileLabelText }}</span>
       </div>
 
       <PaneNavigation
@@ -134,7 +154,7 @@ const statusId = computed(() =>
 }
 
 .global-pane-profile {
-  max-width: 90px;
+  max-width: 140px;
   overflow: hidden;
   color: var(--text-faint);
   font-size: 10.5px;

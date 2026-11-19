@@ -195,7 +195,8 @@ Use standard platform conventions and document the final shortcuts. At minimum, 
 - Add pane.
 - Duplicate selected pane (`Cmd/Ctrl+D`).
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
-- Reload focused pane.
+- Focus the selected pane address (`Cmd/Ctrl+L`).
+- Reload the selected pane (`Cmd/Ctrl+R`).
 - Reload all panes.
 - Focus/maximize and restore pane from the native Device menu.
 - Switch workspace.
@@ -221,7 +222,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 
 ### 7.3 Canvas add and context menus
 
-- The toolbar **+** control opens a compact device menu grouped into Phones, Tablets, and Desktop. It includes responsive mode and popular devices such as iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop.
+- The toolbar **+** control opens a compact menu grouped into Phone viewports, Tablet viewports, and Desktop viewports. It includes responsive mode and popular devices such as iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop.
 - Right-clicking empty Canvas opens a menu with Add pane, Fit all panes, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance.
 - The Add pane item switches the menu to the device picker without opening a separate modal.
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
@@ -416,7 +417,7 @@ Each pane can have independent:
 
 Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
-New panes can be created directly with a fixed viewport preset from the **+** device menu. The new pane receives that preset and a fresh browser profile.
+New devices can be created directly with a fixed viewport preset from the **+** menu. The new pane receives that preset and a fresh browser profile.
 
 ### 10.3 Implementation and validation
 

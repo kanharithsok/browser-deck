@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   app,
+  clipboard,
   dialog,
   Menu,
   WebContentsView,
@@ -67,6 +68,7 @@ interface PaneRecord {
 interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
+  onPaneMaximizeRequested?: (paneId: string) => void
   onPaneRenameRequested?: (paneId: string) => void
   onPaneLayerChanged?: () => void
   getColorScheme: () => PaneColorScheme
@@ -486,7 +488,7 @@ export class BrowserManager {
     }
   }
 
-  showMenu(paneId: string, x: number, y: number): ScriptResult {
+  showMenu(paneId: string, x: number, y: number, maximized: boolean): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
       return { ok: false, error: 'Device not found.' }
@@ -522,6 +524,13 @@ export class BrowserManager {
           this.reload(record.id)
         }
       },
+      {
+        label: 'Copy URL',
+        enabled: record.url !== 'about:blank',
+        click: () => {
+          clipboard.writeText(record.url)
+        }
+      },
       { type: 'separator' },
       {
         label: 'Rotate Viewport',
@@ -542,6 +551,12 @@ export class BrowserManager {
         }
       },
       { type: 'separator' },
+      {
+        label: maximized ? 'Restore Device' : 'Maximize Device',
+        click: () => {
+          this.options.onPaneMaximizeRequested?.(record.id)
+        }
+      },
       {
         label: 'Duplicate Device',
         click: () => {

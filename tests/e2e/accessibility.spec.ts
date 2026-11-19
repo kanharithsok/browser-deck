@@ -541,8 +541,8 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
         const label = (await row.locator('.profile-label').innerText()).trim()
         labels.push(label)
         await expect(
-          row.getByRole('button', { name: `Open device with profile ${label}` })
-        ).toHaveText('Open device')
+          row.getByRole('button', { name: `New device with profile ${label}` })
+        ).toHaveText('New device')
         await expect(
           row.getByRole('button', { name: `Rename profile ${label}` })
         ).toHaveText('Rename')
@@ -569,7 +569,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain('dialog:Browser profiles')
-      expect(axPairs).toContain(`button:Open device with profile ${labels[0]}`)
+      expect(axPairs).toContain(`button:New device with profile ${labels[0]}`)
       expect(axPairs).toContain(`button:Rename profile ${labels[1]}`)
 
       await shellPage.keyboard.press('Escape')

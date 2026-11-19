@@ -58,6 +58,7 @@ export const IPC_CHANNELS = {
   setCanvasHandMode: 'paneflow:set-canvas-hand-mode',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
+  paneMaximizeRequested: 'paneflow:pane-maximize-requested',
   paneRenameRequested: 'paneflow:pane-rename-requested',
   stateChanged: 'paneflow:state-changed',
   requestMeasurement: 'paneflow:request-measurement'
@@ -67,6 +68,7 @@ export type PaneCommand =
   | 'add-pane'
   | 'duplicate-pane'
   | 'close-pane'
+  | 'focus-address'
   | 'reload-pane'
   | 'reload-all'
   | 'toggle-maximize'
@@ -134,6 +136,7 @@ export interface PaneMenuRequest {
   paneId: string
   x: number
   y: number
+  maximized: boolean
 }
 
 export type PaneSnapshotsResult =
@@ -193,5 +196,6 @@ export interface PaneFlowApi {
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
   onPaneFocused(listener: (paneId: string) => void): () => void
+  onPaneMaximizeRequested(listener: (paneId: string) => void): () => void
   onPaneRenameRequested(listener: (paneId: string) => void): () => void
 }

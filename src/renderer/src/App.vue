@@ -199,6 +199,7 @@ let disposeZoomActionListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
+let disposeMaximizeListener: (() => void) | null = null
 let disposeRenameListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
@@ -324,13 +325,13 @@ const addPaneMenuModel = computed<AppMenuModel>(() => ({
   label: 'Add device',
   sections: [
     {
-      label: 'New device',
+      label: 'Start with viewport',
       items: [
         {
           id: 'preset:responsive',
           label: 'Responsive',
           icon: 'responsive',
-          detail: 'Fill frame'
+          detail: 'Full size'
         }
       ]
     },
@@ -422,7 +423,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
           id: 'open-add-menu',
           label: 'Add device',
           icon: 'add',
-          detail: 'Choose device'
+          detail: 'Choose viewport'
         }
       ]
     },
@@ -553,6 +554,14 @@ function requestPaneRename(paneId: string): void {
     ...paneRenameRequests.value,
     [paneId]: (paneRenameRequests.value[paneId] ?? 0) + 1
   }
+}
+
+function requestPaneMaximize(paneId: string): void {
+  if (!panes.value.some((pane) => pane.id === paneId)) {
+    return
+  }
+  selectPane(paneId)
+  toggleMaximize(paneId)
 }
 
 function blurActiveShellControl(): void {
@@ -2467,7 +2476,12 @@ async function reloadAll(): Promise<void> {
 
 async function openPaneMenu(paneId: string, position: { x: number; y: number }): Promise<void> {
   try {
-    const result = await window.paneflow.showPaneMenu({ paneId, x: position.x, y: position.y })
+    const result = await window.paneflow.showPaneMenu({
+      paneId,
+      x: position.x,
+      y: position.y,
+      maximized: maximizedPaneId.value === paneId
+    })
     if (!result.ok) {
       actionError.value = result.error
     }
@@ -2577,6 +2591,13 @@ function handlePaneCommand(command: PaneCommand): void {
         void closePane(pane.id)
       }
       break
+    case 'focus-address': {
+      const target = pane ?? orderedPanes.value[0]
+      if (target) {
+        focusPaneAddress(target.id)
+      }
+      break
+    }
     case 'reload-pane':
       void reloadActivePane()
       break
@@ -3041,6 +3062,7 @@ onMounted(async () => {
     }
   })
   disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
+  disposeMaximizeListener = window.paneflow.onPaneMaximizeRequested(requestPaneMaximize)
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -3082,6 +3104,7 @@ onBeforeUnmount(() => {
 
   disposeCommandListener?.()
   disposeFocusListener?.()
+  disposeMaximizeListener?.()
   disposeRenameListener?.()
   resizeObserver?.disconnect()
   window.removeEventListener('resize', handleWindowResize)
@@ -3136,6 +3159,9 @@ onBeforeUnmount(() => {
         :key="activePane ? activePane.id : 'empty'"
         variant="toolbar"
         :pane="activePane"
+        :profile-pane-count="
+          activePane ? (profilePaneCounts.get(activePane.profileId) ?? 1) : 1
+        "
         :show-canvas-tools="layoutMode === 'canvas'"
         :fit-all-disabled="panes.length === 0"
         :has-panes="panes.length > 0"
@@ -3285,8 +3311,8 @@ onBeforeUnmount(() => {
           <div>
             <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
             <p id="profiles-description" class="profiles-description">
-              Each profile keeps its own cookies and site storage. Open device explicitly shares
-              this profile.
+              Each profile keeps its own cookies and site storage. New devices and duplicates use a
+              fresh profile; use New device here to share this one.
             </p>
           </div>
           <button
@@ -3357,11 +3383,11 @@ onBeforeUnmount(() => {
                 class="text-button"
                 type="button"
                 :disabled="profileBusy"
-                title="Open a new device using this profile and share its cookies/storage."
-                :aria-label="`Open device with profile ${profile.label}`"
+                title="Create a new device with this profile and share its cookies/storage."
+                :aria-label="`New device with profile ${profile.label}`"
                 @click="openPaneWithProfile(profile)"
               >
-                Open device
+                New device
               </button>
               <button
                 class="text-button"
