@@ -446,14 +446,21 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
           'Close device (Delete)'
         )
       }
-      await expect(
-        globalBar.getByRole('combobox', { name: `Viewport preset for device ${firstPane.title}` })
-      ).toHaveValue('responsive')
+      const viewportTrigger = globalBar.getByRole('button', {
+        name: `Viewport preset for device ${firstPane.title}`
+      })
+      await expect(viewportTrigger).toHaveAttribute('data-preset', 'responsive')
+      await expect(viewportTrigger).toHaveAttribute('aria-haspopup', 'menu')
+      await expect(viewportTrigger).toHaveAttribute('aria-expanded', 'false')
 
       const axPairs = await readAccessibilityTree(shellPage)
       expect(axPairs).toContain(`article:Browser device: ${firstPane.title}`)
       expect(axPairs).toContain(`textbox:Address for device ${firstPane.title}`)
-      expect(axPairs).toContain(`combobox:Viewport preset for device ${firstPane.title}`)
+      expect(
+        axPairs.some((pair) =>
+          pair.startsWith(`button:Viewport preset for device ${firstPane.title}`)
+        )
+      ).toBe(true)
 
       await firstAddress.focus()
       const addressFocus = await readFocus(shellPage)
@@ -461,7 +468,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
 
       await shellPage.keyboard.press('Tab')
       const viewportFocus = await readFocus(shellPage)
-      expect(viewportFocus.ariaLabel).toBe(`Viewport preset for device ${firstPane.title}`)
+      expect(viewportFocus.ariaLabel).toContain(`Viewport preset for device ${firstPane.title}`)
       expect(viewportFocus.focusVisible).toBe(true)
       expect(viewportFocus.outlineStyle).toBe('solid')
 

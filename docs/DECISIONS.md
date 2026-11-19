@@ -1525,7 +1525,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-051 — Compact centered top-bar address and explicit macOS app name
 
-- **Status:** Accepted
+- **Status:** Accepted (the viewport-trigger/menu details are superseded by ADR-053)
 - **Date:** 2026-11-20
 - **Context:** The top toolbar repeated navigation already present in every pane header, the address field and viewport select were small and visually indistinct, and clicks inside the titlebar control row could start a window drag. In development the macOS application menu also said “Electron” while the toolbar repeated the PaneFlow name.
 
@@ -1592,6 +1592,38 @@ Record material technical decisions here. Keep entries short but include context
   - Unit tests cover valid camera views, zoom clamping, unknown active-pane IDs, invalid coordinates, and workspace parse round-trips.
   - E2e sets 50% zoom and a pan, then 75% immediately before quitting, relaunches, and verifies the final zoom, pan-derived pane position, and selected device. It also confirms a partially offscreen restored pane finishes loading.
   - E2e asserts the native View-menu accelerators and routes Zoom In, Zoom Out, and Reset through the same Canvas zoom path.
+
+## ADR-053 — Share the custom preset menu between Add and the viewport selector
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The active-pane viewport control used a native `<select>`. Its OS-rendered popup indented optgroup labels, placed the checkmark in a separate left column, and constrained/truncated long preset labels. The Add menu used the custom `AppMenu`, but exposed only a curated subset of the preset catalog, so the two lists disagreed about which devices existed.
+
+- **Decision:**
+  1. Replace the native viewport select with a button trigger that opens the existing custom `AppMenu`.
+  2. Keep the trigger compact (short preset name, fixed width, tooltip with the full name and dimensions). The menu carries the full labels and CSS dimensions.
+  3. Share one preset catalog between the Add menu and the viewport menu. Add exposes all 15 fixed presets plus Responsive; the viewport menu additionally exposes Custom….
+  4. Use the same section headings, icons, left-aligned names, right-aligned dimensions, and menu-item styling in both menus.
+  5. Selecting Custom… closes the menu, asks the pane navigation component to open its inline custom viewport editor, and focuses the width field.
+  6. Keep the menu-button accessibility contract: `aria-haspopup="menu"`, `aria-expanded`, a menu label, menuitemradio selection, Escape close, and focus return to the trigger.
+
+- **Alternatives considered:**
+  - **Widen the native select.** Rejected; it would avoid some truncation but retain the OS popup's indentation, checkmark placement, and visual mismatch with Add.
+  - **Keep the Add menu curated.** Rejected; the user expects the two lists to agree about available devices.
+  - **Use one menu instance with the same item IDs for both contexts.** Rejected; Add and viewport selection have different actions and Custom only applies to an existing pane.
+  - **Put Custom in the Add menu.** Rejected; creating a second pane from custom dimensions would need a separate add-time dimension form.
+
+- **Consequences:**
+  - Both menus share the app menu's 660 px maximum height; the complete catalog is visible at a typical window size and scrolls only on shorter windows.
+  - The viewport trigger shows the device name only; the full name and CSS dimensions remain in the tooltip and menu.
+  - The Add menu grows from 10 to 16 items, and the viewport menu has 17 (including Custom).
+  - Tests select presets through menu items instead of `selectOption`, and the viewport trigger is a button rather than a combobox.
+
+- **Evidence / verification:**
+  - E2e verifies the viewport menu has 17 radio items, the same three category groups, and the same missing presets as Add; the Add menu has 16 items.
+  - E2e selects fixed presets and Custom through the menu, and verifies the trigger's `data-preset`, short label, tooltip, and `aria-expanded` state.
+  - Accessibility e2e verifies the button/menu semantics, focus, and the updated AX tree entry.
+  - Visual check at 1280 × 860 confirmed 304 px wide menus with left-aligned names, right-aligned dimensions, no horizontal clipping, and the complete catalog visible without scrolling.
 
 ### ADR-NNN — Title
 

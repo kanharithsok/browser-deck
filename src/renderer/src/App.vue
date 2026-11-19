@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppMenu from './components/AppMenu.vue'
 import GlobalPaneBar from './components/GlobalPaneBar.vue'
 import PaneCard from './components/PaneCard.vue'
-import type { AppMenuModel } from './menu'
+import type { AppMenuIcon, AppMenuModel } from './menu'
 import {
   CANVAS_GAP,
   CANVAS_ORIGIN,
@@ -125,6 +125,7 @@ const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
 const paneSelectionCleared = ref(false)
 const paneRenameRequests = ref<Record<string, number>>({})
+const customViewportRequests = ref<Record<string, number>>({})
 const layoutMode = ref<LayoutMode>('canvas')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
@@ -147,7 +148,9 @@ const suspendedPaneIds = ref<ReadonlySet<string>>(new Set())
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
-const appMenuMode = ref<'add' | 'canvas' | 'zoom' | 'appearance' | 'pane' | null>(null)
+const appMenuMode = ref<
+  'add' | 'canvas' | 'zoom' | 'appearance' | 'pane' | 'viewport' | null
+>(null)
 const paneMenuPaneId = ref<string | null>(null)
 const devicePaletteOpen = ref(false)
 const devicePaletteQuery = ref('')
@@ -432,17 +435,21 @@ const devicePaletteSelectedId = computed(() =>
 const paneLayoutKey = computed(() => orderedPanes.value.map((pane) => pane.id).join('|'))
 const errorMessage = computed(() => actionError.value ?? layoutError.value)
 
-const ADD_PANE_MENU_PRESET_IDS = new Set([
-  'iphone-15-pro',
-  'iphone-se',
-  'galaxy-s24',
-  'pixel-8',
-  'ipad-pro-12-9',
-  'ipad-air',
-  'galaxy-tab-s9',
-  'desktop',
-  'macbook-air'
-])
+const PRESET_CATEGORIES = (['phone', 'tablet', 'desktop'] as const).map((category) => ({
+  category,
+  label: VIEWPORT_CATEGORY_LABELS[category],
+  presets: VIEWPORT_PRESETS.filter((preset) => preset.category === category)
+}))
+
+function presetIcon(
+  category: (typeof PRESET_CATEGORIES)[number]['category']
+): AppMenuIcon {
+  return category === 'phone' ? 'phone' : category === 'tablet' ? 'tablet' : 'desktop'
+}
+
+function presetLabel(preset: (typeof VIEWPORT_PRESETS)[number]): string {
+  return preset.label.split(' — ')[0] ?? preset.label
+}
 
 const addPaneMenuModel = computed<AppMenuModel>(() => ({
   label: 'Add device',
@@ -458,25 +465,65 @@ const addPaneMenuModel = computed<AppMenuModel>(() => ({
         }
       ]
     },
-    ...(['phone', 'tablet', 'desktop'] as const).map((category) => ({
-      label: VIEWPORT_CATEGORY_LABELS[category],
-      items: VIEWPORT_PRESETS.filter(
-        (preset) =>
-          preset.category === category && ADD_PANE_MENU_PRESET_IDS.has(preset.id)
-      ).map((preset) => ({
+    ...PRESET_CATEGORIES.map(({ category, label, presets }) => ({
+      label,
+      items: presets.map((preset) => ({
         id: `preset:${preset.id}`,
-        label: preset.label.split(' — ')[0] ?? preset.label,
-        icon:
-          category === 'phone'
-            ? ('phone' as const)
-            : category === 'tablet'
-              ? ('tablet' as const)
-              : ('desktop' as const),
+        label: presetLabel(preset),
+        icon: presetIcon(category),
         detail: `${preset.width} × ${preset.height}`
       }))
     }))
   ]
 }))
+
+const viewportMenuModel = computed<AppMenuModel>(() => {
+  const pane = activePane.value
+  const selected = pane?.viewport.preset
+  return {
+    label: 'Viewport preset',
+    sections: [
+      {
+        items: [
+          {
+            id: 'viewport:responsive',
+            label: 'Responsive',
+            icon: 'responsive',
+            detail: 'Full size',
+            kind: 'radio',
+            checked: selected === 'responsive'
+          }
+        ]
+      },
+      ...PRESET_CATEGORIES.map(({ category, label, presets }) => ({
+        label,
+        items: presets.map((preset) => ({
+          id: `viewport:${preset.id}`,
+          label: presetLabel(preset),
+          icon: presetIcon(category),
+          detail: `${preset.width} × ${preset.height}`,
+          kind: 'radio' as const,
+          checked: selected === preset.id
+        }))
+      })),
+      {
+        items: [
+          {
+            id: 'viewport:custom',
+            label: 'Custom…',
+            kind: 'radio',
+            checked: selected === 'custom',
+            separatorBefore: true,
+            detail:
+              selected === 'custom' && pane
+                ? `${pane.viewport.width} × ${pane.viewport.height}`
+                : undefined
+          }
+        ]
+      }
+    ]
+  }
+})
 
 const zoomMenuModel = computed<AppMenuModel>(() => ({
   label: 'Zoom',
@@ -764,6 +811,16 @@ function requestPaneRename(paneId: string): void {
   paneRenameRequests.value = {
     ...paneRenameRequests.value,
     [paneId]: (paneRenameRequests.value[paneId] ?? 0) + 1
+  }
+}
+
+function requestCustomViewport(paneId: string): void {
+  if (!panes.value.some((pane) => pane.id === paneId)) {
+    return
+  }
+  customViewportRequests.value = {
+    ...customViewportRequests.value,
+    [paneId]: (customViewportRequests.value[paneId] ?? 0) + 1
   }
 }
 
@@ -2066,7 +2123,7 @@ async function prepareMenuSnapshots(): Promise<void> {
 }
 
 async function openAppMenu(
-  mode: 'add' | 'canvas' | 'zoom' | 'appearance' | 'pane',
+  mode: 'add' | 'canvas' | 'zoom' | 'appearance' | 'pane' | 'viewport',
   anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
@@ -2104,6 +2161,18 @@ async function openAddMenu(event: MouseEvent): Promise<void> {
       align: inToolbar ? 'end' : 'start'
     },
     button
+  )
+}
+
+async function openViewportMenu(trigger: HTMLElement): Promise<void> {
+  if (!activePane.value) {
+    return
+  }
+  const rect = trigger.getBoundingClientRect()
+  await openAppMenu(
+    'viewport',
+    { x: rect.right, y: rect.bottom + 6, align: 'end' },
+    trigger
   )
 }
 
@@ -2261,6 +2330,23 @@ function onAppMenuSelect(id: string): void {
     appMenuMode.value = 'add'
     syncCanvasMinimapVisibility()
     void nextTick(scheduleMeasure)
+    return
+  }
+
+  if (id.startsWith('viewport:')) {
+    const preset = id.slice('viewport:'.length)
+    const pane = activePane.value
+    if (preset === 'custom') {
+      closeAppMenu(false)
+      if (pane) {
+        requestCustomViewport(pane.id)
+      }
+      return
+    }
+    if (pane && isViewportPresetId(preset)) {
+      closeAppMenu()
+      void setPaneViewport(pane.id, viewportFromPreset(preset))
+    }
     return
   }
 
@@ -3727,8 +3813,13 @@ onBeforeUnmount(() => {
           activePane ? (profilePaneCounts.get(activePane.profileId) ?? 1) : 1
         "
         :has-panes="panes.length > 0"
+        :viewport-menu-open="appMenuMode === 'viewport'"
+        :custom-viewport-request="
+          activePane ? (customViewportRequests[activePane.id] ?? 0) : 0
+        "
         @set-viewport="onGlobalPaneSetViewport"
         @layout-changed="onPaneLayoutChanged"
+        @open-viewport-menu="openViewportMenu"
       />
 
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
@@ -4340,15 +4431,17 @@ onBeforeUnmount(() => {
       v-if="appMenuMode"
       :key="appMenuMode"
       :model="
-        appMenuMode === 'add'
-          ? addPaneMenuModel
-          : appMenuMode === 'zoom'
-            ? zoomMenuModel
-            : appMenuMode === 'appearance'
-              ? appearanceMenuModel
-              : appMenuMode === 'pane'
-                ? paneMenuModel
-                : canvasMenuModel
+        appMenuMode === 'viewport'
+          ? viewportMenuModel
+          : appMenuMode === 'add'
+            ? addPaneMenuModel
+            : appMenuMode === 'zoom'
+              ? zoomMenuModel
+              : appMenuMode === 'appearance'
+                ? appearanceMenuModel
+                : appMenuMode === 'pane'
+                  ? paneMenuModel
+                  : canvasMenuModel
       "
       :anchor="appMenuAnchor"
       :placement="

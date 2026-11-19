@@ -159,6 +159,7 @@ onBeforeUnmount(() => {
             class="app-menu-item"
             type="button"
             data-menu-item
+            :data-menu-item-id="item.id"
             :role="
               item.kind === 'radio'
                 ? 'menuitemradio'
@@ -192,7 +193,7 @@ onBeforeUnmount(() => {
 .app-menu {
   position: fixed;
   width: min(304px, calc(100vw - 16px));
-  max-height: min(70vh, 460px);
+  max-height: min(78vh, 660px);
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--border-strong);

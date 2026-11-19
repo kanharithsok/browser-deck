@@ -962,3 +962,22 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual/automated check | The restarted app restores the 75% camera and active device; a partially visible pane finishes loading instead of remaining blank. |
 
 **Known behavior / limitations:** A stale saved camera may point at empty world space or leave panes offscreen; Fit all remains available in the overview and zoom menu. New, duplicated, and imported workspaces start fitted because they have no camera view. This supersedes earlier notes in this report that pan, zoom, and cleared selection were transient.
+
+## Post-MVP — Unified viewport and Add preset menus
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Replaced the native active-pane viewport `<select>` with a compact button that opens the same custom `AppMenu` used by Add. The trigger shows the short preset name and keeps the full name plus CSS dimensions in its tooltip; the menu shows full names left-aligned and dimensions right-aligned, with a checkmark for the active preset and a Custom… item that opens the inline editor and focuses its width field. The Add menu now uses the complete fixed preset catalog instead of a curated subset, so both menus list Generic phone, iPhone 15 Pro Max, Samsung Galaxy S24 Ultra, Google Pixel 8 Pro, Generic tablet, Laptop, and every other fixed preset. Both menus share the same headings, icons, item styling, and dimensions.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/AppMenu.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-053), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 158 unit tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.62 kB, preload 9.28 kB, renderer JS 349.70 kB, shell CSS 30.97 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.0 s. Verifies 17 viewport items, 16 Add items, matching category groups and missing presets, menu selection, trigger label/tooltip/`data-preset`, Custom editor focus, and updated menu-button accessibility semantics. |
+| Visual check | Confirmed 304 px menus at 1280 × 860 with left-aligned names, right-aligned dimensions, a right-side checkmark, no horizontal clipping, and the complete catalog visible without scrolling. Shorter windows scroll within the shared 660 px maximum height. |
+
+**Known behavior / limitations:** The viewport trigger deliberately shows the short device name to avoid clipping; the full name and dimensions are available on hover and in the menu. Custom… exists only in the viewport menu because adding a device from custom dimensions would need an add-time dimension form. The complete catalog is visible at typical window sizes; both menus scroll on shorter windows. This supersedes the native-selector wording and the earlier curated Add-menu subset noted above.

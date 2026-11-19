@@ -402,7 +402,7 @@ Provide sensible presets for common:
 
 Also support custom width and height.
 
-Preset labels may identify a popular source device, but must always show the CSS viewport dimensions and use “viewport”/“emulation” language. Do not present a preset as physical hardware accuracy.
+Preset labels in the viewport and Add menus must always show the CSS viewport dimensions and use “viewport”/“emulation” language. A compact toolbar trigger may show the short device name, with the full label and dimensions available in its tooltip. Do not present a preset as physical hardware accuracy.
 
 ### 10.2 Per-pane settings
 

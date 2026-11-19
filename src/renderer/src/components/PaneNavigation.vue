@@ -1,34 +1,35 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { PaneState, ScriptResult } from '../../../shared/ipc'
 import {
-  VIEWPORT_CATEGORY_LABELS,
   findViewportPreset,
   parsePaneViewport,
-  viewportFromPreset,
-  viewportPresetsInCategory,
   type PaneViewport,
   type ViewportPresetId
 } from '../../../shared/viewports'
 
-const VIEWPORT_GROUPS = (['phone', 'tablet', 'desktop'] as const).map((category) => ({
-  category,
-  label: VIEWPORT_CATEGORY_LABELS[category],
-  presets: viewportPresetsInCategory(category)
-}))
-
-const props = defineProps<{
-  pane: PaneState
-  statusId: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    pane: PaneState
+    statusId: string
+    viewportMenuOpen?: boolean
+    customViewportRequest?: number
+  }>(),
+  {
+    viewportMenuOpen: false,
+    customViewportRequest: 0
+  }
+)
 
 const emit = defineEmits<{
   'set-viewport': [viewport: PaneViewport]
   'layout-changed': []
   'address-error': [message: string | null]
+  'open-viewport-menu': [trigger: HTMLElement]
 }>()
 
 const addressInput = ref<HTMLInputElement | null>(null)
+const customWidthInput = ref<HTMLInputElement | null>(null)
 const address = ref(displayAddress(props.pane.url))
 const addressError = ref<string | null>(null)
 const editing = ref(false)
@@ -49,6 +50,17 @@ const selectedPresetLabel = computed(() => {
     return 'Custom viewport'
   }
   return findViewportPreset(selectedPreset.value)?.label ?? selectedPreset.value
+})
+
+const selectedPresetDisplay = computed(() => {
+  if (selectedPreset.value === 'responsive') {
+    return 'Responsive'
+  }
+  if (selectedPreset.value === 'custom') {
+    return 'Custom viewport'
+  }
+  const preset = findViewportPreset(selectedPreset.value)
+  return preset?.label.split(' — ')[0] ?? preset?.label ?? selectedPreset.value
 })
 
 function displayAddress(url: string): string {
@@ -82,48 +94,39 @@ watch(
   }
 )
 
-function onPresetChange(event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLSelectElement)) {
-    return
-  }
-
-  const preset = target.value as ViewportPresetId
-  const wasOpen = customOpen.value
-  selectedPreset.value = preset
-  viewportError.value = null
-
-  if (preset === 'custom') {
-    customOpen.value = true
-    if (!wasOpen) {
-      const viewport = props.pane.viewport
-      if (viewport.preset !== 'responsive' && viewport.preset !== 'custom') {
-        customWidth.value = viewport.width
-        customHeight.value = viewport.height
-        customDeviceScaleFactor.value = viewport.deviceScaleFactor
-      }
-      emit('layout-changed')
+watch(
+  () => props.customViewportRequest,
+  (request) => {
+    if (request > 0) {
+      startCustomViewport()
     }
-    return
   }
+)
 
-  customOpen.value = false
-  if (wasOpen) {
-    emit('layout-changed')
-  }
-  emit('set-viewport', viewportFromPreset(preset))
-}
-
-function openCustomEditor(): void {
+function startCustomViewport(): void {
   const viewport = props.pane.viewport
-  if (viewport.preset === 'custom') {
-    customWidth.value = viewport.width
-    customHeight.value = viewport.height
-    customDeviceScaleFactor.value = viewport.deviceScaleFactor
+  if (viewport.preset !== 'custom') {
+    customWidth.value = viewport.preset === 'responsive' ? 800 : viewport.width
+    customHeight.value = viewport.preset === 'responsive' ? 600 : viewport.height
+    customDeviceScaleFactor.value =
+      viewport.preset === 'responsive' ? 1 : viewport.deviceScaleFactor
   }
+  selectedPreset.value = 'custom'
   viewportError.value = null
   customOpen.value = true
   emit('layout-changed')
+  void nextTick(() => customWidthInput.value?.focus())
+}
+
+function openCustomEditor(): void {
+  startCustomViewport()
+}
+
+function openViewportMenu(event: MouseEvent): void {
+  const trigger = event.currentTarget
+  if (trigger instanceof HTMLElement) {
+    emit('open-viewport-menu', trigger)
+  }
 }
 
 function applyCustomViewport(): void {
@@ -238,21 +241,21 @@ async function submitAddress(): Promise<void> {
         {{ addressError }}
       </span>
 
-      <select
-        class="viewport-select"
-        :value="selectedPreset"
+      <button
+        class="viewport-select viewport-trigger"
+        type="button"
+        :data-preset="selectedPreset"
         :title="`Viewport preset: ${selectedPresetLabel}`"
-        :aria-label="`Viewport preset for device ${pane.title}`"
-        @change="onPresetChange"
+        :aria-label="`Viewport preset for device ${pane.title}: ${selectedPresetLabel}`"
+        aria-haspopup="menu"
+        :aria-expanded="viewportMenuOpen"
+        @click="openViewportMenu"
       >
-        <option value="responsive">Responsive</option>
-        <optgroup v-for="group in VIEWPORT_GROUPS" :key="group.category" :label="group.label">
-          <option v-for="preset in group.presets" :key="preset.id" :value="preset.id">
-            {{ preset.label }}
-          </option>
-        </optgroup>
-        <option value="custom">Custom…</option>
-      </select>
+        <span class="viewport-trigger-label">{{ selectedPresetDisplay }}</span>
+        <svg class="viewport-trigger-chevron" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="m3 4.5 3 3 3-3" />
+        </svg>
+      </button>
 
       <button
         v-if="selectedPreset === 'custom'"
@@ -279,6 +282,7 @@ async function submitAddress(): Promise<void> {
       <label class="custom-field">
         <span>W</span>
         <input
+          ref="customWidthInput"
           v-model.number="customWidth"
           type="number"
           min="200"
@@ -419,15 +423,39 @@ async function submitAddress(): Promise<void> {
 
 .viewport-select {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   width: 184px;
   min-width: 0;
   height: 28px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 5px;
   background: var(--surface-inset);
   color: var(--text-muted);
   cursor: pointer;
   font-size: 10.5px;
+  text-align: left;
+}
+
+.viewport-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewport-trigger-chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .viewport-select:hover {

@@ -10,17 +10,22 @@ const props = withDefaults(
     hasPanes?: boolean
     profilePaneCount?: number
     variant?: 'bar' | 'toolbar'
+    viewportMenuOpen?: boolean
+    customViewportRequest?: number
   }>(),
   {
     hasPanes: true,
     profilePaneCount: 1,
-    variant: 'bar'
+    variant: 'bar',
+    viewportMenuOpen: false,
+    customViewportRequest: 0
   }
 )
 
 const emit = defineEmits<{
   'set-viewport': [viewport: PaneViewport]
   'layout-changed': []
+  'open-viewport-menu': [trigger: HTMLElement]
 }>()
 
 const addressError = ref<string | null>(null)
@@ -68,9 +73,12 @@ const profileTooltip = computed(() => {
       <PaneNavigation
         :pane="pane"
         :status-id="statusId"
+        :viewport-menu-open="viewportMenuOpen"
+        :custom-viewport-request="customViewportRequest"
         @address-error="addressError = $event"
         @set-viewport="emit('set-viewport', $event)"
         @layout-changed="emit('layout-changed')"
+        @open-viewport-menu="emit('open-viewport-menu', $event)"
       />
     </template>
 

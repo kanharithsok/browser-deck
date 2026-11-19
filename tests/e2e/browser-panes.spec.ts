@@ -204,6 +204,14 @@ async function resetCanvasZoomFromBar(
   await expect(menu).toHaveCount(0)
 }
 
+async function selectViewportPreset(shellPage: Page, preset: string): Promise<void> {
+  await shellPage.locator('.global-pane-bar .viewport-select').click()
+  const menu = shellPage.getByRole('menu', { name: 'Viewport preset' })
+  await expect(menu).toBeVisible()
+  await menu.locator(`[data-menu-item-id="viewport:${preset}"]`).click()
+  await expect(menu).toHaveCount(0)
+}
+
 async function fitAllDevices(app: ElectronApplication): Promise<void> {
   const minimap = app
     .windows()
@@ -771,9 +779,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await expect(zoomPage.locator('#value')).toContainText('%')
     const toolbarBorders = await shellPage.evaluate(() =>
-      Array.from(document.querySelectorAll<HTMLElement>('.toolbar button')).map(
-        (button) => getComputedStyle(button).borderTopWidth
-      )
+      Array.from(
+        document.querySelectorAll<HTMLElement>('.toolbar button:not(.viewport-select)')
+      ).map((button) => getComputedStyle(button).borderTopWidth)
     )
     expect(toolbarBorders.filter((width) => width !== '0px')).toEqual([])
     await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
@@ -1182,13 +1190,25 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).some((state) => !state.visible))
       .toBe(true)
-    await expect(addMenu.getByRole('menuitem')).toHaveCount(10)
+    await expect(addMenu.getByRole('menuitem')).toHaveCount(16)
     await expect(addMenu.locator('.app-menu-section')).toHaveText([
       'Start with viewport',
       'Phone viewports',
       'Tablet viewports',
       'Desktop viewports'
     ])
+    for (const name of [
+      'Generic phone',
+      'iPhone 15 Pro Max',
+      'Samsung Galaxy S24 Ultra',
+      'Google Pixel 8 Pro',
+      'Generic tablet',
+      'Laptop'
+    ]) {
+      await expect(
+        addMenu.getByRole('menuitem', { name: new RegExp(`^${name}`) })
+      ).toBeVisible()
+    }
     await addMenu
       .getByRole('menuitem', { name: /^iPhone 15 Pro\b.*393/ })
       .click()
@@ -1204,7 +1224,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(menuAddedPane).toBeTruthy()
     // Adding a device reveals it without changing the current Canvas zoom.
     await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
-    await expect(shellPage.locator('.global-pane-bar .viewport-select')).toHaveValue(
+    await expect(shellPage.locator('.global-pane-bar .viewport-select')).toHaveAttribute(
+      'data-preset',
       'iphone-15-pro'
     )
     await shellEvaluate<{ ok: boolean }>(
@@ -1361,7 +1382,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // independent pane settings, always-fit scaling, and return to responsive
     // sizing. There is intentionally no display-scale selector.
     await focusPane(shellPage, alicePaneId as string)
-    const viewportSelect = shellPage.locator('.global-pane-bar .viewport-select')
     await expect(shellPage.locator('.scale-select')).toHaveCount(0)
     const paneMetrics = (paneId: string) =>
       evaluateInPane<{ width: number; height: number; dpr: number }>(
@@ -1372,7 +1392,39 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const aliceMetrics = () => paneMetrics(alicePaneId as string)
     const bobMetrics = () => paneMetrics(bobPaneId as string)
 
-    await viewportSelect.selectOption('mobile')
+    // The viewport selector uses the same custom menu language and the same
+    // complete preset catalog as Add, instead of the native select popup.
+    const viewportTrigger = shellPage.locator('.global-pane-bar .viewport-select')
+    await expect(viewportTrigger).toHaveAttribute('aria-haspopup', 'menu')
+    await expect(viewportTrigger).toHaveAttribute('aria-expanded', 'false')
+    await viewportTrigger.click()
+    const viewportMenu = shellPage.getByRole('menu', { name: 'Viewport preset' })
+    await expect(viewportMenu).toBeVisible()
+    await expect(viewportTrigger).toHaveAttribute('aria-expanded', 'true')
+    await expect(viewportMenu.getByRole('menuitemradio')).toHaveCount(17)
+    await expect(viewportMenu.locator('.app-menu-section')).toHaveText([
+      'Phone viewports',
+      'Tablet viewports',
+      'Desktop viewports'
+    ])
+    for (const name of [
+      'Generic phone',
+      'iPhone 15 Pro Max',
+      'Samsung Galaxy S24 Ultra',
+      'Google Pixel 8 Pro',
+      'Generic tablet',
+      'Laptop'
+    ]) {
+      await expect(
+        viewportMenu.getByRole('menuitemradio', { name: new RegExp(`^${name}`) })
+      ).toBeVisible()
+    }
+    await expect(
+      viewportMenu.locator('[data-menu-item-id="viewport:custom"]')
+    ).toHaveText('Custom…')
+    await viewportMenu.locator('[data-menu-item-id="viewport:mobile"]').click()
+    await expect(viewportMenu).toHaveCount(0)
+    await expect(viewportTrigger).toHaveAttribute('aria-expanded', 'false')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[0]?.viewport.preset === 'mobile',
@@ -1387,7 +1439,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // A second pane can hold a different emulated viewport at the same time.
     await fitAllDevices(app as ElectronApplication)
     await focusPane(shellPage, bobPaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('tablet')
+    await selectViewportPreset(shellPage, 'tablet')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[1]?.viewport.preset === 'tablet',
@@ -1399,8 +1451,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // Device presets use their real CSS dimensions and device pixel ratios.
     await fitAllDevices(app as ElectronApplication)
     await focusPane(shellPage, alicePaneId as string)
-    const aliceViewportSelect = shellPage.locator('.global-pane-bar .viewport-select')
-    await aliceViewportSelect.selectOption('pixel-8')
+    await selectViewportPreset(shellPage, 'pixel-8')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[0]?.viewport.preset === 'pixel-8',
@@ -1411,20 +1462,21 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(pixelEmulation?.enabled).toBe(true)
     expect(pixelEmulation?.scale).toBeGreaterThan(0)
     expect(pixelEmulation?.scale).toBeLessThanOrEqual(1)
-    // The viewport control is wide enough for full preset labels, while the
+    // The viewport trigger is wide enough for full preset labels, while the
     // fixed width prevents the toolbar from reflowing as presets change.
-    const viewportBox = await aliceViewportSelect.boundingBox()
+    const aliceViewportTrigger = shellPage.locator('.global-pane-bar .viewport-select')
+    const viewportBox = await aliceViewportTrigger.boundingBox()
     expect(viewportBox?.width).toBeLessThanOrEqual(190)
-    expect(
-      await aliceViewportSelect.evaluate(
-        (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim()
-      )
-    ).toBe('Google Pixel 8 — 412 × 915')
-    await expect(aliceViewportSelect).toHaveAttribute('title', /412 × 915/)
+    await expect(
+      aliceViewportTrigger.locator('.viewport-trigger-label')
+    ).toHaveText('Google Pixel 8')
+    await expect(aliceViewportTrigger).toHaveAttribute('data-preset', 'pixel-8')
+    await expect(aliceViewportTrigger).toHaveAttribute('title', /412 × 915/)
 
-    await aliceViewportSelect.selectOption('custom')
+    await selectViewportPreset(shellPage, 'custom')
     const customRow = shellPage.locator('.global-pane-bar .viewport-custom')
     await expect(customRow).toBeVisible()
+    await expect(customRow.getByLabel('Custom viewport width')).toBeFocused()
     await customRow.getByLabel('Custom viewport width').fill('100')
     await customRow.getByLabel('Custom viewport height').fill('700')
     await customRow.getByLabel('Custom device scale factor').fill('2')
@@ -1494,7 +1546,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 1000, dpr: 2 })
 
-    await aliceViewportSelect.selectOption('responsive')
+    await selectViewportPreset(shellPage, 'responsive')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[0]?.viewport.preset === 'responsive',
@@ -1504,7 +1556,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // The other pane keeps its emulated viewport until changed.
     await expect.poll(bobMetrics).toMatchObject({ width: 820, height: 1180, dpr: 2 })
     await focusPane(shellPage, bobPaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await selectViewportPreset(shellPage, 'responsive')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[1]?.viewport.preset === 'responsive',
@@ -1516,14 +1568,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // Device actions must stay available at every canvas zoom. At 80% these two
     // iPhone frames straddle the old 340 px breakpoint that hid actions.
     await focusPane(shellPage, alicePaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-15-pro-max')
+    await selectViewportPreset(shellPage, 'iphone-15-pro-max')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[0]?.viewport.preset === 'iphone-15-pro-max',
       'iPhone 15 Pro Max viewport for action visibility'
     )
     await focusPane(shellPage, bobPaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-15-pro')
+    await selectViewportPreset(shellPage, 'iphone-15-pro')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[1]?.viewport.preset === 'iphone-15-pro',
@@ -1551,9 +1603,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Restore responsive panes for the remaining zoom/emulation checks.
     await focusPane(shellPage, alicePaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await selectViewportPreset(shellPage, 'responsive')
     await focusPane(shellPage, bobPaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await selectViewportPreset(shellPage, 'responsive')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) =>
@@ -1794,7 +1846,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await waitForVisibleAlignedBounds(app)
     await expect(
       shellPage.locator('.global-pane-bar .viewport-select')
-    ).toHaveValue('pixel-8')
+    ).toHaveAttribute('data-preset', 'pixel-8')
     await waitFor(
       () => getEmulationState(app as ElectronApplication, devicePane.id),
       (state) => state?.enabled === true && (state.scale ?? 0) > 0,
@@ -2055,7 +2107,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await fitAllDevices(app as ElectronApplication)
     await waitForAlignedBounds(app)
     await focusPane(shellPage, alicePaneId as string)
-    await shellPage.locator('.global-pane-bar .viewport-select').selectOption('iphone-se')
+    await selectViewportPreset(shellPage, 'iphone-se')
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[0]?.viewport.preset === 'iphone-se',
@@ -2447,7 +2499,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Continue the workspace tests from a responsive Canvas pane.
     await focusPane(restartShell, alicePaneId as string)
-    await restartShell.locator('.global-pane-bar .viewport-select').selectOption('responsive')
+    await selectViewportPreset(restartShell, 'responsive')
     await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.panes[0]?.viewport.preset === 'responsive',
