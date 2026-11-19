@@ -142,15 +142,15 @@ Visual principles:
 - Prefer contextual menus for infrequent actions.
 - Avoid decorative gradients, glass effects, oversized headings, heavy shadows, unnecessary cards, excessive badges, decorative illustrations, and permanent sidebars without a demonstrated need.
 - Do not make the interface look like a generic admin dashboard.
-- Support system appearance plus explicit light and dark modes.
+- Support system appearance plus explicit light and dark modes. Website panes must follow the effective appearance as a preferred color-scheme change without reloading their pages.
 
 ### 6.2 Main application structure
 
 The initial interface should contain:
 
-1. **Top toolbar:** workspace selector/name, add-pane action with a device-size dropdown, layout mode, grid controls when relevant, reload-all, and compact settings/profile access.
+1. **Top toolbar:** workspace selector/name, add-pane action with a device-size dropdown, layout mode, grid controls when relevant, reload-all, appearance control, and compact settings/profile access.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
-3. **Pane chrome:** compact title/address/navigation controls and a contextual menu.
+3. **Pane chrome:** compact single-row title/address/navigation controls where space permits, with lower-priority actions in the contextual menu and graceful wrapping at narrow widths.
 4. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
 5. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
@@ -241,15 +241,26 @@ Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and t
 - Keep each pane's title bar reachable when clamping to workspace bounds.
 - Enforce a reasonable minimum width and height so pane controls remain usable.
 
-### 7.4 Switching modes
+### 7.4 Canvas mode
 
-- Grid and freeform modes share the same pane model and identity system.
-- Preserve each mode's prior arrangement; store grid order and freeform geometry separately.
+- Provide an infinite dotted workspace for arranging browser frames in world coordinates.
+- Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Support trackpad/wheel panning while the Hand tool is active.
+- Keep pages live as native views when their content rectangle is fully inside the workspace.
+- While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
+- Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.
+- Use a workspace-level address and navigation bar for the active pane, with compact labels on each frame.
+- Persist canvas positions per workspace. Pan offset is viewport state and may reset.
+- Canvas zoom, device bezels, and freeform frame resizing are not required for the first Canvas slice.
+
+### 7.5 Switching modes
+
+- Grid, freeform, and canvas modes share the same pane model and identity system.
+- Preserve each mode's prior arrangement; store grid order, freeform geometry, canvas positions, and canvas order separately.
 - Do not persist temporary maximized/focused state.
 - Store freeform geometry in normalized coordinates so it adapts when the application window changes size.
 - If many panes cannot comfortably fit, allow scrolling or smaller grid cells; never silently discard panes.
 
-### 7.5 Snapping behavior
+### 7.6 Snapping behavior
 
 Support optional:
 
@@ -262,7 +273,7 @@ Support optional:
 
 A configurable snap sensitivity may be added if it can be exposed without cluttering the interface.
 
-### 7.6 Layout engine requirements
+### 7.7 Layout engine requirements
 
 The layout engine is a core subsystem. Implement it in pure TypeScript, independent of Vue and Electron, and unit-test it.
 

@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { PaneState, ScriptResult } from '../../../shared/ipc'
-import {
-  VIEWPORT_PRESETS,
-  parsePaneViewport,
-  viewportFromPreset,
-  type PaneViewport,
-  type ViewportPresetId
-} from '../../../shared/viewports'
+import PaneNavigation from './PaneNavigation.vue'
+import type { PaneChromeStyle } from '../../../shared/pane-chrome'
+import type { PaneState } from '../../../shared/ipc'
+import type { PaneViewport } from '../../../shared/viewports'
 import { MAX_PANE_TITLE_LENGTH } from '../../../shared/workspace'
 
 const props = withDefaults(
@@ -19,6 +15,9 @@ const props = withDefaults(
     active?: boolean
     profilePaneCount?: number
     renameRequest?: number
+    chromeStyle?: PaneChromeStyle
+    snapshot?: string
+    canvas?: boolean
   }>(),
   {
     freeform: false,
@@ -26,7 +25,10 @@ const props = withDefaults(
     suspended: false,
     active: false,
     profilePaneCount: 1,
-    renameRequest: 0
+    renameRequest: 0,
+    chromeStyle: 'a',
+    snapshot: undefined,
+    canvas: false
   }
 )
 
@@ -40,34 +42,34 @@ const emit = defineEmits<{
   'layout-changed': []
 }>()
 
-const addressInput = ref<HTMLInputElement | null>(null)
 const titleInput = ref<HTMLInputElement | null>(null)
-const address = ref(displayAddress(props.pane.url))
 const addressError = ref<string | null>(null)
-const editing = ref(false)
 const renaming = ref(false)
 const savingTitle = ref(false)
 const titleDraft = ref('')
 const titleError = ref<string | null>(null)
 const statusId = `pane-status-${props.pane.id}`
 
-const selectedPreset = ref<ViewportPresetId>(props.pane.viewport.preset)
-const customOpen = ref(props.pane.viewport.preset === 'custom')
-const customWidth = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.width : 800)
-const customHeight = ref(props.pane.viewport.preset === 'custom' ? props.pane.viewport.height : 600)
-const customDeviceScaleFactor = ref(
-  props.pane.viewport.preset === 'custom' ? props.pane.viewport.deviceScaleFactor : 1
-)
-const viewportError = ref<string | null>(null)
 const profileLabelText = computed(() =>
   props.profilePaneCount > 1
     ? `${props.pane.profileLabel} · ${props.profilePaneCount} panes`
     : props.pane.profileLabel
 )
 
-function displayAddress(url: string): string {
-  return url === 'about:blank' ? '' : url
-}
+const viewportLabel = computed(() => {
+  const viewport = props.pane.viewport
+  return viewport.preset === 'responsive'
+    ? 'Responsive'
+    : `${viewport.width} × ${viewport.height}`
+})
+
+const showNavigation = computed(
+  () => props.chromeStyle === 'a' || (props.chromeStyle === 'b' && props.active)
+)
+
+const showViewportBadge = computed(
+  () => (props.chromeStyle === 'c' || props.chromeStyle === 'b') && !props.active
+)
 
 const titleTooltip = computed(() => {
   const title = props.pane.customTitle ?? props.pane.title
@@ -141,134 +143,6 @@ watch(
   }
 )
 
-function onPresetChange(event: Event): void {
-  const target = event.target
-  if (!(target instanceof HTMLSelectElement)) {
-    return
-  }
-
-  const preset = target.value as ViewportPresetId
-  const wasOpen = customOpen.value
-  selectedPreset.value = preset
-  viewportError.value = null
-
-  if (preset === 'custom') {
-    customOpen.value = true
-    if (!wasOpen) {
-      // Start from the current fixed preset so the user can adjust a known
-      // size instead of resetting to arbitrary defaults.
-      const viewport = props.pane.viewport
-      if (viewport.preset !== 'responsive' && viewport.preset !== 'custom') {
-        customWidth.value = viewport.width
-        customHeight.value = viewport.height
-        customDeviceScaleFactor.value = viewport.deviceScaleFactor
-      }
-      emit('layout-changed')
-    }
-    return
-  }
-
-  customOpen.value = false
-  if (wasOpen) {
-    emit('layout-changed')
-  }
-  emit('set-viewport', viewportFromPreset(preset))
-}
-
-function applyCustomViewport(): void {
-  const parsed = parsePaneViewport({
-    preset: 'custom',
-    width: Number(customWidth.value),
-    height: Number(customHeight.value),
-    deviceScaleFactor: Number(customDeviceScaleFactor.value)
-  })
-
-  if (!parsed.ok) {
-    viewportError.value = parsed.error
-    return
-  }
-
-  viewportError.value = null
-  emit('set-viewport', parsed.viewport)
-}
-
-function cancelCustomViewport(): void {
-  const viewport = props.pane.viewport
-  selectedPreset.value = viewport.preset
-  customWidth.value = viewport.preset === 'custom' ? viewport.width : 800
-  customHeight.value = viewport.preset === 'custom' ? viewport.height : 600
-  customDeviceScaleFactor.value = viewport.preset === 'custom' ? viewport.deviceScaleFactor : 1
-  viewportError.value = null
-  const wasOpen = customOpen.value
-  customOpen.value = viewport.preset === 'custom'
-  if (wasOpen !== customOpen.value) {
-    emit('layout-changed')
-  }
-}
-
-watch(
-  () => props.pane.url,
-  (url) => {
-    if (!editing.value) {
-      address.value = displayAddress(url)
-    }
-  }
-)
-
-function resetAddress(): void {
-  address.value = displayAddress(props.pane.url)
-  addressError.value = null
-  editing.value = false
-  addressInput.value?.blur()
-}
-
-function handleBlur(): void {
-  editing.value = false
-  if (addressError.value) {
-    // Keep the invalid value and its reason visible until the user edits it or
-    // presses Escape, instead of silently discarding both on blur.
-    return
-  }
-  address.value = displayAddress(props.pane.url)
-}
-
-async function submitAddress(): Promise<void> {
-  const value = address.value.trim()
-  if (!value) {
-    addressError.value = 'Enter an address.'
-    return
-  }
-
-  let result: ScriptResult
-  try {
-    result = await window.paneflow.navigate(props.pane.id, value)
-  } catch {
-    addressError.value = 'Could not navigate to that address.'
-    return
-  }
-
-  if (!result.ok) {
-    addressError.value = result.error
-    return
-  }
-
-  addressError.value = null
-  editing.value = false
-  addressInput.value?.blur()
-}
-
-function goBack(): void {
-  if (props.pane.canGoBack) {
-    void window.paneflow.back(props.pane.id).catch(() => undefined)
-  }
-}
-
-function goForward(): void {
-  if (props.pane.canGoForward) {
-    void window.paneflow.forward(props.pane.id).catch(() => undefined)
-  }
-}
-
 function reload(): void {
   void window.paneflow.reload(props.pane.id).catch(() => undefined)
 }
@@ -290,64 +164,92 @@ function requestClose(): void {
 <template>
   <article
     class="pane-card"
-    :class="{ 'pane-card-freeform': freeform, 'pane-card-active': active }"
+    :class="[
+      `pane-card-${chromeStyle}`,
+      {
+        'pane-card-freeform': freeform,
+        'pane-card-active': active,
+        'pane-card-canvas': canvas
+      }
+    ]"
     :data-pane-id="pane.id"
+    :data-pane-chrome="chromeStyle"
     :aria-label="`Browser pane: ${pane.title}`"
     :aria-current="active ? 'true' : undefined"
   >
     <header class="pane-header">
-      <div class="pane-title-row">
-        <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
-        <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
+      <div class="pane-main">
+        <div class="pane-title-row">
+          <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
+          <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
 
-        <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
-          {{ pane.title }}
-        </span>
-        <form v-else class="pane-title-form" @submit.prevent="submitRename">
-          <input
-            ref="titleInput"
-            v-model="titleDraft"
-            class="pane-title-input"
-            :class="{ 'pane-title-input-invalid': titleError }"
-            type="text"
-            :maxlength="MAX_PANE_TITLE_LENGTH"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="Use page title"
-            :aria-label="`Pane name for ${pane.title}`"
-            :aria-invalid="titleError ? 'true' : 'false'"
-            :aria-describedby="titleError ? statusId : undefined"
-            @input="titleError = null"
-            @blur="onTitleBlur"
-            @keydown.esc.prevent="cancelRename"
-          />
-        </form>
-        <span
-          class="pane-profile"
-          :title="
-            profilePaneCount > 1
-              ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} panes)`
-              : `Browser profile: ${pane.profileLabel}`
-          "
-        >
-          {{ profileLabelText }}
-        </span>
+          <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
+            {{ pane.title }}
+          </span>
+          <form v-else class="pane-title-form" @submit.prevent="submitRename">
+            <input
+              ref="titleInput"
+              v-model="titleDraft"
+              class="pane-title-input"
+              :class="{ 'pane-title-input-invalid': titleError }"
+              type="text"
+              :maxlength="MAX_PANE_TITLE_LENGTH"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Use page title"
+              :aria-label="`Pane name for ${pane.title}`"
+              :aria-invalid="titleError ? 'true' : 'false'"
+              :aria-describedby="titleError ? statusId : undefined"
+              @input="titleError = null"
+              @blur="onTitleBlur"
+              @keydown.esc.prevent="cancelRename"
+            />
+          </form>
+          <span
+            class="pane-profile"
+            :title="
+              profilePaneCount > 1
+                ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} panes)`
+                : `Browser profile: ${pane.profileLabel}`
+            "
+          >
+            {{ profileLabelText }}
+          </span>
 
-        <span
-          :id="statusId"
-          class="pane-status"
-          role="status"
-          aria-live="polite"
-          :title="titleError ?? addressError ?? pane.error ?? undefined"
-        >
-          <template v-if="titleError">{{ titleError }}</template>
-          <template v-else-if="pane.isLoading">Loading</template>
-          <template v-else-if="addressError">{{ addressError }}</template>
-          <template v-else-if="pane.error">Load failed</template>
-        </span>
+          <span
+            v-if="showViewportBadge"
+            class="pane-viewport-badge"
+            :title="`Viewport: ${viewportLabel}`"
+          >
+            {{ viewportLabel }}
+          </span>
 
-        <span class="pane-spacer"></span>
+          <span
+            :id="statusId"
+            class="pane-status"
+            role="status"
+            aria-live="polite"
+            :title="titleError ?? addressError ?? pane.error ?? undefined"
+          >
+            <template v-if="titleError">{{ titleError }}</template>
+            <template v-else-if="addressError">{{ addressError }}</template>
+            <template v-else-if="pane.error">Load failed</template>
+            <template v-else-if="pane.isLoading"><span class="sr-only">Loading</span></template>
+          </span>
+        </div>
 
+        <PaneNavigation
+          v-if="chromeStyle !== 'c'"
+          v-show="showNavigation"
+          :pane="pane"
+          :status-id="statusId"
+          @address-error="addressError = $event"
+          @set-viewport="emit('set-viewport', $event)"
+          @layout-changed="emit('layout-changed')"
+        />
+      </div>
+
+      <div class="pane-actions">
         <button
           v-if="freeform"
           class="icon-button"
@@ -411,126 +313,17 @@ function requestClose(): void {
           </svg>
         </button>
       </div>
-
-      <div class="pane-nav-row">
-        <button
-          class="icon-button nav-button"
-          type="button"
-          title="Back"
-          aria-label="Go back"
-          :disabled="!pane.canGoBack"
-          @click="goBack"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M9.5 3.5 5 8l4.5 4.5" />
-          </svg>
-        </button>
-        <button
-          class="icon-button nav-button"
-          type="button"
-          title="Forward"
-          aria-label="Go forward"
-          :disabled="!pane.canGoForward"
-          @click="goForward"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M6.5 3.5 11 8l-4.5 4.5" />
-          </svg>
-        </button>
-        <button
-          class="icon-button nav-button"
-          type="button"
-          title="Reload pane"
-          aria-label="Reload pane"
-          @click="reload"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M12.6 6.3A5 5 0 1 0 13 8" />
-            <path d="M12.8 3.3v3.2H9.6" />
-          </svg>
-        </button>
-
-        <form class="address-form" @submit.prevent="submitAddress">
-          <input
-            ref="addressInput"
-            v-model="address"
-            class="address-input"
-            :class="{ 'address-input-invalid': addressError }"
-            type="text"
-            inputmode="url"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            :placeholder="pane.url === 'about:blank' ? 'Enter an address' : ''"
-            :aria-label="`Address for ${pane.title}`"
-            :aria-invalid="addressError ? 'true' : 'false'"
-            :aria-describedby="addressError ? statusId : undefined"
-            @input="addressError = null"
-            @focus="editing = true"
-            @blur="handleBlur"
-            @keydown.esc.prevent="resetAddress"
-          />
-        </form>
-
-        <select
-          class="viewport-select"
-          :value="selectedPreset"
-          :aria-label="`Viewport preset for ${pane.title}`"
-          @change="onPresetChange"
-        >
-          <option value="responsive">Responsive</option>
-          <option v-for="preset in VIEWPORT_PRESETS" :key="preset.id" :value="preset.id">
-            {{ preset.label }}
-          </option>
-          <option value="custom">Custom…</option>
-        </select>
-      </div>
-
-      <div v-if="customOpen" class="viewport-custom">
-        <label class="custom-field">
-          <span>W</span>
-          <input
-            v-model.number="customWidth"
-            type="number"
-            min="200"
-            max="7680"
-            step="1"
-            aria-label="Custom viewport width"
-            @input="viewportError = null"
-          />
-        </label>
-        <label class="custom-field">
-          <span>H</span>
-          <input
-            v-model.number="customHeight"
-            type="number"
-            min="200"
-            max="7680"
-            step="1"
-            aria-label="Custom viewport height"
-            @input="viewportError = null"
-          />
-        </label>
-        <label class="custom-field">
-          <span>DPR</span>
-          <input
-            v-model.number="customDeviceScaleFactor"
-            type="number"
-            min="0.5"
-            max="4"
-            step="0.1"
-            aria-label="Custom device scale factor"
-            @input="viewportError = null"
-          />
-        </label>
-        <button class="custom-apply" type="button" @click="applyCustomViewport">Apply</button>
-        <button class="custom-cancel" type="button" @click="cancelCustomViewport">Cancel</button>
-        <span v-if="viewportError" class="viewport-error" role="alert">{{ viewportError }}</span>
-      </div>
     </header>
 
     <div class="pane-body">
       <div class="pane-content" :data-pane-content="pane.id">
+        <img
+          v-if="snapshot && !pane.error && pane.url !== 'about:blank'"
+          class="pane-snapshot"
+          :src="snapshot"
+          alt=""
+          draggable="false"
+        />
         <div v-if="pane.error" class="pane-message" role="alert">
           <p class="message-title">This page could not load</p>
           <p class="message-detail">{{ pane.error }}</p>
@@ -540,11 +333,16 @@ function requestClose(): void {
           <p class="message-title">No page loaded</p>
           <p class="message-detail">Enter an address above to open a site in this pane.</p>
         </div>
-        <div v-else-if="suspended && !pane.isLoading" class="pane-message">
+        <div v-else-if="suspended && !pane.isLoading && !snapshot" class="pane-message">
           <p class="message-title">Pane hidden while off-screen</p>
-          <p class="message-detail">Scroll this pane fully into view to interact with the site.</p>
+          <p v-if="canvas" class="message-detail">
+            Select this pane to bring it fully into view.
+          </p>
+          <p v-else class="message-detail">
+            Scroll this pane fully into view to interact with the site.
+          </p>
         </div>
-        <div v-else-if="pane.isLoading" class="pane-message" aria-hidden="true">
+        <div v-else-if="pane.isLoading && !snapshot" class="pane-message" aria-hidden="true">
           <span class="spinner"></span>
           <p class="message-detail">Opening browser view</p>
         </div>
@@ -573,38 +371,81 @@ function requestClose(): void {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--border);
-  border-radius: 9px;
   background: var(--surface);
   overflow: hidden;
   container-type: inline-size;
 }
 
-.pane-card-freeform .pane-body {
-  padding: 6px;
-}
-
 .pane-card-active {
-  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .pane-header {
   flex: none;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 5px 6px 6px;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0 4px;
+  min-height: 32px;
+  padding: 0 6px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
+.pane-card-c .pane-header {
+  border-bottom-color: transparent;
+}
+
+.pane-card-canvas {
+  background: transparent;
+}
+
+.pane-card-canvas .pane-header {
+  padding: 0 2px;
+  background: transparent;
+}
+
+.pane-card-canvas .pane-title-row {
+  gap: 5px;
+  cursor: default;
+}
+
+.pane-card-canvas .pane-profile {
+  display: none;
+}
+
+.pane-card-canvas .pane-viewport-badge {
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.pane-card-canvas .pane-actions {
+  margin-top: 3px;
+}
+
+.pane-card-canvas .pane-body {
+  background: transparent;
+}
+
+.pane-main {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  min-width: 0;
+}
+
 .pane-title-row {
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  height: 24px;
-  padding: 0 2px;
+  height: 31px;
+  padding: 0 1px;
+  overflow: hidden;
   cursor: grab;
   user-select: none;
 }
@@ -641,8 +482,9 @@ function requestClose(): void {
 }
 
 .pane-title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 180px;
   overflow: hidden;
   font-size: 12px;
   font-weight: 600;
@@ -684,24 +526,39 @@ function requestClose(): void {
 
 .pane-profile {
   flex: none;
-  max-width: 120px;
+  max-width: 96px;
   overflow: hidden;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pane-card-active .pane-profile {
+  color: var(--text-muted);
 }
 
 .pane-profile::before {
   content: '· ';
 }
 
+.pane-viewport-badge {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .pane-status {
   flex: none;
-  max-width: 160px;
+  max-width: 140px;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -710,8 +567,12 @@ function requestClose(): void {
   display: none;
 }
 
-.pane-spacer {
-  flex: 1;
+.pane-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 4px;
 }
 
 .icon-button {
@@ -722,8 +583,15 @@ function requestClose(): void {
   width: 24px;
   height: 24px;
   padding: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.pane-card-active .icon-button,
+.icon-button:hover:not(:disabled),
+.icon-button:focus-visible {
+  opacity: 1;
 }
 
 .icon-button:hover:not(:disabled) {
@@ -732,8 +600,8 @@ function requestClose(): void {
 }
 
 .icon-button svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
@@ -741,126 +609,13 @@ function requestClose(): void {
   stroke-linejoin: round;
 }
 
-.pane-nav-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px;
-  row-gap: 4px;
-  min-width: 0;
-}
-
-.nav-button {
-  width: 24px;
-  height: 24px;
-}
-
-.address-form {
-  flex: 1 1 120px;
-  min-width: 80px;
-  margin-left: 4px;
-}
-
-.address-input {
-  width: 100%;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--surface-inset);
-  color: var(--text);
-  font-size: 11.5px;
-  text-overflow: ellipsis;
-}
-
-.address-input::placeholder {
-  color: var(--text-faint);
-}
-
-.address-input:focus {
-  border-color: var(--accent);
-  background: var(--surface-raised);
-  outline: 2px solid var(--accent);
-  outline-offset: 0;
-}
-
-.address-input-invalid,
-.address-input-invalid:focus {
-  border-color: var(--danger);
-  outline-color: var(--danger);
-}
-
-.viewport-select {
-  flex: none;
-  width: 88px;
-  height: 24px;
-  margin-left: 4px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--surface-inset);
-  color: var(--text);
-  font-size: 11px;
-}
-
-.viewport-select:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.viewport-custom {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 4px 1px;
-  border-top: 1px solid var(--border);
-}
-
-.custom-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-faint);
-  font-size: 10.5px;
-}
-
-.custom-field input {
-  width: 54px;
-  height: 22px;
-  padding: 0 4px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface-inset);
-  color: var(--text);
-  font-size: 11px;
-}
-
-.custom-field input[aria-label='Custom device scale factor'] {
-  width: 46px;
-}
-
-.custom-apply,
-.custom-cancel {
-  height: 22px;
-  padding: 0 7px;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  background: var(--surface-raised);
-  color: var(--text);
-  font-size: 10.5px;
-}
-
-.custom-apply:hover,
-.custom-cancel:hover {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-}
-
-.viewport-error {
-  flex-basis: 100%;
-  color: var(--danger);
-  font-size: 10.5px;
-  line-height: 1.4;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .pane-body {
@@ -956,8 +711,18 @@ function requestClose(): void {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: 0 0 8px 8px;
   background: var(--pane-canvas);
+}
+
+.pane-snapshot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .pane-message {
@@ -1008,9 +773,9 @@ function requestClose(): void {
   }
 }
 
-@container (max-width: 320px) {
-  .viewport-select {
-    width: 78px;
+@container (max-width: 340px) {
+  .pane-actions {
+    display: none;
   }
 }
 </style>

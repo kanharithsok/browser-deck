@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import GlobalPaneBar from './components/GlobalPaneBar.vue'
 import PaneCard from './components/PaneCard.vue'
+import {
+  CANVAS_GAP,
+  CANVAS_ORIGIN,
+  defaultCanvasPositions,
+  canvasFrameSize,
+  type CanvasPosition
+} from '../../shared/canvas'
+import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrome'
 import type { PaneCommand, PaneState, ScriptResult, ShellState } from '../../shared/ipc'
 import type { ProfileSummary } from '../../shared/profiles'
 import {
@@ -37,8 +46,33 @@ import {
   type SnapGuides
 } from '../../shared/layout'
 
-type LayoutMode = 'grid' | 'freeform'
+type LayoutMode = 'grid' | 'freeform' | 'canvas'
 type ProfileActionKind = 'clear' | 'delete'
+
+interface CanvasDragState {
+  startX: number
+  startY: number
+  base: CanvasPosition
+}
+
+const PANE_CHROME_STORAGE_KEY = 'paneflow.preview.paneChrome'
+
+function readPaneChromePreference(): PaneChromeStyle {
+  try {
+    const value = localStorage.getItem(PANE_CHROME_STORAGE_KEY)
+    return isPaneChromeStyle(value) ? value : 'a'
+  } catch {
+    return 'a'
+  }
+}
+
+function persistPaneChromePreference(style: PaneChromeStyle): void {
+  try {
+    localStorage.setItem(PANE_CHROME_STORAGE_KEY, style)
+  } catch {
+    // A blocked storage API should not prevent switching the preview style.
+  }
+}
 
 interface ProfileActionState {
   kind: ProfileActionKind
@@ -52,6 +86,12 @@ const paneRenameRequests = ref<Record<string, number>>({})
 const layoutMode = ref<LayoutMode>('grid')
 const freeformGeometries = ref<Record<string, NormalizedRect>>({})
 const freeformOrder = ref<string[]>([])
+const canvasPositions = ref<Record<string, CanvasPosition>>({})
+const canvasPan = ref<CanvasPosition>({ x: 0, y: 0 })
+const canvasHandMode = ref(false)
+const isCanvasPanning = ref(false)
+const canvasDrag = ref<CanvasDragState | null>(null)
+const paneSnapshots = ref<Record<string, string>>({})
 const usesMacTitlebar = navigator.platform.startsWith('Mac')
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
@@ -91,6 +131,9 @@ const workspacesButtonEl = ref<HTMLButtonElement | null>(null)
 const workspaceName = ref('Workspace')
 const currentWorkspaceId = ref<string | null>(null)
 const themePreference = ref<ThemePreference>('system')
+const resolvedTheme = ref<'light' | 'dark'>('light')
+const paneChrome = ref<PaneChromeStyle>(readPaneChromePreference())
+const appearanceMenuOpen = ref(false)
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -129,6 +172,44 @@ const orderedPanes = computed(() => {
     .filter((pane): pane is PaneState => pane !== undefined)
 })
 
+const activePane = computed(
+  () => orderedPanes.value.find((pane) => pane.id === activePaneId.value) ?? null
+)
+
+const effectivePaneChrome = computed<PaneChromeStyle>(() =>
+  layoutMode.value === 'canvas' ? 'c' : paneChrome.value
+)
+
+const defaultCanvasLayout = computed(() => defaultCanvasPositions(orderedPanes.value))
+
+const canvasFrames = computed(() => {
+  const frames = new Map<string, CanvasPosition & Size>()
+  for (const pane of orderedPanes.value) {
+    const position = canvasPositions.value[pane.id] ?? defaultCanvasLayout.value[pane.id]
+    if (!position) {
+      continue
+    }
+    const size = canvasFrameSize(pane.viewport)
+    frames.set(pane.id, {
+      x: position.x,
+      y: position.y,
+      width: size.width,
+      height: size.height
+    })
+  }
+  return frames
+})
+
+const canvasWorkspaceStyle = computed(() =>
+  layoutMode.value === 'canvas'
+    ? { backgroundPosition: `${canvasPan.value.x}px ${canvasPan.value.y}px` }
+    : undefined
+)
+
+const showGlobalPaneBar = computed(
+  () => effectivePaneChrome.value === 'c' && activePane.value !== null
+)
+
 const profilePaneCounts = computed(() => {
   const counts = new Map<string, number>()
   for (const pane of panes.value) {
@@ -152,7 +233,7 @@ const gridLayout = computed<GridLayout | null>(() => {
   const result = layoutGrid(
     orderedPanes.value.map((pane) => pane.id),
     workspaceSize.value,
-    { columns: gridColumns.value, padding: 10, gap: 10 }
+    { columns: gridColumns.value, padding: 8, gap: 8 }
   )
 
   return result.ok ? result.layout : null
@@ -196,7 +277,7 @@ const slotRects = computed(() =>
 )
 
 const paneGridHeight = computed(() =>
-  maximizedPaneId.value
+  maximizedPaneId.value || layoutMode.value === 'canvas'
     ? workspaceSize.value.height
     : layoutMode.value === 'grid'
       ? gridContentHeight.value
@@ -218,9 +299,9 @@ const gridNotice = computed(() => {
 })
 
 function focusPaneAddress(paneId: string): void {
-  const input = document.querySelector<HTMLInputElement>(
-    `[data-pane-id="${paneId}"] .address-input`
-  )
+  const input =
+    document.querySelector<HTMLInputElement>(`[data-pane-id="${paneId}"] .address-input`) ??
+    document.querySelector<HTMLInputElement>('.global-pane-bar .address-input')
   input?.focus()
   input?.select()
 }
@@ -239,6 +320,7 @@ function requestPaneRename(paneId: string): void {
 function recoverFocus(): void {
   const target =
     document.querySelector<HTMLInputElement>('[data-pane-id] .address-input') ??
+    document.querySelector<HTMLInputElement>('.global-pane-bar .address-input') ??
     document.querySelector<HTMLButtonElement>('.empty-state .toolbar-button')
   target?.focus()
 }
@@ -257,36 +339,60 @@ function readWorkspaceSize(): void {
 }
 
 function paneSlotStyle(paneId: string): Record<string, string> {
+  const canvasFrame = layoutMode.value === 'canvas' ? canvasFrames.value.get(paneId) : null
   const rect = slotRects.value.get(paneId)
-  if (!rect) {
+
+  if (layoutMode.value === 'canvas' && !canvasFrame) {
+    return { visibility: 'hidden' }
+  }
+
+  if (!rect && !canvasFrame) {
     return { visibility: 'hidden' }
   }
 
   if (maximizedPaneId.value) {
     if (paneId !== maximizedPaneId.value) {
-      return {
-        left: `${rect.x}px`,
-        top: `${rect.y}px`,
-        width: `${rect.width}px`,
-        height: `${rect.height}px`,
-        visibility: 'hidden'
-      }
+      return canvasFrame
+        ? {
+            left: `${canvasFrame.x + canvasPan.value.x}px`,
+            top: `${canvasFrame.y + canvasPan.value.y}px`,
+            width: `${canvasFrame.width}px`,
+            height: `${canvasFrame.height}px`,
+            visibility: 'hidden'
+          }
+        : {
+            left: `${rect?.x ?? 0}px`,
+            top: `${rect?.y ?? 0}px`,
+            width: `${rect?.width ?? 0}px`,
+            height: `${rect?.height ?? 0}px`,
+            visibility: 'hidden'
+          }
     }
 
     return {
-      left: '10px',
-      top: '10px',
-      width: `${Math.max(0, workspaceSize.value.width - 20)}px`,
-      height: `${Math.max(0, workspaceSize.value.height - 20)}px`,
+      left: '8px',
+      top: '8px',
+      width: `${Math.max(0, workspaceSize.value.width - 16)}px`,
+      height: `${Math.max(0, workspaceSize.value.height - 16)}px`,
       zIndex: '100'
     }
   }
 
+  if (canvasFrame) {
+    return {
+      left: `${canvasFrame.x + canvasPan.value.x}px`,
+      top: `${canvasFrame.y + canvasPan.value.y}px`,
+      width: `${canvasFrame.width}px`,
+      height: `${canvasFrame.height}px`,
+      zIndex: String(10 + Math.max(0, paneOrder.value.indexOf(paneId)))
+    }
+  }
+
   const style: Record<string, string> = {
-    left: `${rect.x}px`,
-    top: `${rect.y}px`,
-    width: `${rect.width}px`,
-    height: `${rect.height}px`
+    left: `${rect?.x ?? 0}px`,
+    top: `${rect?.y ?? 0}px`,
+    width: `${rect?.width ?? 0}px`,
+    height: `${rect?.height ?? 0}px`
   }
 
   if (layoutMode.value === 'freeform') {
@@ -364,6 +470,85 @@ function ensureFreeformGeometry(): void {
   }
 }
 
+let snapshotRequest = 0
+let snapshotRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+async function refreshPaneSnapshots(): Promise<void> {
+  if (layoutMode.value !== 'canvas' || panes.value.length === 0) {
+    return
+  }
+  const request = ++snapshotRequest
+  try {
+    const result = await window.paneflow.capturePaneSnapshots()
+    if (request !== snapshotRequest || !result.ok) {
+      return
+    }
+    const liveIds = new Set(panes.value.map((pane) => pane.id))
+    const next = Object.fromEntries(
+      Object.entries(paneSnapshots.value).filter(([paneId]) => liveIds.has(paneId))
+    )
+    for (const [paneId, snapshot] of Object.entries(result.snapshots)) {
+      if (liveIds.has(paneId)) {
+        next[paneId] = snapshot
+      }
+    }
+    paneSnapshots.value = next
+  } catch {
+    // Snapshots are a visual aid; live native views remain the primary layer.
+  }
+}
+
+function scheduleSnapshotRefresh(delay = 250): void {
+  if (snapshotRefreshTimer !== null) {
+    clearTimeout(snapshotRefreshTimer)
+  }
+  snapshotRefreshTimer = setTimeout(() => {
+    snapshotRefreshTimer = null
+    void refreshPaneSnapshots()
+  }, delay)
+}
+
+function ensureCanvasPositions(): void {
+  if (layoutMode.value !== 'canvas' || orderedPanes.value.length === 0) {
+    return
+  }
+  const paneIds = new Set(orderedPanes.value.map((pane) => pane.id))
+  const next: Record<string, CanvasPosition> = {}
+  let changed = false
+  let rightEdge = CANVAS_ORIGIN
+  let hasPosition = false
+
+  for (const [paneId, position] of Object.entries(canvasPositions.value)) {
+    if (!paneIds.has(paneId)) {
+      changed = true
+      continue
+    }
+    next[paneId] = { ...position }
+    const pane = orderedPanes.value.find((candidate) => candidate.id === paneId)
+    const width = pane ? canvasFrameSize(pane.viewport).width : 0
+    rightEdge = Math.max(rightEdge, position.x + width)
+    hasPosition = true
+  }
+
+  for (const pane of orderedPanes.value) {
+    if (next[pane.id]) {
+      continue
+    }
+    const width = canvasFrameSize(pane.viewport).width
+    const position = hasPosition
+      ? { x: Math.round(rightEdge + CANVAS_GAP), y: CANVAS_ORIGIN }
+      : { x: CANVAS_ORIGIN, y: CANVAS_ORIGIN }
+    next[pane.id] = position
+    rightEdge = position.x + width
+    hasPosition = true
+    changed = true
+  }
+
+  if (changed) {
+    canvasPositions.value = next
+  }
+}
+
 function tidyFreeform(): void {
   if (layoutMode.value !== 'freeform' || workspaceSize.value.width < 1) {
     return
@@ -372,7 +557,7 @@ function tidyFreeform(): void {
   const result = layoutGrid(
     orderedPanes.value.map((pane) => pane.id),
     workspaceSize.value,
-    { columns: gridColumns.value, padding: 10, gap: 10 }
+    { columns: gridColumns.value, padding: 8, gap: 8 }
   )
   if (!result.ok) {
     return
@@ -484,6 +669,102 @@ function beginInteraction(state: DragState): void {
   window.addEventListener('pointercancel', finishDrag)
 }
 
+function beginCanvasPan(event: PointerEvent): void {
+  if (canvasDrag.value || maximizedPaneId.value) {
+    return
+  }
+  event.preventDefault()
+  const captureTarget = event.currentTarget
+  if (captureTarget instanceof Element) {
+    try {
+      captureTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture is best-effort; window listeners still handle the drag.
+    }
+  }
+  canvasDrag.value = {
+    startX: event.clientX,
+    startY: event.clientY,
+    base: { ...canvasPan.value }
+  }
+  isCanvasPanning.value = true
+  document.body.classList.add('paneflow-canvas-panning')
+  void nextTick(scheduleMeasure)
+  if (Object.keys(paneSnapshots.value).length === 0) {
+    scheduleSnapshotRefresh(0)
+  }
+  window.addEventListener('pointermove', onCanvasPointerMove)
+  window.addEventListener('pointerup', finishCanvasPan)
+  window.addEventListener('pointercancel', finishCanvasPan)
+}
+
+function onCanvasPointerMove(event: PointerEvent): void {
+  const drag = canvasDrag.value
+  if (!drag) {
+    return
+  }
+  event.preventDefault()
+  canvasPan.value = {
+    x: drag.base.x + (event.clientX - drag.startX),
+    y: drag.base.y + (event.clientY - drag.startY)
+  }
+}
+
+function finishCanvasPan(): void {
+  if (!canvasDrag.value) {
+    return
+  }
+  canvasDrag.value = null
+  isCanvasPanning.value = false
+  document.body.classList.remove('paneflow-canvas-panning')
+  window.removeEventListener('pointermove', onCanvasPointerMove)
+  window.removeEventListener('pointerup', finishCanvasPan)
+  window.removeEventListener('pointercancel', finishCanvasPan)
+  void nextTick(async () => {
+    await measurePanes()
+    scheduleSnapshotRefresh()
+  })
+}
+
+function setCanvasHandMode(active: boolean): void {
+  if (canvasHandMode.value === active) {
+    return
+  }
+  canvasHandMode.value = active
+  void nextTick(scheduleMeasure)
+  if (active && Object.keys(paneSnapshots.value).length === 0) {
+    scheduleSnapshotRefresh(0)
+  }
+}
+
+function toggleCanvasHand(): void {
+  setCanvasHandMode(!canvasHandMode.value)
+}
+
+function onWorkspaceWheel(event: WheelEvent): void {
+  if (layoutMode.value !== 'canvas' || maximizedPaneId.value) {
+    return
+  }
+  event.preventDefault()
+  canvasPan.value = {
+    x: canvasPan.value.x - event.deltaX,
+    y: canvasPan.value.y - event.deltaY
+  }
+}
+
+function centerCanvasPane(paneId: string): void {
+  const frame = canvasFrames.value.get(paneId)
+  if (!frame) {
+    return
+  }
+  canvasPan.value = {
+    x: Math.round((workspaceSize.value.width - frame.width) / 2) - frame.x,
+    y: Math.round((workspaceSize.value.height - frame.height) / 2) - frame.y
+  }
+  activePaneId.value = paneId
+  void nextTick(scheduleMeasure)
+}
+
 function isResizeHandle(value: string | undefined): value is ResizeHandle {
   return (
     value === 'n' ||
@@ -509,12 +790,22 @@ function buildWorkspaceLayout(): WorkspaceLayout {
         { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
       ])
   )
+  const canvas = Object.fromEntries(
+    orderedPanes.value.flatMap((pane) => {
+      if (!ids.has(pane.id)) {
+        return []
+      }
+      const position = canvasPositions.value[pane.id] ?? defaultCanvasLayout.value[pane.id]
+      return position ? [[pane.id, { x: position.x, y: position.y }]] : []
+    })
+  )
   return {
     mode: layoutMode.value,
     columns: gridColumns.value,
     gridOrder: paneOrder.value.filter((paneId) => ids.has(paneId)),
     freeform,
-    freeformOrder: freeformOrder.value.filter((paneId) => ids.has(paneId))
+    freeformOrder: freeformOrder.value.filter((paneId) => ids.has(paneId)),
+    canvas
   }
 }
 
@@ -549,7 +840,8 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
     return [...retained, ...idsInOrder.filter((paneId) => !retainedSet.has(paneId))]
   }
 
-  layoutMode.value = layout.mode === 'freeform' ? 'freeform' : 'grid'
+  layoutMode.value =
+    layout.mode === 'freeform' || layout.mode === 'canvas' ? layout.mode : 'grid'
   gridColumns.value = Math.min(
     GRID_MAX_COLUMNS,
     Math.max(GRID_MIN_COLUMNS, Math.round(layout.columns) || DEFAULT_GRID_COLUMNS)
@@ -559,19 +851,19 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
     Object.entries(layout.freeform).filter(([paneId]) => ids.has(paneId))
   )
   freeformOrder.value = appendMissing(layout.freeformOrder)
+  canvasPositions.value = Object.fromEntries(
+    Object.entries(layout.canvas ?? {}).filter(([paneId]) => ids.has(paneId))
+  )
   maximizedPaneId.value = null
 }
 
 function applyThemeToDocument(): void {
-  if (themePreference.value === 'system') {
-    document.documentElement.removeAttribute('data-theme')
-  } else {
-    document.documentElement.dataset.theme = themePreference.value
-  }
+  document.documentElement.dataset.theme = resolvedTheme.value
 }
 
 function applyState(state: ShellState): void {
   themePreference.value = state.theme
+  resolvedTheme.value = state.resolvedTheme
   applyThemeToDocument()
   const workspaceChanged = currentWorkspaceId.value !== state.workspace.id
   if (workspaceChanged) {
@@ -579,6 +871,11 @@ function applyState(state: ShellState): void {
     paneOrder.value = []
     freeformGeometries.value = {}
     freeformOrder.value = []
+    canvasPositions.value = {}
+    canvasPan.value = { x: 0, y: 0 }
+    canvasHandMode.value = false
+    isCanvasPanning.value = false
+    paneSnapshots.value = {}
     layoutMode.value = 'grid'
     gridColumns.value = DEFAULT_GRID_COLUMNS
     maximizedPaneId.value = null
@@ -637,6 +934,9 @@ function applyState(state: ShellState): void {
     if (layoutMode.value === 'freeform') {
       ensureFreeformGeometry()
     }
+    if (layoutMode.value === 'canvas') {
+      ensureCanvasPositions()
+    }
     if (workspaceChanged) {
       // The target workspace already has persisted layout state. Re-enable
       // saves without writing it back during the switch.
@@ -692,10 +992,16 @@ async function openAddPaneMenu(event: MouseEvent): Promise<void> {
   try {
     const result = await window.paneflow.showAddPaneMenu({
       x: rect.right - 2,
-      y: rect.bottom + 2
+      y: rect.bottom + 2,
+      paneChrome: effectivePaneChrome.value,
+      showPaneChromePreview: layoutMode.value !== 'canvas'
     })
     if (!result.ok) {
       actionError.value = result.error
+      return
+    }
+    if (result.paneChrome) {
+      paneChrome.value = result.paneChrome
       return
     }
     if (result.preset) {
@@ -705,6 +1011,33 @@ async function openAddPaneMenu(event: MouseEvent): Promise<void> {
     actionError.value = 'Could not open the pane size menu.'
   } finally {
     addPaneMenuOpen.value = false
+  }
+}
+
+async function openAppearanceMenu(event: MouseEvent): Promise<void> {
+  if (appearanceMenuOpen.value) {
+    return
+  }
+  const button = event.currentTarget
+  if (!(button instanceof HTMLElement)) {
+    return
+  }
+
+  const rect = button.getBoundingClientRect()
+  appearanceMenuOpen.value = true
+  actionError.value = null
+  try {
+    const result = await window.paneflow.showThemeMenu({
+      x: Math.max(0, rect.left),
+      y: rect.bottom + 2
+    })
+    if (!result.ok) {
+      actionError.value = result.error
+    }
+  } catch {
+    actionError.value = 'Could not open the appearance menu.'
+  } finally {
+    appearanceMenuOpen.value = false
   }
 }
 
@@ -1448,12 +1781,36 @@ function onPointerMove(event: PointerEvent): void {
 }
 
 function onWorkspacePointerDown(event: PointerEvent): void {
-  if (event.button !== 0 || maximizedPaneId.value) {
+  if (maximizedPaneId.value) {
     return
   }
 
   const target = event.target
   if (!(target instanceof Element)) {
+    return
+  }
+
+  if (layoutMode.value === 'canvas') {
+    if (event.button !== 0 && event.button !== 1) {
+      return
+    }
+    const canvasCard = target.closest('[data-pane-id]')
+    if (canvasHandMode.value || !(canvasCard instanceof HTMLElement)) {
+      beginCanvasPan(event)
+      return
+    }
+    const canvasPaneId = canvasCard.dataset.paneId
+    if (!canvasPaneId) {
+      return
+    }
+    activePaneId.value = canvasPaneId
+    if (suspendedPaneIds.value.has(canvasPaneId)) {
+      centerCanvasPane(canvasPaneId)
+    }
+    return
+  }
+
+  if (event.button !== 0) {
     return
   }
 
@@ -1556,7 +1913,12 @@ async function measurePanes(): Promise<void> {
     if (rect.width < 1 || rect.height < 1) {
       continue
     }
-    const nativeViewsHidden = isDragging.value || profilesOpen.value || workspacesOpen.value
+    const nativeViewsHidden =
+      isDragging.value ||
+      profilesOpen.value ||
+      workspacesOpen.value ||
+      isCanvasPanning.value ||
+      canvasHandMode.value
     const visible =
       !nativeViewsHidden &&
       (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
@@ -1602,6 +1964,8 @@ watch(
   () => {
     if (layoutMode.value === 'freeform') {
       ensureFreeformGeometry()
+    } else if (layoutMode.value === 'canvas') {
+      ensureCanvasPositions()
     }
     void nextTick(scheduleMeasure)
   }
@@ -1626,8 +1990,21 @@ watch(layoutMode, (mode) => {
     freeformOrder.value = [...retained, ...ids.filter((paneId) => !retainedSet.has(paneId))]
   }
 
+  if (mode !== 'canvas') {
+    canvasHandMode.value = false
+    isCanvasPanning.value = false
+    canvasDrag.value = null
+    document.body.classList.remove('paneflow-canvas-panning')
+  }
+
   void nextTick(() => {
-    ensureFreeformGeometry()
+    if (mode === 'freeform') {
+      ensureFreeformGeometry()
+    }
+    if (mode === 'canvas') {
+      ensureCanvasPositions()
+      scheduleSnapshotRefresh(150)
+    }
     scheduleMeasure()
   })
 })
@@ -1647,11 +2024,46 @@ watch(workspacesOpen, () => {
   void nextTick(scheduleMeasure)
 })
 
-watch([paneOrder, gridColumns, layoutMode, freeformGeometries, freeformOrder], () => {
-  if (!layoutPersistenceReady || isDragging.value) {
-    return
+watch(
+  [paneOrder, gridColumns, layoutMode, freeformGeometries, freeformOrder, canvasPositions],
+  () => {
+    if (!layoutPersistenceReady || isDragging.value) {
+      return
+    }
+    void saveWorkspaceLayout()
   }
-  void saveWorkspaceLayout()
+)
+
+watch(paneChrome, (style) => {
+  persistPaneChromePreference(style)
+  void nextTick(scheduleMeasure)
+})
+
+watch(
+  () =>
+    panes.value
+      .map((pane) =>
+        [
+          pane.id,
+          pane.url,
+          pane.isLoading,
+          pane.viewport.preset,
+          pane.viewport.width,
+          pane.viewport.height
+        ].join(':')
+      )
+      .join('|'),
+  () => {
+    if (layoutMode.value === 'canvas' && !isCanvasPanning.value && !canvasHandMode.value) {
+      scheduleSnapshotRefresh(600)
+    }
+  }
+)
+
+watch(resolvedTheme, () => {
+  if (layoutMode.value === 'canvas') {
+    scheduleSnapshotRefresh(600)
+  }
 })
 
 onMounted(async () => {
@@ -1701,7 +2113,16 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', finishDrag)
   window.removeEventListener('pointercancel', finishDrag)
+  window.removeEventListener('pointermove', onCanvasPointerMove)
+  window.removeEventListener('pointerup', finishCanvasPan)
+  window.removeEventListener('pointercancel', finishCanvasPan)
   document.body.classList.remove('paneflow-dragging')
+  document.body.classList.remove('paneflow-canvas-panning')
+  snapshotRequest += 1
+  if (snapshotRefreshTimer !== null) {
+    clearTimeout(snapshotRefreshTimer)
+    snapshotRefreshTimer = null
+  }
   if (measureFrame !== 0) {
     window.cancelAnimationFrame(measureFrame)
   }
@@ -1712,6 +2133,8 @@ onBeforeUnmount(() => {
   <div
     class="app-shell"
     :class="{ 'is-dragging': isDragging, 'mac-titlebar': usesMacTitlebar }"
+    :data-pane-chrome="paneChrome"
+    :data-layout-mode="layoutMode"
   >
     <header class="toolbar">
       <h1 class="brand">PaneFlow</h1>
@@ -1751,11 +2174,38 @@ onBeforeUnmount(() => {
         >
           Freeform
         </button>
+        <button
+          type="button"
+          :class="{ active: layoutMode === 'canvas' }"
+          :aria-pressed="layoutMode === 'canvas'"
+          @click="layoutMode = 'canvas'"
+        >
+          Canvas
+        </button>
       </div>
 
+      <button
+        v-if="layoutMode === 'canvas'"
+        class="icon-button toolbar-icon hand-tool"
+        :class="{ active: canvasHandMode }"
+        type="button"
+        title="Hand tool"
+        aria-label="Hand tool"
+        :aria-pressed="canvasHandMode"
+        @click="toggleCanvasHand"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M8 2.2v4.1M3.8 4.8l2.9 2.9M12.2 4.8 9.3 7.7M2.2 10.2l3.4 3.4h4.8l3.4-3.4" />
+        </svg>
+      </button>
+
       <label v-if="panes.length > 0 && layoutMode === 'grid'" class="grid-control">
-        <span class="grid-label">Columns</span>
-        <select v-model.number="gridColumns" class="grid-select" aria-label="Grid columns">
+        <select
+          v-model.number="gridColumns"
+          class="grid-select"
+          aria-label="Grid columns"
+          title="Grid columns"
+        >
           <option v-for="column in 5" :key="column" :value="column">{{ column }}</option>
         </select>
       </label>
@@ -1769,12 +2219,13 @@ onBeforeUnmount(() => {
         Tidy
       </button>
 
-      <span class="pane-count" role="status" aria-live="polite">{{ paneCountLabel }}</span>
+      <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
       <button
         ref="profilesButtonEl"
-        class="toolbar-button"
+        class="toolbar-button toolbar-button-compact"
         type="button"
         title="Manage browser profiles"
+        aria-label="Profiles"
         aria-haspopup="dialog"
         :aria-expanded="profilesOpen"
         @click="openProfiles"
@@ -1783,7 +2234,27 @@ onBeforeUnmount(() => {
           <circle cx="8" cy="5.5" r="2.5" />
           <path d="M3.5 13c.4-2.2 2.2-3.5 4.5-3.5s4.1 1.3 4.5 3.5" />
         </svg>
-        Profiles
+      </button>
+      <button
+        class="icon-button toolbar-icon appearance-button"
+        type="button"
+        :title="`Appearance: ${themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark'}`"
+        :aria-label="`Appearance: ${themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark'}`"
+        aria-haspopup="menu"
+        :aria-expanded="appearanceMenuOpen"
+        @click="openAppearanceMenu"
+      >
+        <svg v-if="themePreference === 'dark'" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M13.2 9.7A5.5 5.5 0 0 1 6.3 2.8 5.5 5.5 0 1 0 13.2 9.7Z" />
+        </svg>
+        <svg v-else-if="themePreference === 'light'" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="3.1" />
+          <path d="M8 1.5v1.7M8 12.8v1.7M1.5 8h1.7M12.8 8h1.7M3.4 3.4l1.2 1.2M11.4 11.4l1.2 1.2M12.6 3.4l-1.2 1.2M4.6 11.4l-1.2 1.2" />
+        </svg>
+        <svg v-else viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2.2" y="3" width="11.6" height="8" rx="1.3" />
+          <path d="M5.5 13h5M8 11v2" />
+        </svg>
       </button>
       <div class="add-pane-group">
         <button
@@ -1839,13 +2310,28 @@ onBeforeUnmount(() => {
       {{ gridNotice }}
     </div>
 
+    <GlobalPaneBar
+      v-if="showGlobalPaneBar && activePane"
+      :key="activePane.id"
+      :pane="activePane"
+      @set-viewport="setPaneViewport(activePane.id, $event)"
+      @layout-changed="onPaneLayoutChanged"
+    />
+
     <main
       ref="workspaceEl"
       class="workspace"
+      :class="{
+        'workspace-canvas': layoutMode === 'canvas',
+        'canvas-panning': isCanvasPanning,
+        'canvas-hand': canvasHandMode
+      }"
+      :style="canvasWorkspaceStyle"
       aria-label="Browser workspace"
       @scroll.passive="scheduleMeasure"
       @pointerdown="onWorkspacePointerDown"
       @focusin="onWorkspaceFocusIn"
+      @wheel="onWorkspaceWheel"
     >
       <div
         v-if="orderedPanes.length > 0"
@@ -1870,6 +2356,9 @@ onBeforeUnmount(() => {
             :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
             :rename-request="paneRenameRequests[pane.id] ?? 0"
+            :chrome-style="effectivePaneChrome"
+            :snapshot="layoutMode === 'canvas' ? paneSnapshots[pane.id] : undefined"
+            :canvas="layoutMode === 'canvas'"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
             @toggle-maximize="toggleMaximize(pane.id)"
@@ -1946,7 +2435,7 @@ onBeforeUnmount(() => {
             <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
             <p id="profiles-description" class="profiles-description">
               Each profile keeps its own cookies and site storage. Open pane explicitly shares this
-              profile; close its panes before clearing or deleting it.
+              profile.
             </p>
           </div>
           <button
@@ -2133,8 +2622,7 @@ onBeforeUnmount(() => {
           <div>
             <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
             <p id="workspaces-description" class="profiles-description">
-              Each workspace keeps its own panes, layout, URLs, and viewport settings. Switching
-              closes the current pane views and opens the selected workspace.
+              Each workspace keeps its own panes, layout, URLs, and viewport settings.
             </p>
           </div>
           <button
@@ -2330,9 +2818,9 @@ onBeforeUnmount(() => {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 46px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 42px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   user-select: none;
@@ -2362,23 +2850,21 @@ onBeforeUnmount(() => {
   flex: 1;
 }
 
-.pane-count {
-  color: var(--text-faint);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .grid-control {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   color: var(--text-muted);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.grid-label {
-  color: var(--text-faint);
 }
 
 .grid-select {
@@ -2422,6 +2908,11 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 0 0 1px var(--border);
 }
 
+.hand-tool.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
 .toolbar-button {
   display: inline-flex;
   align-items: center;
@@ -2444,13 +2935,12 @@ onBeforeUnmount(() => {
 
 .toolbar-button.primary {
   border-color: transparent;
-  background: var(--text);
-  color: var(--bg);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .toolbar-button.primary:hover:not(:disabled) {
-  background: var(--text);
-  opacity: 0.86;
+  background: color-mix(in srgb, var(--accent-soft) 82%, var(--accent) 18%);
 }
 
 .add-pane-group {
@@ -2464,13 +2954,19 @@ onBeforeUnmount(() => {
 
 .add-pane-group .add-pane-menu {
   padding: 0 6px;
-  border-left: 1px solid var(--bg);
+  border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent);
   border-radius: 0 6px 6px 0;
 }
 
 .add-pane-group .add-pane-menu svg {
   width: 11px;
   height: 11px;
+}
+
+.toolbar-button-compact {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
 }
 
 .toolbar-button svg {
@@ -2570,9 +3066,31 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+.workspace-canvas {
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--border) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.workspace-canvas.canvas-panning,
+.workspace-canvas.canvas-hand {
+  cursor: grabbing;
+}
+
+.workspace-canvas .pane-grid {
+  min-height: 100%;
+}
+
 .pane-grid {
   position: relative;
   min-height: 100%;
+}
+
+.appearance-button {
+  flex: none;
 }
 
 .pane-slot {
@@ -2648,7 +3166,7 @@ onBeforeUnmount(() => {
 .profiles-dialog {
   display: flex;
   flex-direction: column;
-  width: min(700px, 100%);
+  width: min(660px, 100%);
   max-height: min(740px, calc(100vh - 48px));
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -2725,7 +3243,7 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px 14px;
   align-items: start;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-top: 1px solid var(--border);
 }
 
@@ -2943,21 +3461,8 @@ onBeforeUnmount(() => {
 
 @media (max-width: 820px) {
   .toolbar {
-    gap: 6px;
+    gap: 4px;
     padding: 0 8px;
-  }
-
-  .grid-label {
-    display: none;
-  }
-
-  .pane-count {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 }
 </style>

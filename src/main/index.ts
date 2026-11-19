@@ -16,6 +16,7 @@ import {
 import {
   IPC_CHANNELS,
   type PaneCommand,
+  type ScriptResult,
   type ShellState,
   type WorkspaceTransferResult
 } from '../shared/ipc'
@@ -50,7 +51,11 @@ import {
   parseWorkspaceTransfer,
   serializeWorkspaceTransfer
 } from '../shared/workspace-transfer'
-import { BrowserManager, type PaneInitialization } from './browser-manager'
+import {
+  BrowserManager,
+  type PaneColorScheme,
+  type PaneInitialization
+} from './browser-manager'
 import { registerIpcHandlers } from './ipc'
 import { writeJsonAtomically } from './json-file'
 import { ProfileStore } from './profile-store'
@@ -113,7 +118,8 @@ function currentShellState(): ShellState {
       id: store?.activeWorkspaceId() ?? DEFAULT_WORKSPACE_ID,
       name: store?.activeWorkspaceName() ?? DEFAULT_WORKSPACE_NAME
     },
-    theme: store?.theme() ?? 'system'
+    theme: store?.theme() ?? 'system',
+    resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
   }
 }
 
@@ -194,6 +200,7 @@ async function createInitialPanes(
 
 function createBrowserManager(window: BaseWindow, profiles: ProfileStore): BrowserManager {
   return new BrowserManager(window, profiles, {
+    getColorScheme: paneColorScheme,
     onStateChanged: () => {
       if (workspaceSwitching) {
         return
@@ -256,6 +263,7 @@ async function switchWorkspaceTo(workspaceId: string): Promise<void> {
 
     current.destroyAll()
     browserManager = nextManager
+    nextManager.setColorScheme(paneColorScheme())
     lastPersistedPaneKey = JSON.stringify(nextManager.workspacePanes())
     panePersistenceEnabled = true
   } catch (error) {
@@ -522,6 +530,16 @@ function windowBackgroundColor(): string {
   return nativeTheme.shouldUseDarkColors ? '#171716' : '#f5f5f3'
 }
 
+function paneColorScheme(): PaneColorScheme {
+  if (nativeTheme.themeSource === 'light') {
+    return 'light'
+  }
+  if (nativeTheme.themeSource === 'dark') {
+    return 'dark'
+  }
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+}
+
 function updateWindowBackground(): void {
   const color = windowBackgroundColor()
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -546,6 +564,7 @@ function applyThemePreference(theme: ThemePreference, persist = true): void {
   nativeTheme.themeSource = theme
   updateWindowBackground()
   refreshThemeMenu()
+  browserManager?.setColorScheme(paneColorScheme())
   if (persist) {
     const store = workspaceStore
     if (!store) {
@@ -592,6 +611,40 @@ async function refreshWorkspaceMenu(): Promise<void> {
     return
   }
   applyWorkspaceMenuEnabled(enabled)
+}
+
+function themeMenuItems(): MenuItemConstructorOptions[] {
+  return (['system', 'light', 'dark'] as const).map((theme) => ({
+    id: `theme-${theme}`,
+    label: theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark',
+    type: 'radio',
+    checked: nativeTheme.themeSource === theme,
+    click: () => applyThemePreference(theme)
+  }))
+}
+
+function showThemeMenu(x: number, y: number): Promise<ScriptResult> {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return Promise.resolve({ ok: false, error: 'Invalid menu position.' })
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return Promise.resolve({ ok: false, error: 'Window is not available.' })
+  }
+
+  const window = mainWindow
+  return new Promise((resolve) => {
+    const menu = Menu.buildFromTemplate(themeMenuItems())
+    try {
+      menu.popup({
+        window,
+        x: Math.max(0, Math.round(x)),
+        y: Math.max(0, Math.round(y)),
+        callback: () => resolve({ ok: true })
+      })
+    } catch {
+      resolve({ ok: false, error: 'Could not open the appearance menu.' })
+    }
+  })
 }
 
 function buildApplicationMenu(): void {
@@ -683,29 +736,7 @@ function buildApplicationMenu(): void {
         { type: 'separator' },
         {
           label: 'Theme',
-          submenu: [
-            {
-              id: 'theme-system',
-              label: 'System',
-              type: 'radio',
-              checked: nativeTheme.themeSource === 'system',
-              click: () => applyThemePreference('system')
-            },
-            {
-              id: 'theme-light',
-              label: 'Light',
-              type: 'radio',
-              checked: nativeTheme.themeSource === 'light',
-              click: () => applyThemePreference('light')
-            },
-            {
-              id: 'theme-dark',
-              label: 'Dark',
-              type: 'radio',
-              checked: nativeTheme.themeSource === 'dark',
-              click: () => applyThemePreference('dark')
-            }
-          ]
+          submenu: themeMenuItems()
         },
         { type: 'separator' },
         { role: 'togglefullscreen' }
@@ -999,6 +1030,8 @@ app.whenReady().then(async () => {
   nativeTheme.on('updated', () => {
     updateWindowBackground()
     refreshThemeMenu()
+    browserManager?.setColorScheme(paneColorScheme())
+    sendShellState()
   })
   installShellContentPolicy(shellCsp)
   installShellProtocol(join(__dirname, '../renderer'), shellCsp)
@@ -1014,6 +1047,8 @@ app.whenReady().then(async () => {
       name: workspaceStore?.activeWorkspaceName() ?? DEFAULT_WORKSPACE_NAME
     }),
     getThemePreference: () => workspaceStore?.theme() ?? 'system',
+    getResolvedTheme: () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'),
+    showThemeMenu,
     saveWorkspaceLayout: async (input) => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }

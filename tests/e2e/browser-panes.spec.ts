@@ -676,6 +676,46 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(Math.abs(aliceViewport.width - (aliceDomRect?.rect.width ?? 0))).toBeLessThanOrEqual(1)
     expect(Math.abs(aliceViewport.height - (aliceDomRect?.rect.height ?? 0))).toBeLessThanOrEqual(1)
 
+    // Canvas mode: a dotted infinite backdrop, a global active-pane bar, and
+    // native views hidden while the world pans. Snapshots keep the frames
+    // visible during the gesture and for partially off-screen panes.
+    await shellPage.getByRole('button', { name: 'Canvas' }).click()
+    await expect(shellPage.locator('.workspace')).toHaveClass(/workspace-canvas/)
+    await expect(shellPage.locator('.global-pane-bar')).toBeVisible()
+    await waitForAlignedBounds(app)
+    await expect.poll(() => shellPage.locator('.pane-snapshot').count()).toBe(2)
+    const canvasBefore = await shellPage.locator('.pane-card').first().boundingBox()
+    if (!canvasBefore) {
+      throw new Error('Canvas pane bounds are unavailable')
+    }
+    const canvasWorkspace = await shellPage.locator('.workspace').boundingBox()
+    if (!canvasWorkspace) {
+      throw new Error('Canvas workspace bounds are unavailable')
+    }
+    await shellPage.mouse.move(canvasWorkspace.x + 8, canvasWorkspace.y + 8)
+    await shellPage.mouse.down()
+    await shellPage.mouse.move(canvasWorkspace.x + 88, canvasWorkspace.y + 12, { steps: 6 })
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
+      .toBe(true)
+    await shellPage.mouse.up()
+    await waitForVisibleAlignedBounds(app)
+    const canvasAfter = await shellPage.locator('.pane-card').first().boundingBox()
+    expect(canvasAfter?.x).not.toBe(canvasBefore.x)
+    expect(canvasAfter?.y).not.toBe(canvasBefore.y)
+    const handTool = shellPage.getByRole('button', { name: 'Hand tool' })
+    await handTool.click()
+    await expect(handTool).toHaveAttribute('aria-pressed', 'true')
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).every((state) => !state.visible))
+      .toBe(true)
+    await handTool.click()
+    await expect(handTool).toHaveAttribute('aria-pressed', 'false')
+    await waitForVisibleAlignedBounds(app)
+    await shellPage.getByRole('button', { name: 'Grid' }).click()
+    await expect(shellPage.locator('.workspace')).not.toHaveClass(/workspace-canvas/)
+    await waitForAlignedBounds(app)
+
     // Per-pane viewport emulation: presets, custom dimensions, validation,
     // independent pane settings, always-fit scaling, and return to responsive
     // sizing. There is intentionally no display-scale selector.
@@ -732,16 +772,17 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await customRow.getByLabel('Custom viewport width').fill('500')
+    await customRow.getByLabel('Custom viewport height').fill('1000')
     await customRow.getByRole('button', { name: 'Apply' }).click()
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) =>
         state.panes[0]?.viewport.preset === 'custom' &&
         state.panes[0]?.viewport.width === 500 &&
-        state.panes[0]?.viewport.height === 700,
+        state.panes[0]?.viewport.height === 1000,
       'custom viewport state'
     )
-    await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 700, dpr: 2 })
+    await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 1000, dpr: 2 })
     await waitForAlignedBounds(app)
 
     const customFitEmulation = await getEmulationState(app, alicePaneId as string)
@@ -804,7 +845,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
           rect !== undefined &&
           Math.abs(metrics.width - rect.rect.width) <= 1 &&
           Math.abs(metrics.height - rect.rect.height) <= 1 &&
-          metrics.dpr > 1
+          metrics.dpr === shellViewport.dpr
         )
       })
       .toBe(true)
@@ -1277,18 +1318,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await clickAppMenuCommand(app, 'pane-layout')
     await expect(gridButton).toHaveAttribute('aria-pressed', 'true')
     await waitForAlignedBounds(app)
-    await shellPage.emulateMedia({ colorScheme: 'light' })
+    const resolvedTheme = (await getSnapshot(app as ElectronApplication)).resolvedTheme
+    expect(['light', 'dark']).toContain(resolvedTheme)
+    await expect(shellPage.locator('html')).toHaveAttribute('data-theme', resolvedTheme)
     expect(
       await shellPage.evaluate(() =>
         getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
       )
-    ).toBe('#f5f5f3')
-    await shellPage.emulateMedia({ colorScheme: 'dark' })
-    expect(
-      await shellPage.evaluate(() =>
-        getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
-      )
-    ).toBe('#171716')
+    ).toBe(resolvedTheme === 'dark' ? '#171716' : '#f5f5f3')
 
     // The address chrome is real UI: type and submit in the native pane header,
     // then use the Back button in the shell.
@@ -1564,6 +1601,15 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         )
       )
       .toBe('#171716')
+    await expect
+      .poll(() =>
+        evaluateInPane<boolean>(
+          app as ElectronApplication,
+          alicePaneId as string,
+          "matchMedia('(prefers-color-scheme: dark)').matches"
+        )
+      )
+      .toBe(true)
 
     await app.evaluate(({ BaseWindow }) => {
       const window = BaseWindow.getAllWindows()[0]
@@ -1670,6 +1716,15 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         )
       )
       .toBe('#171716')
+    await expect
+      .poll(() =>
+        evaluateInPane<boolean>(
+          restartApp,
+          restarted.panes[0]?.id as string,
+          "matchMedia('(prefers-color-scheme: dark)').matches"
+        )
+      )
+      .toBe(true)
     await clickAppMenuCommand(restartApp, 'theme-system')
     await waitFor(
       () => readPersistedAppState(userDataDir),

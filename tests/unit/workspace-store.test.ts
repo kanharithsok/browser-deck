@@ -174,7 +174,11 @@ describe('WorkspaceStore', () => {
       freeform: {
         [PANE_A]: { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
       },
-      freeformOrder: [PANE_B, PANE_A]
+      freeformOrder: [PANE_B, PANE_A],
+      canvas: {
+        [PANE_A]: { x: 40, y: 60 },
+        [PANE_B]: { x: 700, y: 60 }
+      }
     })
     await store.flush()
 
@@ -188,7 +192,11 @@ describe('WorkspaceStore', () => {
       freeform: {
         [PANE_A]: { x: 0.1, y: 0.2, width: 0.4, height: 0.5 }
       },
-      freeformOrder: [PANE_B, PANE_A]
+      freeformOrder: [PANE_B, PANE_A],
+      canvas: {
+        [PANE_A]: { x: 40, y: 60 },
+        [PANE_B]: { x: 700, y: 60 }
+      }
     })
   })
 

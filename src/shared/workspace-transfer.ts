@@ -1,3 +1,4 @@
+import { isValidCanvasPosition, type CanvasPosition } from './canvas'
 import {
   GRID_MAX_COLUMNS,
   GRID_MIN_COLUMNS,
@@ -32,6 +33,7 @@ export interface WorkspaceTransferLayout {
   gridOrder: number[]
   freeform: Record<string, NormalizedRect>
   freeformOrder: number[]
+  canvas?: Record<string, CanvasPosition>
 }
 
 export interface WorkspaceTransfer {
@@ -102,6 +104,13 @@ export function serializeWorkspaceTransfer(workspace: WorkspaceData): WorkspaceT
       freeform[String(index)] = { ...rect }
     }
   }
+  const canvas: Record<string, CanvasPosition> = {}
+  for (const [paneId, position] of Object.entries(workspace.layout.canvas ?? {})) {
+    const index = indices.get(paneId)
+    if (index !== undefined) {
+      canvas[String(index)] = { ...position }
+    }
+  }
 
   return {
     format: WORKSPACE_TRANSFER_FORMAT,
@@ -117,7 +126,8 @@ export function serializeWorkspaceTransfer(workspace: WorkspaceData): WorkspaceT
       columns: workspace.layout.columns,
       gridOrder: mapOrder(workspace.layout.gridOrder),
       freeform,
-      freeformOrder: mapOrder(workspace.layout.freeformOrder)
+      freeformOrder: mapOrder(workspace.layout.freeformOrder),
+      canvas
     }
   }
 }
@@ -178,7 +188,9 @@ export function parseWorkspaceTransfer(
   }
   const layoutRecord = record.layout as Record<string, unknown>
   const mode: WorkspaceLayoutMode =
-    layoutRecord.mode === 'freeform' || layoutRecord.mode === 'grid'
+    layoutRecord.mode === 'freeform' ||
+    layoutRecord.mode === 'grid' ||
+    layoutRecord.mode === 'canvas'
       ? layoutRecord.mode
       : 'grid'
   const columns =
@@ -222,6 +234,32 @@ export function parseWorkspaceTransfer(
     freeform[key] = rect
   }
 
+  const canvas: Record<string, CanvasPosition> = {}
+  if (layoutRecord.canvas !== undefined) {
+    if (
+      typeof layoutRecord.canvas !== 'object' ||
+      layoutRecord.canvas === null ||
+      Array.isArray(layoutRecord.canvas)
+    ) {
+      return { ok: false, error: 'Workspace import canvas layout is invalid.' }
+    }
+    for (const [key, value] of Object.entries(
+      layoutRecord.canvas as Record<string, unknown>
+    )) {
+      if (!/^\d+$/.test(key)) {
+        return { ok: false, error: 'Workspace import canvas key is invalid.' }
+      }
+      const index = Number(key)
+      if (index < 0 || index >= panes.length) {
+        return { ok: false, error: 'Workspace import canvas pane is invalid.' }
+      }
+      if (!isValidCanvasPosition(value)) {
+        return { ok: false, error: 'Workspace import canvas position is invalid.' }
+      }
+      canvas[key] = { x: Math.round(value.x), y: Math.round(value.y) }
+    }
+  }
+
   return {
     ok: true,
     transfer: {
@@ -229,7 +267,7 @@ export function parseWorkspaceTransfer(
       version: WORKSPACE_TRANSFER_VERSION,
       name,
       panes,
-      layout: { mode, columns, gridOrder, freeform, freeformOrder }
+      layout: { mode, columns, gridOrder, freeform, freeformOrder, canvas }
     }
   }
 }
@@ -260,6 +298,13 @@ export function materializeWorkspaceTransfer(
       freeform[paneId] = { ...rect }
     }
   }
+  const canvas: Record<string, CanvasPosition> = {}
+  for (const [key, position] of Object.entries(transfer.layout.canvas ?? {})) {
+    const paneId = paneIds[Number(key)]
+    if (paneId) {
+      canvas[paneId] = { ...position }
+    }
+  }
 
   return {
     version: WORKSPACE_STORE_VERSION,
@@ -271,7 +316,8 @@ export function materializeWorkspaceTransfer(
       columns: transfer.layout.columns,
       gridOrder: mapOrder(transfer.layout.gridOrder),
       freeform,
-      freeformOrder: mapOrder(transfer.layout.freeformOrder)
+      freeformOrder: mapOrder(transfer.layout.freeformOrder),
+      canvas
     },
     updatedAt: new Date().toISOString()
   }

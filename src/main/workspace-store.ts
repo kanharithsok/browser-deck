@@ -105,7 +105,13 @@ function copyLayout(layout: WorkspaceLayout): WorkspaceLayout {
     freeform: Object.fromEntries(
       Object.entries(layout.freeform).map(([paneId, rect]) => [paneId, { ...rect }])
     ),
-    freeformOrder: [...layout.freeformOrder]
+    freeformOrder: [...layout.freeformOrder],
+    canvas: Object.fromEntries(
+      Object.entries(layout.canvas ?? {}).map(([paneId, position]) => [
+        paneId,
+        { ...position }
+      ])
+    )
   }
 }
 
