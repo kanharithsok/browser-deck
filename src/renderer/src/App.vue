@@ -1101,6 +1101,9 @@ function onCanvasMinimapAction(action: CanvasMinimapAction): void {
     recenterCanvasAt(action.x, action.y)
     return
   }
+  if (action.type === 'collapse') {
+    return
+  }
   fitCanvasToPanes()
 }
 
