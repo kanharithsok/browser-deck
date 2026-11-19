@@ -6,6 +6,10 @@ import {
   type MenuItemConstructorOptions,
   type WebContents
 } from 'electron'
+import {
+  CANVAS_RESPONSIVE_HEIGHT,
+  CANVAS_RESPONSIVE_WIDTH
+} from '../shared/canvas'
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
 import type {
   AddPaneMenuResult,
@@ -99,6 +103,7 @@ function isAbortError(errorCode: number): boolean {
 export class BrowserManager {
   private readonly panes = new Map<string, PaneRecord>()
   private destroyed = false
+  private canvasZoom = 1
 
   constructor(
     private readonly window: BaseWindow,
@@ -387,6 +392,17 @@ export class BrowserManager {
     for (const record of this.panes.values()) {
       record.lastColorScheme = null
       this.applyColorScheme(record, scheme)
+    }
+  }
+
+  setCanvasZoom(zoom: number): void {
+    if (this.canvasZoom === zoom) {
+      return
+    }
+    this.canvasZoom = zoom
+    for (const record of this.panes.values()) {
+      record.lastEmulationSignature = ''
+      this.applyEmulation(record)
     }
   }
 
@@ -960,14 +976,39 @@ export class BrowserManager {
     }
 
     if (record.viewport.preset === 'responsive') {
-      if (!record.emulationEnabled) {
+      if (this.canvasZoom === 1) {
+        if (!record.emulationEnabled) {
+          record.lastEmulationSignature = 'responsive'
+          return
+        }
+        webContents.disableDeviceEmulation()
+        record.emulationEnabled = false
+        record.appliedScale = 0
         record.lastEmulationSignature = 'responsive'
         return
       }
-      webContents.disableDeviceEmulation()
-      record.emulationEnabled = false
-      record.appliedScale = 0
-      record.lastEmulationSignature = 'responsive'
+
+      const canvasSignature = `responsive-canvas:${this.canvasZoom}`
+      if (record.lastEmulationSignature === canvasSignature) {
+        return
+      }
+      webContents.enableDeviceEmulation({
+        screenPosition: 'desktop',
+        screenSize: {
+          width: CANVAS_RESPONSIVE_WIDTH,
+          height: CANVAS_RESPONSIVE_HEIGHT
+        },
+        viewPosition: { x: 0, y: 0 },
+        deviceScaleFactor: 1,
+        viewSize: {
+          width: CANVAS_RESPONSIVE_WIDTH,
+          height: CANVAS_RESPONSIVE_HEIGHT
+        },
+        scale: this.canvasZoom
+      })
+      record.emulationEnabled = true
+      record.appliedScale = this.canvasZoom
+      record.lastEmulationSignature = canvasSignature
       return
     }
 
