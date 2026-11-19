@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC_CHANNELS,
+  type AddPaneMenuRequest,
   type PaneBoundsUpdate,
   type PaneCommand,
   type PaneFlowApi,
@@ -13,6 +14,8 @@ import type { WorkspaceLayout } from '../shared/workspace'
 const api: PaneFlowApi = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<ShellState>,
   addPane: (url) => ipcRenderer.invoke(IPC_CHANNELS.addPane, url),
+  addPaneWithViewport: (viewport: PaneViewport) =>
+    ipcRenderer.invoke(IPC_CHANNELS.addPaneWithViewport, viewport),
   addPaneWithProfile: (profileId: string, url?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.addPaneWithProfile, profileId, url),
   duplicatePane: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.duplicatePane, paneId),
@@ -56,6 +59,8 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.sendPaneToBack, paneId),
   showPaneMenu: (request: PaneMenuRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.showPaneMenu, request),
+  showAddPaneMenu: (request: AddPaneMenuRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.showAddPaneMenu, request),
   onStateChanged: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: ShellState): void => {
       listener(state)

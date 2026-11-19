@@ -2,6 +2,7 @@ import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
 import {
   IPC_CHANNELS,
+  type AddPaneMenuResult,
   type ProfileListResult,
   type ShellState,
   type ScriptResult,
@@ -111,6 +112,26 @@ export function registerIpcHandlers(context: IpcContext): void {
       return { ok: false, error: 'Could not create the pane.' }
     }
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.addPaneWithViewport,
+    async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+
+      try {
+        return await manager.addPaneWithViewport(payload)
+      } catch {
+        return { ok: false, error: 'Could not create the pane.' }
+      }
+    }
+  )
 
   ipcMain.handle(
     IPC_CHANNELS.addPaneWithProfile,
@@ -437,6 +458,32 @@ export function registerIpcHandlers(context: IpcContext): void {
     const paneId = readString(payload, 100)
     return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid pane ID.' }
   })
+
+  ipcMain.handle(
+    IPC_CHANNELS.showAddPaneMenu,
+    async (event, payload: unknown): Promise<AddPaneMenuResult> => {
+      if (!isTrustedSender(event, context)) {
+        return { ok: false, error: 'Unauthorized sender.' }
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return { ok: false, error: 'Pane manager is not ready.' }
+      }
+
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        return { ok: false, error: 'Invalid menu request.' }
+      }
+
+      const request = payload as Record<string, unknown>
+      const x = readFiniteNumber(request.x)
+      const y = readFiniteNumber(request.y)
+      if (x === null || y === null) {
+        return { ok: false, error: 'Invalid menu request.' }
+      }
+
+      return manager.showAddPaneMenu(x, y)
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.showPaneMenu, (event, payload: unknown): ScriptResult => {
     if (!isTrustedSender(event, context)) {

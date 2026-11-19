@@ -1205,6 +1205,65 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes.length === 2,
       'menu close pane'
     )
+
+    const paneIdsBeforeDeviceAdd = new Set(
+      (await getSnapshot(app as ElectronApplication)).panes.map((pane) => pane.id)
+    )
+    const rejectedDeviceAdd = await shellEvaluate<{ ok: boolean }>(
+      app,
+      "window.paneflow.addPaneWithViewport({ preset: 'watch' })"
+    )
+    expect(rejectedDeviceAdd.ok).toBe(false)
+    const deviceAdd = await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.paneflow.addPaneWithViewport(${JSON.stringify({
+        preset: 'mobile',
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 3
+      })})`
+    )
+    expect(deviceAdd.ok).toBe(true)
+    const deviceSnapshot = await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.length === 3 &&
+        state.panes.some((pane) => !paneIdsBeforeDeviceAdd.has(pane.id)),
+      'device pane creation'
+    )
+    const devicePane = deviceSnapshot.panes.find(
+      (pane) => !paneIdsBeforeDeviceAdd.has(pane.id)
+    )
+    if (!devicePane) {
+      throw new Error('Device pane is unavailable')
+    }
+    expect(devicePane.viewport).toEqual({
+      preset: 'mobile',
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3
+    })
+    await waitForAlignedBounds(app)
+    await expect(
+      shellPage.locator(`.pane-card[data-pane-id="${devicePane.id}"] .viewport-select`)
+    ).toHaveValue('mobile')
+    await waitFor(
+      () => getEmulationState(app as ElectronApplication, devicePane.id),
+      (state) => state?.enabled === true && (state.scale ?? 0) > 0 && (state.scale ?? 0) < 1,
+      'device pane fit emulation'
+    )
+    await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.paneflow.closePane(${JSON.stringify(devicePane.id)})`
+    )
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.length === 2 && !state.panes.some((pane) => pane.id === devicePane.id),
+      'device pane cleanup'
+    )
+    await waitForAlignedBounds(app)
+
     await clickAppMenuCommand(app, 'pane-maximize')
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
@@ -1367,7 +1426,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(alicePage.locator('#account-name')).toHaveText('alice')
 
     // Add a pane: it must receive a fresh profile and its own native view.
-    await shellPage.locator('.toolbar .toolbar-button.primary').click()
+    await shellPage.locator('.toolbar .add-pane-main').click()
     const afterAdd = await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes.length === 2,
@@ -1958,7 +2017,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'second workspace to become active'
     )
 
-    await restartShell.locator('.toolbar .toolbar-button.primary').click()
+    await restartShell.locator('.toolbar .add-pane-main').click()
     const populatedSecond = await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
@@ -2242,7 +2301,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     for (const expectedCount of [2, 3, 4]) {
-      await restartShell.locator('.toolbar .toolbar-button.primary').click()
+      await restartShell.locator('.toolbar .add-pane-main').click()
       await waitFor(
         () => getSnapshot(restartApp),
         (state) => state.panes.length === expectedCount,

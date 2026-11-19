@@ -1,14 +1,28 @@
 import { randomUUID } from 'node:crypto'
-import { Menu, WebContentsView, type BaseWindow, type WebContents } from 'electron'
+import {
+  Menu,
+  WebContentsView,
+  type BaseWindow,
+  type MenuItemConstructorOptions,
+  type WebContents
+} from 'electron'
 import { parsePaneBounds, type CanvasSize } from '../shared/geometry'
-import type { PaneState, PaneViewRect, ScriptResult, ShellSnapshot } from '../shared/ipc'
+import type {
+  AddPaneMenuResult,
+  PaneState,
+  PaneViewRect,
+  ScriptResult,
+  ShellSnapshot
+} from '../shared/ipc'
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
 import { MAX_URL_LENGTH, isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
 import {
   RESPONSIVE_VIEWPORT,
+  VIEWPORT_PRESETS,
   parsePaneViewport,
   viewportDisplayScale,
-  type PaneViewport
+  type PaneViewport,
+  type ViewportPresetId
 } from '../shared/viewports'
 import {
   isValidPaneId,
@@ -101,6 +115,15 @@ export class BrowserManager {
     return this.addPaneForProfile(profile, address)
   }
 
+  async addPaneWithViewport(input: unknown): Promise<ScriptResult> {
+    const parsed = parsePaneViewport(input)
+    if (!parsed.ok) {
+      return { ok: false, error: parsed.error }
+    }
+    const profile = await this.profileStore.create()
+    return this.addPaneForProfile(profile, undefined, parsed.viewport)
+  }
+
   async addPaneWithProfile(profileId: string, address?: string): Promise<ScriptResult> {
     const profile = this.profileStore.get(profileId)
     if (!profile) {
@@ -149,7 +172,11 @@ export class BrowserManager {
     return { ok: true }
   }
 
-  private addPaneForProfile(profile: BrowserProfile, address?: string): ScriptResult {
+  private addPaneForProfile(
+    profile: BrowserProfile,
+    address?: string,
+    viewport?: PaneViewport
+  ): ScriptResult {
     let url = 'about:blank'
     if (address !== undefined && address.trim() !== '') {
       if (address.length > MAX_URL_LENGTH) {
@@ -166,7 +193,7 @@ export class BrowserManager {
       return { ok: false, error: 'PaneFlow window is not available.' }
     }
 
-    this.createPane(profile, url)
+    this.createPane(profile, url, viewport === undefined ? {} : { viewport })
     return { ok: true }
   }
 
@@ -362,6 +389,47 @@ export class BrowserManager {
     this.applyEmulation(record)
     this.emitState()
     return { ok: true }
+  }
+
+  showAddPaneMenu(x: number, y: number): Promise<AddPaneMenuResult> {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return Promise.resolve({ ok: false, error: 'Invalid menu position.' })
+    }
+
+    if (this.window.isDestroyed()) {
+      return Promise.resolve({ ok: false, error: 'Window is not available.' })
+    }
+
+    return new Promise((resolve) => {
+      let selected: ViewportPresetId | null = null
+      const template: MenuItemConstructorOptions[] = [
+        {
+          label: 'Responsive',
+          click: () => {
+            selected = 'responsive'
+          }
+        },
+        { type: 'separator' },
+        ...VIEWPORT_PRESETS.map((preset) => ({
+          label: preset.label,
+          click: () => {
+            selected = preset.id
+          }
+        }))
+      ]
+
+      const menu = Menu.buildFromTemplate(template)
+      try {
+        menu.popup({
+          window: this.window,
+          x: Math.max(0, Math.round(x)),
+          y: Math.max(0, Math.round(y)),
+          callback: () => resolve({ ok: true, preset: selected })
+        })
+      } catch {
+        resolve({ ok: false, error: 'Could not open the pane size menu.' })
+      }
+    })
   }
 
   showMenu(paneId: string, x: number, y: number): ScriptResult {

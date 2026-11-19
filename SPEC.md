@@ -148,7 +148,7 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** workspace selector/name, add-pane action, layout mode, grid controls when relevant, reload-all, and compact settings/profile access.
+1. **Top toolbar:** workspace selector/name, add-pane action with a device-size dropdown, layout mode, grid controls when relevant, reload-all, and compact settings/profile access.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
 3. **Pane chrome:** compact title/address/navigation controls and a contextual menu.
 4. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
@@ -413,12 +413,15 @@ Each pane can have independent:
 
 Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
+New panes can be created directly with a fixed viewport preset from the add-pane device dropdown. The new pane receives that preset and a fresh browser profile.
+
 ### 10.3 Implementation and validation
 
 - Use a supported public Electron device-emulation API for the pinned Electron version.
 - Verify all parameters against current official Electron documentation during implementation.
 - Confirm actual page values using a local fixture page that displays `window.innerWidth`, `window.innerHeight`, and `window.devicePixelRatio`.
 - Confirm that different panes can use different viewport configurations simultaneously.
+- Confirm that creating a pane from the device dropdown applies the selected preset without changing other panes.
 - Confirm that the visual fit scale is recalculated after pane and window resizing without changing the intended emulated CSS viewport.
 
 Do not claim a preset reproduces physical hardware, touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Do not spoof user agents to bypass identity-provider restrictions.

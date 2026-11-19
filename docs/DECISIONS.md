@@ -859,6 +859,33 @@ Record material technical decisions here. Keep entries short but include context
   - Unit tests cover preset parsing, legacy `displayScale` values becoming fit, fit-scale math, and recomputation for different available sizes.
   - E2e selects mobile and custom viewports, verifies the scale is below 1, narrows the grid to five columns, verifies the fit scale decreases and matches the new native bounds, restores two columns, and verifies the original scale returns.
 
+## ADR-029 — Add-pane device picker uses a native menu and validated viewport creation
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** The add-pane action always created a responsive pane. Users want to create a pane directly at a common device/viewport size. A DOM dropdown anchored to the toolbar would extend over native `WebContentsView` content, where the shell cannot draw or receive clicks. A permanent select would add unnecessary chrome and duplicate the primary add action.
+
+- **Decision:**
+  1. Keep the primary Add pane button for the default responsive pane and add a compact chevron button as a split control.
+  2. Open a native `Menu.popup` from the chevron with Responsive plus the existing mobile, tablet, laptop, and desktop presets. Use viewport-class labels and dimensions, not device-brand names.
+  3. Return the selected preset to the renderer; the renderer calls the typed `paneflow:add-pane-with-viewport` operation rather than creating the pane inside the menu callback.
+  4. Validate the viewport again in main, create a fresh browser profile, and create the pane with that viewport.
+  5. Keep the existing menu and keyboard Add pane action as the responsive default.
+
+- **Alternatives considered:**
+  - **DOM dropdown in the toolbar.** Rejected; it would be covered by native pane views as soon as it extended below the toolbar.
+  - **Permanent select control.** Rejected; it adds toolbar density and makes the add action less obvious.
+  - **Create the pane directly from the native menu callback.** Rejected; errors would bypass the renderer's action-error surface and the normal focus/state update path.
+  - **Device-brand/model names.** Rejected; SPEC §10 requires honest viewport-class labels without physical-device claims.
+
+- **Consequences:**
+  - Selecting a menu item takes one additional typed IPC round trip to create the pane.
+  - The native menu itself is not directly automatable through Playwright; the renderer control, main validation, and creation-with-viewport path are covered by e2e.
+  - New panes still receive isolated profiles and persist their selected viewport normally.
+
+- **Evidence / verification:**
+  - E2e verifies the toolbar device button is present and accessible, rejects an unknown preset, creates a pane with the mobile 390 × 844 DPR 3 preset, verifies the new pane's viewport and fit emulation, and closes it cleanly.
+
 ## ADR template
 
 ### ADR-NNN — Title

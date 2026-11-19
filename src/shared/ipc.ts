@@ -1,5 +1,5 @@
 import type { ProfileSummary } from './profiles'
-import type { PaneViewport } from './viewports'
+import type { PaneViewport, ViewportPresetId } from './viewports'
 import type {
   ThemePreference,
   WorkspaceLayout,
@@ -9,6 +9,7 @@ import type {
 export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
   addPane: 'paneflow:add-pane',
+  addPaneWithViewport: 'paneflow:add-pane-with-viewport',
   addPaneWithProfile: 'paneflow:add-pane-with-profile',
   duplicatePane: 'paneflow:duplicate-pane',
   closePane: 'paneflow:close-pane',
@@ -36,6 +37,7 @@ export const IPC_CHANNELS = {
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
   showPaneMenu: 'paneflow:show-pane-menu',
+  showAddPaneMenu: 'paneflow:show-add-pane-menu',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneRenameRequested: 'paneflow:pane-rename-requested',
@@ -114,9 +116,19 @@ export interface PaneMenuRequest {
   y: number
 }
 
+export interface AddPaneMenuRequest {
+  x: number
+  y: number
+}
+
+export type AddPaneMenuResult =
+  | { ok: true; preset: ViewportPresetId | null }
+  | { ok: false; error: string }
+
 export interface PaneFlowApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
+  addPaneWithViewport(viewport: PaneViewport): Promise<ScriptResult>
   addPaneWithProfile(profileId: string, url?: string): Promise<ScriptResult>
   duplicatePane(paneId: string): Promise<ScriptResult>
   closePane(paneId: string): Promise<ScriptResult>
@@ -144,6 +156,7 @@ export interface PaneFlowApi {
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
   showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
+  showAddPaneMenu(request: AddPaneMenuRequest): Promise<AddPaneMenuResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
