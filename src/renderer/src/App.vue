@@ -55,6 +55,13 @@ interface CanvasDragState {
   base: CanvasPosition
 }
 
+interface CanvasPaneDragState {
+  paneId: string
+  startX: number
+  startY: number
+  base: CanvasPosition
+}
+
 const PANE_CHROME_STORAGE_KEY = 'paneflow.preview.paneChrome'
 
 function readPaneChromePreference(): PaneChromeStyle {
@@ -90,7 +97,9 @@ const canvasPositions = ref<Record<string, CanvasPosition>>({})
 const canvasPan = ref<CanvasPosition>({ x: 0, y: 0 })
 const canvasHandMode = ref(false)
 const isCanvasPanning = ref(false)
+const isCanvasPaneDragging = ref(false)
 const canvasDrag = ref<CanvasDragState | null>(null)
+const canvasPaneDrag = ref<CanvasPaneDragState | null>(null)
 const paneSnapshots = ref<Record<string, string>>({})
 const usesMacTitlebar = navigator.platform.startsWith('Mac')
 const workspaceEl = ref<HTMLElement | null>(null)
@@ -384,7 +393,10 @@ function paneSlotStyle(paneId: string): Record<string, string> {
       top: `${canvasFrame.y + canvasPan.value.y}px`,
       width: `${canvasFrame.width}px`,
       height: `${canvasFrame.height}px`,
-      zIndex: String(10 + Math.max(0, paneOrder.value.indexOf(paneId)))
+      zIndex:
+        canvasPaneDrag.value?.paneId === paneId
+          ? '1000'
+          : String(10 + Math.max(0, paneOrder.value.indexOf(paneId)))
     }
   }
 
@@ -726,6 +738,71 @@ function finishCanvasPan(): void {
   })
 }
 
+function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
+  if (canvasPaneDrag.value || maximizedPaneId.value) {
+    return
+  }
+  const frame = canvasFrames.value.get(paneId)
+  if (!frame) {
+    return
+  }
+
+  event.preventDefault()
+  activePaneId.value = paneId
+  const captureTarget = event.currentTarget
+  if (captureTarget instanceof Element) {
+    try {
+      captureTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture is best-effort; window listeners still handle the drag.
+    }
+  }
+  canvasPaneDrag.value = {
+    paneId,
+    startX: event.clientX,
+    startY: event.clientY,
+    base: { x: frame.x, y: frame.y }
+  }
+  isCanvasPaneDragging.value = true
+  document.body.classList.add('paneflow-canvas-pane-dragging')
+  void nextTick(scheduleMeasure)
+  window.addEventListener('pointermove', onCanvasPanePointerMove)
+  window.addEventListener('pointerup', finishCanvasPaneDrag)
+  window.addEventListener('pointercancel', finishCanvasPaneDrag)
+}
+
+function onCanvasPanePointerMove(event: PointerEvent): void {
+  const drag = canvasPaneDrag.value
+  if (!drag) {
+    return
+  }
+  event.preventDefault()
+  canvasPositions.value = {
+    ...canvasPositions.value,
+    [drag.paneId]: {
+      x: Math.round(drag.base.x + (event.clientX - drag.startX)),
+      y: Math.round(drag.base.y + (event.clientY - drag.startY))
+    }
+  }
+}
+
+function finishCanvasPaneDrag(): void {
+  if (!canvasPaneDrag.value) {
+    return
+  }
+  canvasPaneDrag.value = null
+  isCanvasPaneDragging.value = false
+  document.body.classList.remove('paneflow-canvas-pane-dragging')
+  window.removeEventListener('pointermove', onCanvasPanePointerMove)
+  window.removeEventListener('pointerup', finishCanvasPaneDrag)
+  window.removeEventListener('pointercancel', finishCanvasPaneDrag)
+  void nextTick(async () => {
+    await measurePanes()
+    await saveWorkspaceLayout()
+    scheduleSnapshotRefresh()
+  })
+}
+
 function setCanvasHandMode(active: boolean): void {
   if (canvasHandMode.value === active) {
     return
@@ -875,6 +952,11 @@ function applyState(state: ShellState): void {
     canvasPan.value = { x: 0, y: 0 }
     canvasHandMode.value = false
     isCanvasPanning.value = false
+    isCanvasPaneDragging.value = false
+    canvasDrag.value = null
+    canvasPaneDrag.value = null
+    document.body.classList.remove('paneflow-canvas-panning')
+    document.body.classList.remove('paneflow-canvas-pane-dragging')
     paneSnapshots.value = {}
     layoutMode.value = 'grid'
     gridColumns.value = DEFAULT_GRID_COLUMNS
@@ -1804,6 +1886,13 @@ function onWorkspacePointerDown(event: PointerEvent): void {
       return
     }
     activePaneId.value = canvasPaneId
+    const interactive = target.closest(
+      'button, a, input, select, textarea, form, [role="button"]'
+    )
+    if (target.closest('.pane-header') && !interactive) {
+      beginCanvasPaneDrag(event, canvasPaneId)
+      return
+    }
     if (suspendedPaneIds.value.has(canvasPaneId)) {
       centerCanvasPane(canvasPaneId)
     }
@@ -1918,6 +2007,7 @@ async function measurePanes(): Promise<void> {
       profilesOpen.value ||
       workspacesOpen.value ||
       isCanvasPanning.value ||
+      isCanvasPaneDragging.value ||
       canvasHandMode.value
     const visible =
       !nativeViewsHidden &&
@@ -1993,8 +2083,17 @@ watch(layoutMode, (mode) => {
   if (mode !== 'canvas') {
     canvasHandMode.value = false
     isCanvasPanning.value = false
+    isCanvasPaneDragging.value = false
     canvasDrag.value = null
+    canvasPaneDrag.value = null
+    window.removeEventListener('pointermove', onCanvasPointerMove)
+    window.removeEventListener('pointerup', finishCanvasPan)
+    window.removeEventListener('pointercancel', finishCanvasPan)
+    window.removeEventListener('pointermove', onCanvasPanePointerMove)
+    window.removeEventListener('pointerup', finishCanvasPaneDrag)
+    window.removeEventListener('pointercancel', finishCanvasPaneDrag)
     document.body.classList.remove('paneflow-canvas-panning')
+    document.body.classList.remove('paneflow-canvas-pane-dragging')
   }
 
   void nextTick(() => {
@@ -2027,7 +2126,7 @@ watch(workspacesOpen, () => {
 watch(
   [paneOrder, gridColumns, layoutMode, freeformGeometries, freeformOrder, canvasPositions],
   () => {
-    if (!layoutPersistenceReady || isDragging.value) {
+    if (!layoutPersistenceReady || isDragging.value || isCanvasPaneDragging.value) {
       return
     }
     void saveWorkspaceLayout()
@@ -2116,8 +2215,12 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onCanvasPointerMove)
   window.removeEventListener('pointerup', finishCanvasPan)
   window.removeEventListener('pointercancel', finishCanvasPan)
+  window.removeEventListener('pointermove', onCanvasPanePointerMove)
+  window.removeEventListener('pointerup', finishCanvasPaneDrag)
+  window.removeEventListener('pointercancel', finishCanvasPaneDrag)
   document.body.classList.remove('paneflow-dragging')
   document.body.classList.remove('paneflow-canvas-panning')
+  document.body.classList.remove('paneflow-canvas-pane-dragging')
   snapshotRequest += 1
   if (snapshotRefreshTimer !== null) {
     clearTimeout(snapshotRefreshTimer)

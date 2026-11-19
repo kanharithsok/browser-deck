@@ -403,11 +403,12 @@ function requestClose(): void {
 .pane-card-canvas .pane-header {
   padding: 0 2px;
   background: transparent;
+  cursor: grab;
 }
 
 .pane-card-canvas .pane-title-row {
   gap: 5px;
-  cursor: default;
+  cursor: grab;
 }
 
 .pane-card-canvas .pane-profile {

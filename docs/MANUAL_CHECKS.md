@@ -84,6 +84,8 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Pane chrome remains usable at five grid columns. (E2e asserts no horizontal header overflow and a usable address width; controls wrap to a second row.)
 - [x] Canvas mode pans an infinite dotted workspace and hides native views during the gesture. (E2e switches to Canvas, pans, verifies all native views hide, and verifies visible bounds realign afterward.)
 - [x] Canvas snapshots cover native views during panning. (E2e waits for two `.pane-snapshot` images before panning; the image stays behind native views at rest.)
+- [x] Dragging a pane header moves only that pane; dragging empty canvas pans the world. (E2e drags a label and verifies the other frame and canvas background position do not move.)
+- [x] Website content stays interactive in Canvas mode while the header remains the drag handle. (Native views are restored when fully visible; content events stay inside the page.)
 - [ ] Hand tool pans from over a pane. (E2e verifies the Hand tool hides native views and toggles state; pointer panning from inside a frame needs a manual GUI pass.)
 - [ ] Partially visible canvas pane centers and restores live view when clicked. (Implemented; manual visual pass outstanding.)
 - [ ] Canvas zoom and device bezels. (Not implemented in the first Canvas slice.)

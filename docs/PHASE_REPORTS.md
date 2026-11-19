@@ -607,18 +607,18 @@ The MVP is complete. These items are post-MVP hardening and validation, not Phas
 
 **Status:** Implemented; panning and snapshots complete, zoom/frames deferred.
 
-**Change:** Added Canvas as a third workspace layout. It uses a dotted infinite backdrop, world-coordinate pane positions persisted in workspace layout, a global active-pane address/navigation bar, compact per-pane labels, background-drag panning, and a Hand tool for panning from anywhere. Native pane views are hidden during movement and shown as recent JPEG snapshots; after the gesture, fully visible panes restore live native views and partially visible panes remain snapshots. Clicking a partially visible pane centers it. Canvas zoom, device bezels, and frame resizing are intentionally deferred.
+**Change:** Added Canvas as a third workspace layout. It uses a dotted infinite backdrop, world-coordinate pane positions persisted in workspace layout, a global active-pane address/navigation bar, compact per-pane labels, background-drag panning, and a Hand tool for panning from anywhere. Dragging a pane header moves only that pane; page content remains interactive in its native view. Native pane views are hidden during movement and shown as recent JPEG snapshots; after the gesture, fully visible panes restore live native views and partially visible panes remain snapshots. Clicking a partially visible pane centers it. Canvas zoom, device bezels, and frame resizing are intentionally deferred.
 
 **Files changed:** `src/shared/canvas.ts`, `src/shared/workspace.ts`, `src/shared/workspace-transfer.ts`, `src/shared/ipc.ts`, `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/main/workspace-store.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/assets/app.css`, canvas/workspace unit tests, browser-pane e2e, `SPEC.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-032), and `docs/MANUAL_CHECKS.md`.
 
 | Check | Result |
 | --- | --- |
 | `make check` | Passed: typecheck, lint, 13 unit files / 132 tests, all 13 light + 13 dark contrast pairs. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 17.3 s. Canvas pan/hide/restore, Hand-tool state, accessibility/axe, and the full existing integration path passed. |
-| `npm run build` | Passed: main 125.53 kB, preload 6.35 kB, renderer JS 294.01 kB, CSS 28.15 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.5 s. Canvas pane-header drag from empty header space, page content interaction, pan/hide/restore, Hand-tool state, accessibility/axe, and the full existing integration path passed. |
+| `npm run build` | Passed: main 125.53 kB, preload 6.35 kB, renderer JS 297.30 kB, CSS 28.24 kB. |
 | Canvas visual check | Rendered two live fixture frames on the dotted backdrop with the global bar; header labels sit directly on the canvas and the active frame has a restrained accent outline. |
 
-**Automated coverage:** Unit tests cover frame sizing, default arrangement, canvas position validation, workspace normalization, and position persistence. E2e verifies the dotted workspace, global bar, native-view hiding during a pan, restoration of visible native bounds, Hand-tool state, and return to Grid.
+**Automated coverage:** Unit tests cover frame sizing, default arrangement, canvas position validation, workspace normalization, and position persistence. E2e verifies the dotted workspace, global bar, dragging a pane label without moving the canvas or other pane, native-view hiding during a pan, restoration of visible native bounds, Hand-tool state, and return to Grid.
 
 **Manual GUI verification still outstanding:** Panning with the Hand tool directly over a frame, clicking a partially visible frame to center it, and visual snapshot quality with real third-party pages. Canvas zoom, device bezels, and frame resizing are not implemented.
 

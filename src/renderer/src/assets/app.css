@@ -147,7 +147,9 @@ button:disabled {
 body.paneflow-dragging,
 body.paneflow-dragging *,
 body.paneflow-canvas-panning,
-body.paneflow-canvas-panning * {
+body.paneflow-canvas-panning *,
+body.paneflow-canvas-pane-dragging,
+body.paneflow-canvas-pane-dragging * {
   cursor: grabbing !important;
   user-select: none !important;
 }

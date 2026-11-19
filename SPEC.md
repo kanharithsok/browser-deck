@@ -245,6 +245,7 @@ Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and t
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Support trackpad/wheel panning while the Hand tool is active.
+- Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
 - Keep pages live as native views when their content rectangle is fully inside the workspace.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
 - Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.

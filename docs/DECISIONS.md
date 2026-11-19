@@ -960,7 +960,8 @@ Record material technical decisions here. Keep entries short but include context
   5. While panning or using the Hand tool, hide native views and show recent in-memory JPEG snapshots. On release, restore live native views for frames fully inside the workspace; partially visible frames remain snapshots.
   6. Clicking a partially visible frame centers it and restores its native view.
   7. Use the existing global active-pane bar and compact per-pane labels in Canvas mode.
-  8. Defer canvas zoom, device bezels, and frame resizing.
+  8. Drag a pane's header/label area to move that pane in world coordinates. Website content stays in the native view and keeps normal page interaction; dragging content does not move the frame or canvas.
+  9. Defer canvas zoom, device bezels, and frame resizing.
 
 - **Alternatives considered:**
   - **Use `<webview>`/iframes to get a live CSS-transformed world.** Rejected; violates the accepted native-view architecture and weakens security.
@@ -974,7 +975,7 @@ Record material technical decisions here. Keep entries short but include context
   - Snapshots can be stale until the next capture (canvas entry, pan end, or explicit refresh).
   - Fully visible panes remain live native views; partially visible panes are visual-only until centered.
   - Canvas positions survive restart; pan position resets.
-  - The canvas does not yet match Figma/Responsively zoom, device frames, or live interaction during motion.
+  - The canvas does not yet match Figma/Responsively zoom, device bezels, or live interaction during motion.
 
 - **Evidence / verification:**
   - Unit tests cover frame sizing, default row arrangement, canvas position validation, workspace normalization, and persistence.
