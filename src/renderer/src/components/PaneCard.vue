@@ -14,6 +14,7 @@ const props = withDefaults(
     active?: boolean
     profilePaneCount?: number
     renameRequest?: number
+    notice?: string
     chromeStyle?: PaneChromeStyle
     snapshot?: string
     canvas?: boolean
@@ -24,6 +25,7 @@ const props = withDefaults(
     active: false,
     profilePaneCount: 1,
     renameRequest: 0,
+    notice: undefined,
     chromeStyle: 'a',
     snapshot: undefined,
     canvas: false
@@ -241,11 +243,12 @@ function requestClose(): void {
               class="pane-status"
               role="status"
               aria-live="polite"
-              :title="titleError ?? addressError ?? pane.error ?? undefined"
+              :title="titleError ?? addressError ?? pane.error ?? notice ?? undefined"
             >
               <template v-if="titleError">{{ titleError }}</template>
               <template v-else-if="addressError">{{ addressError }}</template>
               <template v-else-if="pane.error">Load failed</template>
+              <template v-else-if="notice">{{ notice }}</template>
               <template v-else-if="pane.isLoading"><span class="sr-only">Loading</span></template>
             </span>
           </div>

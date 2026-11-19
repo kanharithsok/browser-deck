@@ -875,6 +875,29 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // Website content remains interactive while the label is the drag handle.
     await alicePage.locator('#popup-button').click()
     await expect(alicePage.locator('#output')).toContainText('Popup denied by PaneFlow.')
+    const aliceNoticeStatus = shellPage.locator(
+      `.pane-card[data-pane-id="${alicePaneId}"] .pane-status`
+    )
+    await expect(aliceNoticeStatus).toContainText('Popup blocked')
+
+    await bobPage.locator('#permission-button').click()
+    const bobNoticeStatus = shellPage.locator(
+      `.pane-card[data-pane-id="${bobPaneId}"] .pane-status`
+    )
+    await expect(bobNoticeStatus).toContainText('Notifications blocked')
+
+    await evaluateInPane(
+      app,
+      alicePaneId as string,
+      `(() => {
+        const anchor = document.createElement('a')
+        anchor.href = URL.createObjectURL(new Blob(['blocked'], { type: 'text/plain' }))
+        anchor.download = 'blocked.txt'
+        anchor.click()
+        return true
+      })()`
+    )
+    await expect(aliceNoticeStatus).toContainText('Download blocked')
 
     // Space temporarily enables the Hand tool and wheel zoom. Zooming out keeps
     // the responsive viewport intact while scaling the native views.

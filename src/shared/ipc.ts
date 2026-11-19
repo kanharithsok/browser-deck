@@ -59,6 +59,7 @@ export const IPC_CHANNELS = {
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneMaximizeRequested: 'paneflow:pane-maximize-requested',
+  paneNotice: 'paneflow:pane-notice',
   paneRenameRequested: 'paneflow:pane-rename-requested',
   stateChanged: 'paneflow:state-changed',
   requestMeasurement: 'paneflow:request-measurement'
@@ -139,6 +140,11 @@ export interface PaneMenuRequest {
   maximized: boolean
 }
 
+export interface PaneNotice {
+  paneId: string
+  message: string
+}
+
 export type PaneSnapshotsResult =
   | { ok: true; snapshots: Record<string, string> }
   | { ok: false; error: string }
@@ -197,5 +203,6 @@ export interface PaneFlowApi {
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
   onPaneFocused(listener: (paneId: string) => void): () => void
   onPaneMaximizeRequested(listener: (paneId: string) => void): () => void
+  onPaneNotice(listener: (notice: PaneNotice) => void): () => void
   onPaneRenameRequested(listener: (paneId: string) => void): () => void
 }

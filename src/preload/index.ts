@@ -5,6 +5,7 @@ import {
   type PaneCommand,
   type PaneFlowApi,
   type PaneMenuRequest,
+  type PaneNotice,
   type ShellState
 } from '../shared/ipc'
 import type {
@@ -159,6 +160,15 @@ const api: PaneFlowApi = {
     ipcRenderer.on(IPC_CHANNELS.paneMaximizeRequested, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.paneMaximizeRequested, wrapped)
+    }
+  },
+  onPaneNotice: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, notice: PaneNotice): void => {
+      listener(notice)
+    }
+    ipcRenderer.on(IPC_CHANNELS.paneNotice, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.paneNotice, wrapped)
     }
   },
   onPaneRenameRequested: (listener) => {

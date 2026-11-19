@@ -1353,6 +1353,34 @@ Record material technical decisions here. Keep entries short but include context
   - E2e asserts visible and announced address errors, Escape recovery, `Cmd/Ctrl+L`/`Cmd/Ctrl+R` menu accelerators and focus behavior, shared-profile toolbar copy, and the renamed add/profile flows.
   - Unit tests, typecheck, lint, build, and the existing e2e suite pass. A visual pass at 1280 × 860 and 720 × 560 confirms the inline error fits without toolbar overflow.
 
+## ADR-045 — Blocked remote actions report a transient device notice
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The remote policy denies popups, downloads, and permission requests, but the UI previously failed silently. Sites looked broken and users could not tell whether PaneFlow blocked the action or the website malfunctioned. The security model must remain deny-by-default.
+
+- **Decision:**
+  1. Keep all popup, download, permission, and device-access decisions denied.
+  2. Report a transient, non-interactive notice to the shell with the pane ID and a short message.
+  3. Resolve permission requests by `webContents` ID, downloads by profile plus initiator origin, and popups directly from the pane handler. Ignore events that cannot be attributed to a pane.
+  4. Display the notice in that device's header status area for six seconds. Coalesce identical messages and reset the timer instead of stacking notices.
+  5. Do not add Allow/Prompt actions, download handling, or permission controls in this slice.
+
+- **Alternatives considered:**
+  - **Native dialog per blocked action.** Rejected; permission checks can repeat and modal dialogs would be disruptive.
+  - **Global banner below the toolbar.** Rejected as the first pass; it would resize the workspace/native views on every event. The device header keeps feedback attached to its source without layout movement.
+  - **Show full URLs or permission details.** Rejected; short generic labels avoid leaking query strings and keep the message readable.
+  - **Grant once or remember decisions.** Rejected for this slice; that requires a separate security and persistence design.
+
+- **Consequences:**
+  - A malicious or noisy page can only cause a bounded transient status message, not a privileged prompt.
+  - Off-screen panes still record the notice in their header; if the event source cannot be resolved, no message is shown.
+  - Downloads triggered outside a known profile/pane are silently denied as before.
+
+- **Evidence / verification:**
+  - E2e opens a popup, requests notifications, and triggers a Blob download in the fixture. It verifies `Popup blocked`, `Notifications blocked`, and `Download blocked` in the corresponding device headers.
+  - Typecheck, lint, unit tests, build, and the full Playwright suite pass.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded

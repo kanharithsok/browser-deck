@@ -172,3 +172,4 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] `Cmd/Ctrl+R` reloads the selected device and `Cmd/Ctrl+L` focuses its address. (Menu accelerators are asserted in e2e; Focus Address is invoked through the native menu command and its resulting DOM focus is checked.)
 - [x] Maximize/Restore and Copy URL are present in the native device actions menu. (Implemented in the native pane menu; direct native menu clicks remain a manual GUI check.)
 - [x] Add/profile copy distinguishes devices from viewport presets. (E2e checks `Start with viewport`, `Phone viewports`, `Tablet viewports`, `Desktop viewports`, and the persisted profile action is now `New device`.)
+- [x] Blocked popups, downloads, and permission requests are visible. (E2e clicks the fixture popup and notification actions and triggers a blob download; each pane header shows the matching notice.)

@@ -16,7 +16,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 - Independent navigation, back, forward, reload, loading, and load-error states. Each device header carries back, forward, reload, device actions, and close; rotate viewport and capture screenshot live in the actions menu.
 - Per-device native menu for back/forward/reload, copy URL, rotate viewport, screenshot, maximize/restore, duplicate, rename, DevTools, and close.
 - Retina-correct bounds synchronization verified at `devicePixelRatio: 2`.
-- Denied popups, permissions, downloads, display capture, and device access for remote content; sandboxed browser views with no app bridge or Node access.
+- Denied popups, permissions, downloads, display capture, and device access for remote content, with transient in-device notices so blocked actions are visible. Sandboxed browser views have no app bridge or Node access.
 - Trusted shell served over a secure internal `paneflow://shell/` protocol with a production CSP that has no development network allowance, plus IPC sender document validation.
 - Independent authenticated sessions on one local origin, with HttpOnly persistent cookies, localStorage, and IndexedDB isolated per profile and restored after restart.
 - Canvas-only workspace: pane headers drag panes in world coordinates, with live edge/center alignment guides against neighboring panes.
