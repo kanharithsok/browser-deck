@@ -134,10 +134,6 @@ function readString(value: unknown, maxLength = 2048): string | null {
   return value
 }
 
-function readFiniteNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
 export function registerIpcHandlers(context: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.getState, (event): ShellState => {
     if (!isTrustedSender(event, context)) {
@@ -379,6 +375,40 @@ export function registerIpcHandlers(context: IpcContext): void {
       } catch {
         return { ok: false, error: 'Could not capture the device screenshot.' }
       }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.copyPaneUrl,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const paneId = readString(payload, 100)
+      return paneId
+        ? manager.copyUrl(paneId)
+        : { ok: false, error: 'Invalid device ID.' }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.openPaneDevTools,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const paneId = readString(payload, 100)
+      return paneId
+        ? manager.openDevTools(paneId)
+        : { ok: false, error: 'Invalid device ID.' }
     }
   )
 
@@ -684,33 +714,4 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.showPaneMenu, (event, payload: unknown): ScriptResult => {
-    if (!isTrustedSender(event, context)) {
-      return unauthorized
-    }
-    const manager = context.getBrowserManager()
-    if (!manager) {
-      return unavailable
-    }
-
-    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-      return { ok: false, error: 'Invalid menu request.' }
-    }
-
-    const request = payload as Record<string, unknown>
-    const paneId = readString(request.paneId, 100)
-    const x = readFiniteNumber(request.x)
-    const y = readFiniteNumber(request.y)
-
-    if (
-      !paneId ||
-      x === null ||
-      y === null ||
-      typeof request.maximized !== 'boolean'
-    ) {
-      return { ok: false, error: 'Invalid menu request.' }
-    }
-
-    return manager.showMenu(paneId, x, y, request.maximized)
-  })
 }

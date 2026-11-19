@@ -28,6 +28,8 @@ export const IPC_CHANNELS = {
   setPaneViewport: 'paneflow:set-pane-viewport',
   rotatePaneViewport: 'paneflow:rotate-pane-viewport',
   capturePaneScreenshot: 'paneflow:capture-pane-screenshot',
+  copyPaneUrl: 'paneflow:copy-pane-url',
+  openPaneDevTools: 'paneflow:open-pane-devtools',
   saveWorkspaceLayout: 'paneflow:save-workspace-layout',
   listProfiles: 'paneflow:list-profiles',
   renameProfile: 'paneflow:rename-profile',
@@ -43,7 +45,6 @@ export const IPC_CHANNELS = {
   deleteWorkspace: 'paneflow:delete-workspace',
   bringPaneToFront: 'paneflow:bring-pane-to-front',
   sendPaneToBack: 'paneflow:send-pane-to-back',
-  showPaneMenu: 'paneflow:show-pane-menu',
   setTheme: 'paneflow:set-theme',
   capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
   setCanvasZoom: 'paneflow:set-canvas-zoom',
@@ -58,7 +59,6 @@ export const IPC_CHANNELS = {
   setCanvasHandMode: 'paneflow:set-canvas-hand-mode',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
-  paneMaximizeRequested: 'paneflow:pane-maximize-requested',
   paneNotice: 'paneflow:pane-notice',
   paneRenameRequested: 'paneflow:pane-rename-requested',
   stateChanged: 'paneflow:state-changed',
@@ -73,7 +73,9 @@ export type PaneCommand =
   | 'find-device'
   | 'reload-pane'
   | 'reload-all'
-  | 'toggle-maximize'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'zoom-reset'
   | 'open-profiles'
   | 'open-workspaces'
 
@@ -134,13 +136,6 @@ export interface ShellState extends ShellSnapshot {
   resolvedTheme: 'light' | 'dark'
 }
 
-export interface PaneMenuRequest {
-  paneId: string
-  x: number
-  y: number
-  maximized: boolean
-}
-
 export interface PaneNotice {
   paneId: string
   message: string
@@ -171,6 +166,8 @@ export interface PaneFlowApi {
   setPaneViewport(paneId: string, viewport: PaneViewport): Promise<ScriptResult>
   rotatePaneViewport(paneId: string): Promise<ScriptResult>
   capturePaneScreenshot(paneId: string): Promise<PaneScreenshotResult>
+  copyPaneUrl(paneId: string): Promise<ScriptResult>
+  openPaneDevTools(paneId: string): Promise<ScriptResult>
   saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
   listProfiles(): Promise<ProfileListResult>
   renameProfile(profileId: string, label: string): Promise<ScriptResult>
@@ -186,7 +183,6 @@ export interface PaneFlowApi {
   deleteWorkspace(workspaceId: string): Promise<ScriptResult>
   bringPaneToFront(paneId: string): Promise<ScriptResult>
   sendPaneToBack(paneId: string): Promise<ScriptResult>
-  showPaneMenu(request: PaneMenuRequest): Promise<ScriptResult>
   setTheme(theme: ThemePreference): Promise<ScriptResult>
   capturePaneSnapshots(): Promise<PaneSnapshotsResult>
   setCanvasZoom(zoom: number): Promise<ScriptResult>
@@ -203,7 +199,6 @@ export interface PaneFlowApi {
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
   onPaneFocused(listener: (paneId: string) => void): () => void
-  onPaneMaximizeRequested(listener: (paneId: string) => void): () => void
   onPaneNotice(listener: (notice: PaneNotice) => void): () => void
   onPaneRenameRequested(listener: (paneId: string) => void): () => void
 }

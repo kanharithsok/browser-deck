@@ -178,6 +178,11 @@ describe('WorkspaceStore', () => {
       canvas: {
         [PANE_A]: { x: 40, y: 60 },
         [PANE_B]: { x: 700, y: 60 }
+      },
+      view: {
+        pan: { x: -120, y: 90 },
+        zoom: 0.75,
+        activePaneId: PANE_A
       }
     })
     await store.flush()
@@ -196,6 +201,11 @@ describe('WorkspaceStore', () => {
       canvas: {
         [PANE_A]: { x: 40, y: 60 },
         [PANE_B]: { x: 700, y: 60 }
+      },
+      view: {
+        pan: { x: -120, y: 90 },
+        zoom: 0.75,
+        activePaneId: PANE_A
       }
     })
   })

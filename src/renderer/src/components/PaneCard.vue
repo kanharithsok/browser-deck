@@ -413,10 +413,6 @@ function requestClose(): void {
   overflow: hidden;
 }
 
-.pane-card-active {
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
 .pane-header-shell {
   position: relative;
   flex: none;

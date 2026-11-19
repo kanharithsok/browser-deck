@@ -77,6 +77,12 @@ describe('canvas zoom', () => {
     expect(parseCanvasZoomAction({ type: 'appearance' })).toEqual({
       type: 'appearance'
     })
+    expect(parseCanvasZoomAction({ type: 'find-device' })).toEqual({
+      type: 'find-device'
+    })
+    expect(parseCanvasZoomAction({ type: 'reload-all' })).toEqual({
+      type: 'reload-all'
+    })
     expect(parseCanvasZoomAction({ type: 'set', zoom: 3 })).toBeNull()
     expect(parseCanvasZoomAction({ type: 'step', direction: 'left' })).toBeNull()
     expect(parseCanvasZoomAction(null)).toBeNull()

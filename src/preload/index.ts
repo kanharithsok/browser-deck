@@ -4,7 +4,6 @@ import {
   type PaneBoundsUpdate,
   type PaneCommand,
   type PaneFlowApi,
-  type PaneMenuRequest,
   type PaneNotice,
   type ShellState
 } from '../shared/ipc'
@@ -40,6 +39,9 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.rotatePaneViewport, paneId),
   capturePaneScreenshot: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.capturePaneScreenshot, paneId),
+  copyPaneUrl: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.copyPaneUrl, paneId),
+  openPaneDevTools: (paneId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openPaneDevTools, paneId),
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
     ipcRenderer.invoke(IPC_CHANNELS.saveWorkspaceLayout, layout),
   listProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.listProfiles),
@@ -66,8 +68,6 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.bringPaneToFront, paneId),
   sendPaneToBack: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.sendPaneToBack, paneId),
-  showPaneMenu: (request: PaneMenuRequest) =>
-    ipcRenderer.invoke(IPC_CHANNELS.showPaneMenu, request),
   setTheme: (theme) => ipcRenderer.invoke(IPC_CHANNELS.setTheme, theme),
   capturePaneSnapshots: () => ipcRenderer.invoke(IPC_CHANNELS.capturePaneSnapshots),
   setCanvasZoom: (zoom: number) => ipcRenderer.invoke(IPC_CHANNELS.setCanvasZoom, zoom),
@@ -151,15 +151,6 @@ const api: PaneFlowApi = {
     ipcRenderer.on(IPC_CHANNELS.paneFocused, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.paneFocused, wrapped)
-    }
-  },
-  onPaneMaximizeRequested: (listener) => {
-    const wrapped = (_event: IpcRendererEvent, paneId: string): void => {
-      listener(paneId)
-    }
-    ipcRenderer.on(IPC_CHANNELS.paneMaximizeRequested, wrapped)
-    return () => {
-      ipcRenderer.removeListener(IPC_CHANNELS.paneMaximizeRequested, wrapped)
     }
   },
   onPaneNotice: (listener) => {

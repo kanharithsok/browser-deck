@@ -5,7 +5,6 @@ import {
   app,
   clipboard,
   dialog,
-  Menu,
   WebContentsView,
   type BaseWindow,
   type WebContents
@@ -69,7 +68,6 @@ interface PaneRecord {
 interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
-  onPaneMaximizeRequested?: (paneId: string) => void
   onPaneNotice?: (notice: PaneNotice) => void
   onPaneRenameRequested?: (paneId: string) => void
   onPaneLayerChanged?: () => void
@@ -377,11 +375,11 @@ export class BrowserManager {
         continue
       }
       record.shellVisible = update.visible
-      if (update.visible) {
+      const firstBounds = !record.hasBounds
+      if (update.visible || firstBounds) {
         record.view.setBounds(update.rect)
       }
-      const firstBounds = !record.hasBounds && update.visible
-      record.hasBounds = record.hasBounds || update.visible
+      record.hasBounds = record.hasBounds || firstBounds
       this.syncVisibility(record)
       this.applyEmulation(record)
 
@@ -488,113 +486,6 @@ export class BrowserManager {
     } catch {
       return { ok: false, error: 'Could not save the screenshot.' }
     }
-  }
-
-  showMenu(paneId: string, x: number, y: number, maximized: boolean): ScriptResult {
-    const record = this.requirePane(paneId)
-    if (!record) {
-      return { ok: false, error: 'Device not found.' }
-    }
-
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      return { ok: false, error: 'Invalid menu position.' }
-    }
-
-    if (this.window.isDestroyed()) {
-      return { ok: false, error: 'Window is not available.' }
-    }
-
-    const history = record.view.webContents.navigationHistory
-    const menu = Menu.buildFromTemplate([
-      {
-        label: 'Back',
-        enabled: history.canGoBack(),
-        click: () => {
-          this.back(record.id)
-        }
-      },
-      {
-        label: 'Forward',
-        enabled: history.canGoForward(),
-        click: () => {
-          this.forward(record.id)
-        }
-      },
-      {
-        label: 'Reload',
-        click: () => {
-          this.reload(record.id)
-        }
-      },
-      {
-        label: 'Copy URL',
-        enabled: record.url !== 'about:blank',
-        click: () => {
-          clipboard.writeText(record.url)
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Rotate Viewport',
-        enabled: record.viewport.preset !== 'responsive',
-        click: () => {
-          this.rotateViewport(record.id)
-        }
-      },
-      {
-        label: 'Capture Screenshot…',
-        enabled: record.url !== 'about:blank',
-        click: () => {
-          void this.captureScreenshot(record.id).then((result) => {
-            if (!result.ok) {
-              dialog.showErrorBox('Screenshot failed', result.error)
-            }
-          })
-        }
-      },
-      { type: 'separator' },
-      {
-        label: maximized ? 'Restore Device' : 'Maximize Device',
-        click: () => {
-          this.options.onPaneMaximizeRequested?.(record.id)
-        }
-      },
-      {
-        label: 'Duplicate Device',
-        click: () => {
-          void this.duplicatePane(record.id)
-        }
-      },
-      {
-        label: 'Rename Device…',
-        click: () => {
-          this.options.onPaneRenameRequested?.(record.id)
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Open DevTools',
-        click: () => {
-          if (!record.view.webContents.isDestroyed()) {
-            record.view.webContents.openDevTools({ mode: 'detach' })
-          }
-        }
-      },
-      { type: 'separator' },
-      {
-        label: 'Close Device',
-        click: () => {
-          this.closePane(record.id)
-        }
-      }
-    ])
-
-    menu.popup({
-      window: this.window,
-      x: Math.max(0, Math.round(x)),
-      y: Math.max(0, Math.round(y))
-    })
-    return { ok: true }
   }
 
   snapshot(): ShellSnapshot {
@@ -738,6 +629,27 @@ export class BrowserManager {
     const record = this.panes.get(paneId)
     const webContents = record ? this.liveWebContents(record) : null
     return webContents ? webContents.id : null
+  }
+
+  copyUrl(paneId: string): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Device not found.' }
+    }
+    if (record.url === 'about:blank') {
+      return { ok: false, error: 'There is no page URL to copy yet.' }
+    }
+    clipboard.writeText(record.url)
+    return { ok: true }
+  }
+
+  openDevTools(paneId: string): ScriptResult {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Device not found.' }
+    }
+    record.view.webContents.openDevTools({ mode: 'detach' })
+    return { ok: true }
   }
 
   paneIdForWebContentsId(webContentsId: number): string | null {
@@ -885,6 +797,10 @@ export class BrowserManager {
       record.isLoading = true
       record.error = null
       record.pageReady = false
+      // A navigation can reset Chromium's emulation. Force the next stop to
+      // reapply the current viewport and Canvas scale even if the signature is
+      // unchanged from before the reload.
+      record.lastEmulationSignature = ''
       this.emitState()
     })
 
@@ -893,6 +809,7 @@ export class BrowserManager {
       record.pageReady = true
       this.applyEmulation(record)
       this.applyColorScheme(record)
+      this.syncVisibility(record)
       this.emitState()
     })
 
@@ -1035,7 +952,11 @@ export class BrowserManager {
       record.hasBounds &&
       record.shellVisible &&
       record.error === null &&
-      record.url !== 'about:blank'
+      record.url !== 'about:blank' &&
+      // A navigation can temporarily reset Chromium emulation. Keep the native
+      // view hidden while reloading an emulated pane so the old scale never
+      // flashes before the stop handler reapplies it.
+      (!record.isLoading || !record.emulationEnabled)
     record.view.setVisible(visible)
   }
 

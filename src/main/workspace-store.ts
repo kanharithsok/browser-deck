@@ -111,7 +111,16 @@ function copyLayout(layout: WorkspaceLayout): WorkspaceLayout {
         paneId,
         { ...position }
       ])
-    )
+    ),
+    ...(layout.view
+      ? {
+          view: {
+            pan: { ...layout.view.pan },
+            zoom: layout.view.zoom,
+            activePaneId: layout.view.activePaneId
+          }
+        }
+      : {})
   }
 }
 

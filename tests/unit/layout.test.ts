@@ -4,7 +4,6 @@ import {
   clampRect,
   isRectFullyVisible,
   layoutGrid,
-  maximizeRect,
   moveItem,
   moveRect,
   normalizedToRect,
@@ -511,19 +510,5 @@ describe('isRectFullyVisible', () => {
     ).toBe(false)
     expect(isRectFullyVisible({ x: 0, y: 0, width: 0, height: 10 }, viewport)).toBe(false)
     expect(isRectFullyVisible({ x: 0, y: 0, width: 10, height: 10 }, viewport, -1)).toBe(false)
-  })
-})
-
-describe('maximizeRect', () => {  it('returns maximized and restore geometry with padding', () => {
-    const result = maximizeRect({ x: 100, y: 100, width: 300, height: 200 }, canvas, 10)
-    expect(result).toEqual({
-      maximized: { x: 10, y: 10, width: 980, height: 780 },
-      restore: { x: 100, y: 100, width: 300, height: 200 }
-    })
-  })
-
-  it('rejects impossible padding and invalid input', () => {
-    expect(maximizeRect({ x: 0, y: 0, width: 10, height: 10 }, { width: 20, height: 20 }, 10)).toBeNull()
-    expect(maximizeRect({ x: 0, y: 0, width: 0, height: 10 }, canvas, 0)).toBeNull()
   })
 })

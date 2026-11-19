@@ -823,7 +823,7 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | --- | --- |
 | `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
 | `npm run build` | Passed: main 151.81 kB, preload 9.49 kB, renderer JS 338.61 kB, shell CSS 29.66 kB. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 16.0 s. Added palette accelerator, visibility, filtering, Enter/center/focus, Escape, and no-match coverage. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.4 s. Added palette accelerator, visibility, filtering, Enter/center/focus, Escape, and no-match coverage. |
 | Visual check | Rendered the palette over a two-device Canvas; the search field, active-first list, selected row, detail metadata, and keyboard hints fit cleanly at 1280 × 860. |
 
 **Known behavior / limitations:** Opening the palette freezes live pages behind snapshots while native views are hidden, matching existing dialogs and menus. While it is open, native menu commands other than Find Device are ignored. Full URLs and query strings are not shown in search results. Action commands and fuzzy scoring are deferred. Native accelerator delivery and shell focus when Cmd/Ctrl+K is pressed while a website has focus remain manual checks.
@@ -846,3 +846,138 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual check | Rendered a search for `pane`: both titles and the `Responsive` badges highlighted, metadata stayed on one line, and the new toolbar magnifier was visible. |
 
 **Known behavior / limitations:** The toolbar entry is disabled when there are no devices. Search still excludes full URLs and query strings. Fuzzy scoring and action commands remain deferred.
+
+## Post-MVP — Reapply Canvas zoom after reload
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Reloading a pane at non-100% Canvas zoom could leave the web content at the pre-reload scale while the pane frame stayed scaled. Chromium can reset device emulation during navigation, but `BrowserManager` skipped reapplying it because the cached emulation signature still matched. `did-start-loading` now invalidates that signature, so `did-stop-loading` reapplies the current viewport and Canvas scale. App-initiated reloads also hold emulated native views hidden until that reapplication finishes, avoiding the old scale flash and showing the existing snapshot/loading state instead. The declared page viewport remains unchanged: at 80% zoom, `innerWidth/Height` stays 560 × 700 and emulation scale returns to 0.8.
+
+**Files changed:** `src/main/browser-manager.ts`, `tests/e2e/browser-panes.spec.ts`, `docs/ARCHITECTURE.md`, and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.93 kB, preload 9.49 kB, renderer JS 342.09 kB, shell CSS 30.33 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.7 s. Added an 80% zoom reload check for emulation scale and fixed page viewport. One earlier full run hit the existing stress-load timeout; the suite passed on rerun. |
+| Visual check | At 50% Canvas zoom, reloading the fixture pane restored content that matched the 50% frame instead of rendering at the previous 100% scale. |
+
+**Known behavior / limitations:** This fixes normal Canvas zoom and reload. Pane maximize was subsequently removed from the product.
+
+## Post-MVP — Unified device actions menu and whole-pane selection ring
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Replaced the native pane-actions popup with the custom shell `AppMenu` used by the `+` menu. The device menu now has Navigate, Viewport, and Manage sections, matching icons, 11 actions, keyboard navigation, Escape dismissal, focus return, and intersecting-native-view hiding with snapshots. Added narrow validated IPC for Copy URL and detached DevTools; removed the obsolete native pane-menu request and maximize event surface. Moved the selected-device accent ring from an inset card shadow to the pane slot so it surrounds the whole frame outside native bounds.
+
+**Files changed:** `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/shared/ipc.ts`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/components/PaneCard.vue`, tests, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-048), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
+| `npm run build` | Passed: main 149.93 kB, preload 9.28 kB, renderer JS 348.25 kB, shell CSS 30.34 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.6 s. Added custom pane-menu structure, item, native-view hiding, focus-return, and Copy URL coverage. |
+| Visual check | Confirmed the pane actions menu matches the `+` menu and the accent ring surrounds the entire selected pane in Canvas. |
+
+**Known behavior / limitations:** The macOS application menu bar remains native OS chrome. Custom menus hide only native views that intersect them. The selection ring may be visually covered by another overlapping pane's native content, but never by the selected pane's own website.
+
+## Post-MVP — Remove pane maximize and keep Reload All selection
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Removed pane maximize completely: renderer state, slot geometry, native Device-menu item, `Cmd/Ctrl+Shift+M`, command routing, the custom device-menu action, the pure layout helper, and its tests. Canvas zoom, Fit all, the overview, and the device palette remain the ways to locate and focus panes. Application-window maximize/full-screen behavior is unchanged. Reload All now captures the selected pane, suppresses incidental native focus selection during the settle window, and restores the captured selection.
+
+**Files changed:** `src/main/index.ts`, `src/shared/ipc.ts`, `src/shared/layout.ts`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/MenuIcon.vue`, tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-049), and `docs/MANUAL_CHECKS.md`.
+
+**Build:** main 149.74 kB, preload 9.28 kB, renderer JS 346.09 kB, shell CSS 30.34 kB.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 155 tests, and all contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.4 s. Added Reload All selection preservation coverage and removed pane-maximize test paths. |
+| Automated check | The custom device menu has 10 items with no maximize action; the native Device menu item is removed; Reload All leaves the selected device unchanged. |
+
+**Known behavior / limitations:** Application-window maximize remains available through macOS window controls. Reload All may ignore an incidental focus change for the short suppression window, but explicit user selection remains available immediately afterward.
+
+## Post-MVP — Move top-right actions into the bottom canvas bar
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Removed the Find device, Reload all, and Fit all icons from the top toolbar. The top right now keeps only Add alongside the active-device controls. Find device and Reload all moved into the bottom canvas bar beside the zoom controls; the bar widened from 280 to 352 DIP and its validated action contract gained `find-device` and `reload-all`. Fit all remains available from the overview header and the zoom percentage menu.
+
+**Files changed:** `src/shared/zoom.ts`, `src/renderer/zoom.html`, `src/renderer/src/zoom.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-050), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 155 unit tests, and all contrast pairs. |
+| `npm run build` | Passed: main 149.88 kB, preload 9.28 kB, renderer JS 343.94 kB, shell CSS 29.53 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.9 s. Updated palette, Reload All, Fit all, bottom-bar, and accessibility coverage. |
+| Visual check | Confirmed the top right has only Add; the bottom bar shows Hand, zoom controls, Find, Reload all, and Appearance at 1280 × 860. |
+
+**Known behavior / limitations:** The bottom bar is wider and more control-dense. Fit all is available from the overview and zoom menu but no longer has a dedicated top-toolbar button.
+
+## Post-MVP — Compact centered top bar, reliable hit targets, and PaneFlow app menu
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Removed back, forward, and reload from the top bar so navigation exists only in each device header. Marked the top navigation row as a no-drag region, increased nav-control and field hit areas, gave the address and viewport controls visible inset surfaces, and added pointer cursors. Centered a 400 px address field with the viewport select; URL text is centered while idle and left-aligned while editing. The viewport select stays next to the address with a fixed default width of 184 px, keeps full preset names and CSS dimensions, steps down at narrow toolbar widths, and falls back to a tooltip when space truncates the label. The active-device context remains anchored at the far left so the bar reads as three stable zones: context, address plus viewport, and Add. Removed the visible PaneFlow brand from the toolbar while retaining a visually hidden level-one heading. Replaced the default macOS app-menu role with an explicit **PaneFlow** application menu and set the About panel name to PaneFlow.
+
+**Files changed:** `src/main/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-051), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 155 unit tests, and all contrast pairs. |
+| `npm run build` | Passed: main 150.24 kB, preload 9.28 kB, renderer JS 344.05 kB, shell CSS 30.53 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.7 s. Added fixed-width viewport selector, full-label, and tooltip coverage. |
+| Visual check | Confirmed the centered short address field, the fixed-width viewport selector with the full preset label at 1280 px, its responsive width at 720 px, no visible PaneFlow brand, Add-only right side, and new bottom-bar Find/Reload controls. |
+| App menu check | The running macOS menu reports `PaneFlow` as its application-menu label. |
+
+**Known behavior / limitations:** Window dragging remains available from the toolbar background, active-device context, and titlebar inset. The Dock name in an unpackaged development launch still comes from Electron; packaged builds use PaneFlow.
+
+## Post-MVP — Restore the last Canvas camera and add zoom shortcuts
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Each workspace now stores an optional `view` containing the Canvas pan, zoom, and active device in its layout. Reopening the app or switching back to a workspace restores that camera and selection synchronously; only workspaces without a saved view run the fit-on-open path. Discrete camera changes, gesture ends, and selection changes save immediately, continuous gestures use a short debounce, and a best-effort save runs while the shell unloads. A restored camera that leaves a pane partially offscreen no longer blocks its first page load: main applies the pane's first bounds even while hidden. Incidental native focus events are briefly ignored while recreated views settle so the saved selection sticks. The native View menu now adds Canvas **Zoom In** (`Cmd/Ctrl+=`), **Zoom Out** (`Cmd/Ctrl+-`), and **Reset Zoom** (`Cmd/Ctrl+0`), routed through the same zoom core as the bottom bar.
+
+**Files changed:** `src/shared/workspace.ts`, `src/main/workspace-store.ts`, `src/main/browser-manager.ts`, `src/main/index.ts`, `src/shared/ipc.ts`, `src/renderer/src/App.vue`, `tests/unit/workspace.test.ts`, `tests/unit/workspace-store.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-052), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 158 unit tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.62 kB, preload 9.28 kB, renderer JS 347.19 kB, shell CSS 30.53 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.4 s. Sets 50%/75% camera state and a selection, closes immediately, relaunches, and verifies the final zoom, pan-derived pane position, selected device, and offscreen pane loading. Also asserts the native zoom accelerators and command routing. |
+| Visual/automated check | The restarted app restores the 75% camera and active device; a partially visible pane finishes loading instead of remaining blank. |
+
+**Known behavior / limitations:** A stale saved camera may point at empty world space or leave panes offscreen; Fit all remains available in the overview and zoom menu. New, duplicated, and imported workspaces start fitted because they have no camera view. This supersedes earlier notes in this report that pan, zoom, and cleared selection were transient.
+
+## Post-MVP — Unified viewport and Add preset menus
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Replaced the native active-pane viewport `<select>` with a compact button that opens the same custom `AppMenu` used by Add. The trigger shows the short preset name and keeps the full name plus CSS dimensions in its tooltip; the menu shows full names left-aligned and dimensions right-aligned, with a checkmark for the active preset and a Custom… item that opens the inline editor and focuses its width field. The Add menu now uses the complete fixed preset catalog instead of a curated subset, so both menus list Generic phone, iPhone 15 Pro Max, Samsung Galaxy S24 Ultra, Google Pixel 8 Pro, Generic tablet, Laptop, and every other fixed preset. Both menus share the same headings, icons, item styling, and dimensions.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/AppMenu.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-053), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 158 unit tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.62 kB, preload 9.28 kB, renderer JS 349.70 kB, shell CSS 30.97 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.0 s. Verifies 17 viewport items, 16 Add items, matching category groups and missing presets, menu selection, trigger label/tooltip/`data-preset`, Custom editor focus, and updated menu-button accessibility semantics. |
+| Visual check | Confirmed 304 px menus at 1280 × 860 with left-aligned names, right-aligned dimensions, a right-side checkmark, no horizontal clipping, and the complete catalog visible without scrolling. Shorter windows scroll within the shared 660 px maximum height. |
+
+**Known behavior / limitations:** The viewport trigger deliberately shows the short device name to avoid clipping; the full name and dimensions are available on hover and in the menu. Custom… exists only in the viewport menu because adding a device from custom dimensions would need an add-time dimension form. The complete catalog is visible at typical window sizes; both menus scroll on shorter windows. This supersedes the native-selector wording and the earlier curated Add-menu subset noted above.

@@ -10,6 +10,7 @@ import {
 import { isValidProfileId } from './profiles'
 import { isAllowedNavigationUrl } from './url'
 import { parsePaneViewport, type PaneViewport } from './viewports'
+import { clampCanvasZoom } from './zoom'
 
 export const WORKSPACE_STORE_VERSION = 1
 export const APP_STATE_VERSION = 1
@@ -37,6 +38,15 @@ export interface WorkspacePaneDefinition {
   title?: string
 }
 
+export interface WorkspaceViewState {
+  /** Screen-space camera pan, preserved exactly across relaunches. */
+  pan: CanvasPosition
+  /** Canvas zoom, clamped to the supported range when restored. */
+  zoom: number
+  /** Active device, or null when the user cleared the selection. */
+  activePaneId: string | null
+}
+
 export interface WorkspaceLayout {
   mode: WorkspaceLayoutMode
   columns: number
@@ -45,6 +55,8 @@ export interface WorkspaceLayout {
   freeformOrder: string[]
   /** World positions for the infinite canvas. Missing panes get an arranged position. */
   canvas?: Record<string, CanvasPosition>
+  /** Last Canvas camera and selection. Absent means fit on first open. */
+  view?: WorkspaceViewState
 }
 
 export interface WorkspaceData {
@@ -270,6 +282,34 @@ function validNormalizedRect(value: unknown): NormalizedRect | null {
   return { x, y, width, height }
 }
 
+function normalizeWorkspaceView(
+  input: unknown,
+  allowedIds: ReadonlySet<string>
+): WorkspaceViewState | undefined {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return undefined
+  }
+  const record = input as Record<string, unknown>
+  if (!isValidCanvasPosition(record.pan)) {
+    return undefined
+  }
+  if (typeof record.zoom !== 'number' || !Number.isFinite(record.zoom)) {
+    return undefined
+  }
+  const activePaneId =
+    typeof record.activePaneId === 'string' && allowedIds.has(record.activePaneId)
+      ? record.activePaneId
+      : null
+  return {
+    pan: {
+      x: Math.round(record.pan.x),
+      y: Math.round(record.pan.y)
+    },
+    zoom: clampCanvasZoom(record.zoom),
+    activePaneId
+  }
+}
+
 /**
  * Sanitizes renderer or persisted layout state against the current pane IDs.
  * Unknown pane references are dropped, missing panes are appended, and invalid
@@ -324,13 +364,16 @@ export function normalizeWorkspaceLayout(
     }
   }
 
+  const view = normalizeWorkspaceView(record.view, allowedIds)
+
   return {
     mode,
     columns,
     gridOrder: gridOrder ?? fallback.gridOrder,
     freeform,
     freeformOrder: freeformOrder ?? fallback.freeformOrder,
-    canvas
+    canvas,
+    ...(view ? { view } : {})
   }
 }
 

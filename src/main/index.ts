@@ -108,6 +108,10 @@ let devServerUrl: URL | null = null
 let workspaceMenuRefreshToken = 0
 
 app.setName('PaneFlow')
+app.setAboutPanelOptions({
+  applicationName: 'PaneFlow',
+  applicationVersion: app.getVersion()
+})
 registerShellScheme()
 
 const userDataOverride = process.env.PANEFLOW_USER_DATA_DIR
@@ -292,11 +296,6 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
     onPaneFocused: (paneId) => {
       if (shellView && !shellView.webContents.isDestroyed()) {
         shellView.webContents.send(IPC_CHANNELS.paneFocused, paneId)
-      }
-    },
-    onPaneMaximizeRequested: (paneId) => {
-      if (shellView && !shellView.webContents.isDestroyed()) {
-        shellView.webContents.send(IPC_CHANNELS.paneMaximizeRequested, paneId)
       }
     },
     onPaneNotice: (notice) => {
@@ -729,8 +728,20 @@ function buildApplicationMenu(): void {
     }
   }
 
+  const macAppMenu: MenuItemConstructorOptions[] = [
+    { role: 'about' },
+    { type: 'separator' },
+    { role: 'services' },
+    { type: 'separator' },
+    { role: 'hide' },
+    { role: 'hideOthers' },
+    { role: 'unhide' },
+    { type: 'separator' },
+    { role: 'quit' }
+  ]
+
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    ...(isMac ? [{ label: 'PaneFlow', submenu: macAppMenu }] : []),
     { role: 'fileMenu' },
     {
       label: 'Workspace',
@@ -821,19 +832,31 @@ function buildApplicationMenu(): void {
           label: 'Reload All Devices',
           accelerator: 'CmdOrCtrl+Alt+Shift+R',
           click: () => sendCommand('reload-all')
-        },
-        { type: 'separator' },
-        {
-          id: 'pane-maximize',
-          label: 'Toggle Maximize',
-          accelerator: 'CmdOrCtrl+Shift+M',
-          click: () => sendCommand('toggle-maximize')
         }
       ]
     },
     {
       label: 'View',
       submenu: [
+        {
+          id: 'canvas-zoom-in',
+          label: 'Zoom In',
+          accelerator: 'CmdOrCtrl+=',
+          click: () => sendCommand('zoom-in')
+        },
+        {
+          id: 'canvas-zoom-out',
+          label: 'Zoom Out',
+          accelerator: 'CmdOrCtrl+-',
+          click: () => sendCommand('zoom-out')
+        },
+        {
+          id: 'canvas-zoom-reset',
+          label: 'Reset Zoom',
+          accelerator: 'CmdOrCtrl+0',
+          click: () => sendCommand('zoom-reset')
+        },
+        { type: 'separator' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
         {

@@ -12,9 +12,20 @@ const percent = document.querySelector<HTMLButtonElement>('#percent')
 const out = document.querySelector<HTMLButtonElement>('#out')
 const zoomIn = document.querySelector<HTMLButtonElement>('#in')
 const hand = document.querySelector<HTMLButtonElement>('#hand')
+const find = document.querySelector<HTMLButtonElement>('#find')
+const reloadAll = document.querySelector<HTMLButtonElement>('#reload-all')
 const appearance = document.querySelector<HTMLButtonElement>('#appearance')
 
-if (!value || !percent || !out || !zoomIn || !hand || !appearance) {
+if (
+  !value ||
+  !percent ||
+  !out ||
+  !zoomIn ||
+  !hand ||
+  !find ||
+  !reloadAll ||
+  !appearance
+) {
   throw new Error('Canvas controls DOM is unavailable.')
 }
 
@@ -23,6 +34,8 @@ const percentButton = percent
 const outButton = out
 const inButton = zoomIn
 const handButton = hand
+const findButton = find
+const reloadAllButton = reloadAll
 const appearanceButton = appearance
 const themeIcons = Array.from(
   appearanceButton.querySelectorAll<SVGElement>('[data-theme-icon]')
@@ -71,6 +84,14 @@ inButton.addEventListener('click', () => {
 
 handButton.addEventListener('click', () => {
   send({ type: 'toggle-hand' })
+})
+
+findButton.addEventListener('click', () => {
+  send({ type: 'find-device' })
+})
+
+reloadAllButton.addEventListener('click', () => {
+  send({ type: 'reload-all' })
 })
 
 appearanceButton.addEventListener('click', () => {

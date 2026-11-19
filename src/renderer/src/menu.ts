@@ -12,6 +12,15 @@ export type AppMenuIcon =
   | 'system'
   | 'sun'
   | 'moon'
+  | 'back'
+  | 'forward'
+  | 'copy'
+  | 'rotate'
+  | 'camera'
+  | 'duplicate'
+  | 'rename'
+  | 'devtools'
+  | 'close'
 
 export interface AppMenuItem {
   id: string

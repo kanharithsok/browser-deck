@@ -59,6 +59,33 @@ defineProps<{
       v-else-if="icon === 'moon'"
       d="M13.2 9.7A5.5 5.5 0 0 1 6.3 2.8 5.5 5.5 0 1 0 13.2 9.7Z"
     />
+    <path v-else-if="icon === 'back'" d="M9.5 3.5 5 8l4.5 4.5" />
+    <path v-else-if="icon === 'forward'" d="M6.5 3.5 11 8l-4.5 4.5" />
+    <template v-else-if="icon === 'copy'">
+      <rect x="5" y="5" width="8" height="8" rx="1" />
+      <path d="M11 5V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1" />
+    </template>
+    <template v-else-if="icon === 'rotate'">
+      <rect x="5.5" y="2.5" width="5" height="11" rx="1" />
+      <path d="M2.5 6.5a6 6 0 0 1 10.2-2.2M13.5 9.5a6 6 0 0 1-10.2 2.2" />
+    </template>
+    <template v-else-if="icon === 'camera'">
+      <path d="M2.5 5.5h2l1-1.5h5l1 1.5h2v7h-11z" />
+      <circle cx="8" cy="9" r="2.2" />
+    </template>
+    <template v-else-if="icon === 'duplicate'">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <path d="M6 6h7v7H6z" />
+    </template>
+    <template v-else-if="icon === 'rename'">
+      <path d="m3 11.5-.5 2 2-.5 7.8-7.8-1.5-1.5Z" />
+      <path d="m9.9 4.6 1.5 1.5" />
+    </template>
+    <path
+      v-else-if="icon === 'devtools'"
+      d="m5 4-3 4 3 4M11 4l3 4-3 4M9 2 7 14"
+    />
+    <path v-else-if="icon === 'close'" d="M4 4l8 8M12 4l-8 8" />
   </svg>
 </template>
 

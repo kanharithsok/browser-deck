@@ -7,25 +7,25 @@ import type { PaneViewport } from '../../../shared/viewports'
 const props = withDefaults(
   defineProps<{
     pane: PaneState | null
-    showCanvasTools?: boolean
-    fitAllDisabled?: boolean
     hasPanes?: boolean
     profilePaneCount?: number
     variant?: 'bar' | 'toolbar'
+    viewportMenuOpen?: boolean
+    customViewportRequest?: number
   }>(),
   {
-    showCanvasTools: false,
-    fitAllDisabled: false,
     hasPanes: true,
     profilePaneCount: 1,
-    variant: 'bar'
+    variant: 'bar',
+    viewportMenuOpen: false,
+    customViewportRequest: 0
   }
 )
 
 const emit = defineEmits<{
   'set-viewport': [viewport: PaneViewport]
   'layout-changed': []
-  'fit-all': []
+  'open-viewport-menu': [trigger: HTMLElement]
 }>()
 
 const addressError = ref<string | null>(null)
@@ -73,9 +73,12 @@ const profileTooltip = computed(() => {
       <PaneNavigation
         :pane="pane"
         :status-id="statusId"
+        :viewport-menu-open="viewportMenuOpen"
+        :custom-viewport-request="customViewportRequest"
         @address-error="addressError = $event"
         @set-viewport="emit('set-viewport', $event)"
         @layout-changed="emit('layout-changed')"
+        @open-viewport-menu="emit('open-viewport-menu', $event)"
       />
     </template>
 
@@ -86,21 +89,6 @@ const profileTooltip = computed(() => {
       <span class="global-pane-empty-hint">
         {{ hasPanes ? 'Click a device to edit its address' : 'Add a device to get started' }}
       </span>
-    </div>
-
-    <div v-if="showCanvasTools" class="global-canvas-tools">
-      <button
-        class="global-canvas-tool"
-        type="button"
-        title="Fit all devices to view"
-        aria-label="Fit all devices to view"
-        :disabled="fitAllDisabled"
-        @click="emit('fit-all')"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3 6V3h3M10 3h3v3M3 10v3h3M13 10v3h-3" />
-        </svg>
-      </button>
     </div>
 
     <span v-if="pane" :id="statusId" class="global-pane-status" role="status" aria-live="polite">
@@ -127,12 +115,40 @@ const profileTooltip = computed(() => {
 .global-pane-bar-toolbar {
   flex: 1 1 auto;
   flex-wrap: nowrap;
+  justify-content: center;
   min-width: 0;
   min-height: 0;
   height: 100%;
   padding: 0;
   border-bottom: 0;
   background: transparent;
+}
+
+.global-pane-bar-toolbar :deep(.pane-nav-row) {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.global-pane-bar-toolbar :deep(.address-form) {
+  flex: 0 1 400px;
+  max-width: 400px;
+  min-width: 120px;
+}
+
+.global-pane-bar-toolbar :deep(.address-input) {
+  text-align: center;
+}
+
+.global-pane-bar-toolbar :deep(.address-input:focus) {
+  text-align: left;
+}
+
+.global-pane-bar-toolbar .global-pane-context {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  max-width: 220px;
+  transform: translateY(-50%);
 }
 
 .global-pane-context {
@@ -211,40 +227,6 @@ const profileTooltip = computed(() => {
   opacity: 1;
 }
 
-.global-canvas-tools {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  margin-left: auto;
-}
-
-.global-canvas-tool {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 4px;
-  color: var(--text-muted);
-}
-
-.global-canvas-tool:hover:not(:disabled) {
-  background: var(--surface-inset);
-  color: var(--text);
-}
-
-.global-canvas-tool svg {
-  width: 13px;
-  height: 13px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .global-pane-status {
   position: absolute;
   width: 1px;
@@ -260,14 +242,14 @@ const profileTooltip = computed(() => {
   }
 }
 
-@container (max-width: 700px) {
-  .global-pane-profile {
+@container (max-width: 1050px) {
+  .global-pane-bar-toolbar .global-pane-context {
     display: none;
   }
 }
 
-@container (max-width: 640px) {
-  .global-pane-bar-toolbar .global-pane-context {
+@container (max-width: 700px) {
+  .global-pane-profile {
     display: none;
   }
 }

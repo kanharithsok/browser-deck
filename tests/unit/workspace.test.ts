@@ -205,6 +205,60 @@ describe('workspace layout normalization', () => {
       defaultWorkspaceLayout([])
     )
   })
+
+  it('restores a valid Canvas camera and selection', () => {
+    const view = {
+      pan: { x: 120, y: -80 },
+      zoom: 0.75,
+      activePaneId: PANE_B
+    }
+    const layout = normalizeWorkspaceLayout({ mode: 'canvas', view }, [PANE_A, PANE_B])
+    expect(layout.view).toEqual(view)
+
+    const parsed = parseWorkspaceData(
+      workspaceInput({
+        layout: {
+          mode: 'canvas',
+          columns: 2,
+          gridOrder: [PANE_A, PANE_B],
+          freeform: {},
+          freeformOrder: [PANE_A, PANE_B],
+          view
+        }
+      })
+    )
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.data.layout.view).toEqual(view)
+    }
+  })
+
+  it('clamps zoom and clears an unknown active pane in a saved view', () => {
+    const layout = normalizeWorkspaceLayout(
+      {
+        mode: 'canvas',
+        view: {
+          pan: { x: -20, y: 40 },
+          zoom: 9,
+          activePaneId: '55555555-5555-4555-8555-555555555555'
+        }
+      },
+      [PANE_A]
+    )
+    expect(layout.view).toEqual({
+      pan: { x: -20, y: 40 },
+      zoom: 2,
+      activePaneId: null
+    })
+  })
+
+  it('drops a saved view with invalid coordinates', () => {
+    const layout = normalizeWorkspaceLayout(
+      { mode: 'canvas', view: { pan: { x: Number.NaN, y: 0 }, zoom: 1, activePaneId: PANE_A } },
+      [PANE_A]
+    )
+    expect(layout.view).toBeUndefined()
+  })
 })
 
 describe('app state validation', () => {
