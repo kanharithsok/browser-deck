@@ -1436,6 +1436,65 @@ Record material technical decisions here. Keep entries short but include context
   - E2e checks the toolbar entry, native accelerator, viewport badge, title and viewport highlighting, Enter selection, Escape, and no-match state.
   - Typecheck, lint, unit tests, build, full Playwright suite, and a 1280 × 860 visual pass pass.
 
+## ADR-048 — Pane actions use the custom shell menu and the selection ring lives outside native bounds
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The `+` menu, Canvas menu, zoom menu, and appearance menu use a custom in-shell component. The per-device `…` menu was still a native `Menu.popup`, so its typography, spacing, icons, and interaction model did not match. Separately, the selected-device accent was an inset card shadow; native website content covered it everywhere except the shell header, making the selection look like a top-only underline.
+
+- **Decision:**
+  1. Replace the native pane actions popup with the same `AppMenu` component used by the `+` menu.
+  2. Keep the existing native-view hiding strategy: measure the custom menu, hide only intersecting native views, and show their snapshots.
+  3. Reuse validated pane operations and add two narrow IPC commands for Copy URL and detached DevTools. Remove the obsolete native-menu request and maximize event surface.
+  4. Draw the selected-device ring on `.pane-slot`, outside the native content rectangle, instead of using an inset card shadow.
+  5. Leave the macOS application menu bar native; it is OS chrome, not an in-app context menu.
+
+- **Alternatives considered:**
+  - **Keep the native pane menu.** Rejected; it cannot match the custom menu design and was the reported inconsistency.
+  - **Draw a custom menu over native content without hiding it.** Rejected; native views sit above the shell.
+  - **Inset the native view by one pixel to reveal an inner ring.** Rejected; it would change the effective viewport/content rectangle.
+  - **Use an inset card shadow for selection.** Rejected; native content covers it below the header.
+
+- **Consequences:**
+  - All in-app context menus now share one visual and keyboard model.
+  - Pane actions that need privileged behavior use explicit, validated IPC (`copyPaneUrl`, `openPaneDevTools`, rotate, screenshot).
+  - The selection ring remains one screen pixel at every Canvas zoom and does not alter pane geometry.
+  - The OS application menu remains visually native by necessity.
+
+- **Evidence / verification:**
+  - E2e opens the pane actions menu, verifies `.app-menu`, section headings, all 11 items, native-view hiding, Escape focus return, and Copy URL clipboard output.
+  - Visual checks confirm the menu matches the `+` menu and the accent ring surrounds the entire selected pane.
+  - Typecheck, lint, unit tests, contrast, build, and the full Playwright suite pass.
+
+## ADR-049 — Remove pane maximize and preserve selection during Reload All
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Pane maximize added a second presentation mode that was rarely used and was buggy when the Canvas zoom was not 100%. The product already supports Canvas zoom and Fit all, which cover the useful ways to focus a pane. Separately, Reload All could let incidental native focus events change the selected pane while the bulk reload settled.
+
+- **Decision:**
+  1. Remove pane maximize completely: renderer state, slot geometry branch, native/custom menu items, `Cmd/Ctrl+Shift+M`, command routing, the layout helper, and its tests.
+  2. Keep application-window maximize/full-screen behavior unchanged.
+  3. In Reload All, capture the selected pane, suppress incidental native focus selection for a short settle window, and restore the captured selection after the request.
+  4. Keep the Canvas zoom, Fit all, minimap, and device palette as the ways to locate and work with panes.
+
+- **Alternatives considered:**
+  - **Keep maximize in the menu only.** Rejected; it still adds a separate geometry mode and the same native-scale edge cases.
+  - **Fix maximize at non-100% zoom.** Rejected; the feature is low-value and the fix would add per-pane presentation state.
+  - **Remove all pane focus handling.** Rejected; clicking a website must still select its pane.
+  - **Restore the selected pane without suppression.** Rejected; a late native focus event could still select another pane.
+
+- **Consequences:**
+  - Canvas has one layout mode and one source of pane geometry; no hidden maximized-pane state remains.
+  - Application-window maximize is unchanged.
+  - Reload All preserves the current selection; a user click within the short suppression window may not update selection, but the window is brief.
+  - The test suite no longer needs pane maximize coverage.
+
+- **Evidence / verification:**
+  - Source search confirms no pane maximize state, command, menu item, shortcut, helper, or test remains.
+  - E2e selects the second pane, invokes Reload All, waits for both panes to finish loading, and verifies the second pane is still selected.
+  - Typecheck, lint, unit tests, build, and the full Playwright suite pass.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded

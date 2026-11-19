@@ -846,3 +846,61 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual check | Rendered a search for `pane`: both titles and the `Responsive` badges highlighted, metadata stayed on one line, and the new toolbar magnifier was visible. |
 
 **Known behavior / limitations:** The toolbar entry is disabled when there are no devices. Search still excludes full URLs and query strings. Fuzzy scoring and action commands remain deferred.
+
+## Post-MVP — Reapply Canvas zoom after reload
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Reloading a pane at non-100% Canvas zoom could leave the web content at the pre-reload scale while the pane frame stayed scaled. Chromium can reset device emulation during navigation, but `BrowserManager` skipped reapplying it because the cached emulation signature still matched. `did-start-loading` now invalidates that signature, so `did-stop-loading` reapplies the current viewport and Canvas scale. App-initiated reloads also hold emulated native views hidden until that reapplication finishes, avoiding the old scale flash and showing the existing snapshot/loading state instead. The declared page viewport remains unchanged: at 80% zoom, `innerWidth/Height` stays 560 × 700 and emulation scale returns to 0.8.
+
+**Files changed:** `src/main/browser-manager.ts`, `tests/e2e/browser-panes.spec.ts`, `docs/ARCHITECTURE.md`, and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
+| `npm run build` | Passed: main 151.93 kB, preload 9.49 kB, renderer JS 342.09 kB, shell CSS 30.33 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 15.7 s. Added an 80% zoom reload check for emulation scale and fixed page viewport. One earlier full run hit the existing stress-load timeout; the suite passed on rerun. |
+| Visual check | At 50% Canvas zoom, reloading the fixture pane restored content that matched the 50% frame instead of rendering at the previous 100% scale. |
+
+**Known behavior / limitations:** This fixes normal Canvas zoom and reload. Pane maximize was subsequently removed from the product.
+
+## Post-MVP — Unified device actions menu and whole-pane selection ring
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Replaced the native pane-actions popup with the custom shell `AppMenu` used by the `+` menu. The device menu now has Navigate, Viewport, and Manage sections, matching icons, 11 actions, keyboard navigation, Escape dismissal, focus return, and intersecting-native-view hiding with snapshots. Added narrow validated IPC for Copy URL and detached DevTools; removed the obsolete native pane-menu request and maximize event surface. Moved the selected-device accent ring from an inset card shadow to the pane slot so it surrounds the whole frame outside native bounds.
+
+**Files changed:** `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/shared/ipc.ts`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/components/PaneCard.vue`, tests, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-048), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 157 tests, and all contrast pairs. |
+| `npm run build` | Passed: main 149.93 kB, preload 9.28 kB, renderer JS 348.25 kB, shell CSS 30.34 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.6 s. Added custom pane-menu structure, item, native-view hiding, focus-return, and Copy URL coverage. |
+| Visual check | Confirmed the pane actions menu matches the `+` menu and the accent ring surrounds the entire selected pane in Canvas. |
+
+**Known behavior / limitations:** The macOS application menu bar remains native OS chrome. Custom menus hide only native views that intersect them. The selection ring may be visually covered by another overlapping pane's native content, but never by the selected pane's own website.
+
+## Post-MVP — Remove pane maximize and keep Reload All selection
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Removed pane maximize completely: renderer state, slot geometry, native Device-menu item, `Cmd/Ctrl+Shift+M`, command routing, the custom device-menu action, the pure layout helper, and its tests. Canvas zoom, Fit all, the overview, and the device palette remain the ways to locate and focus panes. Application-window maximize/full-screen behavior is unchanged. Reload All now captures the selected pane, suppresses incidental native focus selection during the settle window, and restores the captured selection.
+
+**Files changed:** `src/main/index.ts`, `src/shared/ipc.ts`, `src/shared/layout.ts`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/MenuIcon.vue`, tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-049), and `docs/MANUAL_CHECKS.md`.
+
+**Build:** main 149.74 kB, preload 9.28 kB, renderer JS 346.09 kB, shell CSS 30.34 kB.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 16 unit files / 155 tests, and all contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.1 s. Added Reload All selection preservation coverage and removed pane-maximize test paths. |
+| Automated check | The custom device menu has 10 items with no maximize action; the native Device menu item is removed; Reload All leaves the selected device unchanged. |
+
+**Known behavior / limitations:** Application-window maximize remains available through macOS window controls. Reload All may ignore an incidental focus change for the short suppression window, but explicit user selection remains available immediately afterward.

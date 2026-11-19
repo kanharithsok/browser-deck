@@ -866,6 +866,73 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toMatch(/^Address for device /)
     await waitForVisibleAlignedBounds(app)
 
+    // Device actions use the same custom menu component as the + menu, not a
+    // native popup. The menu hides the native views it covers.
+    const customMenuCard = shellPage.locator(`.pane-card[data-pane-id="${bobPaneId}"]`)
+    const deviceActionsTrigger = customMenuCard.getByRole('button', {
+      name: 'Device actions'
+    })
+    await deviceActionsTrigger.click()
+    const paneActionsMenu = shellPage.getByRole('menu', { name: 'Device actions' })
+    await expect(paneActionsMenu).toBeVisible()
+    await expect(paneActionsMenu).toHaveClass(/app-menu/)
+    await expect(paneActionsMenu.locator('.app-menu-section')).toHaveText([
+      'Navigate',
+      'Viewport',
+      'Manage'
+    ])
+    await expect(paneActionsMenu.getByRole('menuitem')).toHaveCount(10)
+    for (const name of [
+      'Back',
+      'Forward',
+      'Reload',
+      'Copy URL',
+      'Rotate Viewport',
+      'Capture Screenshot…',
+      'Duplicate Device',
+      'Rename Device…',
+      'Open DevTools',
+      'Close Device'
+    ]) {
+      await expect(paneActionsMenu.getByRole('menuitem', { name })).toBeVisible()
+    }
+    await expect
+      .poll(async () => (await getViewStates(app as ElectronApplication)).some((state) => !state.visible))
+      .toBe(true)
+
+    const bobUrl = (await getSnapshot(app as ElectronApplication)).panes.find(
+      (pane) => pane.id === bobPaneId
+    )?.url
+    if (!bobUrl) {
+      throw new Error('Bob pane URL is unavailable')
+    }
+    await paneActionsMenu.getByRole('menuitem', { name: 'Copy URL' }).click()
+    await expect(paneActionsMenu).toHaveCount(0)
+    await expect
+      .poll(() => (app as ElectronApplication).evaluate(({ clipboard }) => clipboard.readText()))
+      .toBe(bobUrl)
+
+    await deviceActionsTrigger.click()
+    await expect(paneActionsMenu).toBeVisible()
+    await shellPage.keyboard.press('Escape')
+    await expect(paneActionsMenu).toHaveCount(0)
+    await expect(deviceActionsTrigger).toBeFocused()
+    await waitForVisibleAlignedBounds(app)
+
+    // Reload All preserves the selected device instead of letting incidental
+    // native focus events select the first pane.
+    await shellPage.getByRole('button', { name: 'Reload all devices' }).click()
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.every((pane) => !pane.isLoading),
+      'all panes after Reload All'
+    )
+    await expect(shellPage.locator('.pane-card-active')).toHaveAttribute(
+      'data-pane-id',
+      bobPaneId as string
+    )
+    await waitForVisibleAlignedBounds(app)
+
     // A minimap frame centers and focuses its pane, then returns keyboard focus
     // to the shell instead of keeping it in the native overlay.
     await minimapPage.locator('.frame').nth(1).click()
@@ -1459,6 +1526,27 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(responsiveEmulation?.enabled).toBe(true)
     expect(responsiveEmulation?.scale).toBeGreaterThan(0)
     expect(responsiveEmulation?.scale).toBeLessThanOrEqual(1)
+
+    // Reloading a pane can reset Chromium emulation. The zoom scale must be
+    // reapplied after navigation without changing the declared viewport.
+    await shellPage
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+      .getByRole('button', { name: 'Reload device' })
+      .click()
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes[0]?.isLoading === false,
+      'zoomed pane reload'
+    )
+    await expect
+      .poll(async () => getEmulationState(app as ElectronApplication, alicePaneId as string))
+      .toMatchObject({ enabled: true })
+    await expect
+      .poll(async () => (await getEmulationState(app as ElectronApplication, alicePaneId as string))?.scale)
+      .toBeCloseTo(0.8, 2)
+    await expect.poll(aliceMetrics).toMatchObject({ width: 560, height: 700 })
+    await waitForVisibleAlignedBounds(app)
+
     await resetCanvasZoomFromBar(shellPage, zoomPage)
     await expect
       .poll(async () => getEmulationState(app as ElectronApplication, alicePaneId as string))
@@ -1477,38 +1565,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         )
       })
       .toBe(true)
-
-    // Maximize temporarily fills the workspace; unrelated native views hide,
-    // and restore returns to the prior canvas geometry. The pane header no
-    // longer exposes a maximize button, so this uses the native Device menu.
-    await focusPane(shellPage, alicePaneId as string)
-    const preMaximizeRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
-    if (!preMaximizeRect) {
-      throw new Error('Pre-maximize device bounds are unavailable')
-    }
-    await clickAppMenuCommand(app, 'pane-maximize')
-    await expect
-      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
-      .toBe(1)
-    await waitForVisibleAlignedBounds(app)
-    const maximizedRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
-    if (!maximizedRect) {
-      throw new Error('Maximized device bounds are unavailable')
-    }
-    expect(maximizedRect.width).toBeGreaterThan(preMaximizeRect.width + 20)
-    expect(maximizedRect.height).toBeGreaterThanOrEqual(preMaximizeRect.height - 1)
-
-    await clickAppMenuCommand(app, 'pane-maximize')
-    await expect
-      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
-      .toBe(2)
-    await waitForAlignedBounds(app)
-    const restoredMaximizeRect = await shellPage.locator('.pane-card').nth(0).boundingBox()
-    if (!restoredMaximizeRect) {
-      throw new Error('Restored maximize pane bounds are unavailable')
-    }
-    expect(Math.abs(restoredMaximizeRect.x - preMaximizeRect.x)).toBeLessThanOrEqual(2)
-    expect(Math.abs(restoredMaximizeRect.width - preMaximizeRect.width)).toBeLessThanOrEqual(2)
 
     // Screen capture writes a real PNG through the validated IPC path. Patch
     // the native save dialog so the test does not need to drive OS chrome.
@@ -1707,14 +1763,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await waitForAlignedBounds(app)
 
-    await clickAppMenuCommand(app, 'pane-maximize')
-    await expect
-      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
-      .toBe(1)
-    await clickAppMenuCommand(app, 'pane-maximize')
-    await expect
-      .poll(async () => (await getViewStates(app as ElectronApplication)).filter((s) => s.visible).length)
-      .toBe(2)
     await shellPage.getByRole('button', { name: 'Fit all devices to view' }).click()
     await waitForAlignedBounds(app)
     const resolvedTheme = (await getSnapshot(app as ElectronApplication)).resolvedTheme

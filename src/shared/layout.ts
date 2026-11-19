@@ -88,11 +88,6 @@ export interface SnapResult {
   snappedY: boolean
 }
 
-export interface MaximizeResult {
-  maximized: Rect
-  restore: Rect
-}
-
 function isFiniteNumber(value: number): boolean {
   return typeof value === 'number' && Number.isFinite(value)
 }
@@ -536,30 +531,4 @@ export function isRectFullyVisible(
     rect.x + rect.width <= viewport.x + viewport.width + tolerance &&
     rect.y + rect.height <= viewport.y + viewport.height + tolerance
   )
-}
-
-export function maximizeRect(
-  rect: Rect,
-  canvas: Size,
-  padding = 0
-): MaximizeResult | null {
-  if (
-    !isValidRect(rect) ||
-    !isValidCanvas(canvas) ||
-    !isFiniteNumber(padding) ||
-    padding < 0
-  ) {
-    return null
-  }
-
-  const width = canvas.width - padding * 2
-  const height = canvas.height - padding * 2
-  if (!isPositiveNumber(width) || !isPositiveNumber(height)) {
-    return null
-  }
-
-  return {
-    maximized: { x: padding, y: padding, width, height },
-    restore: { ...rect }
-  }
 }

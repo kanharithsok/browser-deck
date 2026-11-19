@@ -81,7 +81,6 @@ PaneFlow is a desktop workspace for real browser sessions. It is not intended to
 - Pane duplication uses a fresh isolated profile by default.
 - Canvas-only workspace with world-coordinate pane placement and header dragging.
 - World-space snapping to neighboring pane edges and centers, with visible alignment guides.
-- Maximize/focus and restore a pane.
 - Per-pane viewport presets, including popular phones, tablets, laptops, and desktops, plus custom dimensions.
 - A compact **+** add control with a device picker, and a right-click canvas context menu for adding panes and common workspace settings.
 - Save, restore, duplicate, rename, switch, and delete workspaces.
@@ -159,7 +158,7 @@ Workspace and profile management live in the native menu bar, not the top toolba
 
 ### 6.3 Pane controls
 
-Each device exposes a compact title, loading/error status, back, forward, reload, contextual menu, and close action. The active Canvas device additionally exposes address and viewport controls in the top toolbar. The native Device menu keeps maximize available.
+Each device exposes a compact title, loading/error status, back, forward, reload, contextual menu, and close action. The active Canvas device additionally exposes address and viewport controls in the top toolbar.
 
 When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep back, forward, reload, contextual-menu, and close available at every zoom level; hide lower-priority metadata such as the profile or viewport badge before hiding actions.
 
@@ -173,7 +172,6 @@ Supported device actions:
 - Capture a screenshot of one device to a user-selected PNG file.
 - Reload all devices from the workspace toolbar.
 - Change viewport preset or custom dimensions.
-- Maximize/focus and restore.
 - Open DevTools for an individual pane when native-view composition supports it cleanly; this may follow the first stable MVP slice.
 
 Closing a pane destroys its active native view and `webContents`, but does not automatically delete its browser profile. Profile deletion is a separate explicit action.
@@ -199,7 +197,6 @@ Use standard platform conventions and document the final shortcuts. At minimum, 
 - Focus the selected pane address (`Cmd/Ctrl+L`).
 - Reload the selected pane (`Cmd/Ctrl+R`).
 - Reload all panes.
-- Focus/maximize and restore pane from the native Device menu.
 - Switch workspace.
 
 Avoid conflicts with common macOS shortcuts. Shortcuts must be implemented and tested before being shown in menus.
@@ -257,7 +254,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 
 - Canvas is the only selectable layout. Remove Grid/Freeform controls and the grid/freeform toggle command from the user interface.
 - Existing workspaces with a legacy layout mode open in Canvas. Normalize saved and exported layout modes to Canvas while retaining legacy fields only for readable migration.
-- Do not persist temporary maximized/focused state.
+- Do not persist temporary focus state.
 - If many panes cannot comfortably fit, provide zoom, Fit all, and the overview; never silently discard panes.
 
 ### 7.6 Snapping behavior
@@ -279,7 +276,6 @@ It must handle:
 - Edge/center snap candidate calculation and thresholds.
 - Minimap projection and adaptive minimap panel sizing.
 - Viewport preset validation and fit-scale math.
-- Maximize/restore geometry.
 - Add/remove/reorder operations.
 - Legacy grid/freeform schema validation for migration only.
 
@@ -483,7 +479,7 @@ Requirements:
 - Implement schema migrations.
 - Preserve invalid files with a `.corrupt-<timestamp>` suffix and recover to safe defaults.
 - Do not store cookies, credentials, access tokens, session storage, page contents, or browser profile data in workspace JSON.
-- Do not persist temporary maximized/focused state.
+- Do not persist temporary focus state.
 - Do not store machine-specific absolute paths unless required and documented.
 
 ### 11.4 Import/export
@@ -802,7 +798,7 @@ Cover at minimum:
 - Canvas frame sizing and default placement.
 - World-space snap calculations and thresholds.
 - Minimap projection and adaptive panel sizing.
-- Pane ordering and maximize/restore geometry.
+- Pane ordering geometry.
 - Legacy grid/freeform validation and migration.
 - Viewport preset/custom validation and fit-scale math.
 - URL normalization and scheme rejection.
@@ -890,11 +886,11 @@ Do not build the full product UI until this experiment passes.
 
 - Implement the pure TypeScript layout engine and unit tests.
 - Build Canvas-only pane management with world-coordinate placement.
-- Add header dragging, world-space snapping guides, minimap recovery, and maximize/restore.
+- Add header dragging, world-space snapping guides, and minimap recovery.
 - Synchronize native browser bounds with workspace geometry.
 - Add keyboard interactions for core pane actions.
 
-**Exit condition:** 8 panes can be added, moved, snapped, zoomed, fit into view, maximized, and interacted with without native view/control misalignment or loss of pane state.
+**Exit condition:** 8 panes can be added, moved, snapped, zoomed, fit into view, and interacted with without native view/control misalignment or loss of pane state.
 
 ### Phase 3 — Viewport emulation and persistence
 
@@ -931,7 +927,7 @@ The MVP is complete when a user can:
 5. Sign into the same website with different accounts in different panes without cookie/localStorage leakage.
 6. Navigate each pane independently.
 7. Arrange panes on the Canvas and navigate the workspace without losing them.
-8. Drag, snap, zoom, fit, maximize, and restore panes.
+8. Drag, snap, zoom, and fit panes.
 9. Apply different viewport configurations to different panes and verify actual page viewport values.
 10. Restart the app and restore workspace configuration and persistent profile data.
 11. Manage, clear, and delete profiles safely.

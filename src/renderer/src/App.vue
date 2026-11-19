@@ -144,11 +144,11 @@ const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
 const gridColumns = ref(DEFAULT_GRID_COLUMNS)
 const suspendedPaneIds = ref<ReadonlySet<string>>(new Set())
-const maximizedPaneId = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
-const appMenuMode = ref<'add' | 'canvas' | 'zoom' | 'appearance' | null>(null)
+const appMenuMode = ref<'add' | 'canvas' | 'zoom' | 'appearance' | 'pane' | null>(null)
+const paneMenuPaneId = ref<string | null>(null)
 const devicePaletteOpen = ref(false)
 const devicePaletteQuery = ref('')
 const devicePaletteIndex = ref(0)
@@ -216,12 +216,12 @@ let disposeZoomActionListener: (() => void) | null = null
 let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
-let disposeMaximizeListener: (() => void) | null = null
 let disposeNoticeListener: (() => void) | null = null
 let disposeRenameListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
 let focusManagementEnabled = false
+let suppressPaneFocusUntil = 0
 let layoutPersistenceReady = false
 let layoutRestored = false
 let lastSavedLayoutKey = ''
@@ -593,6 +593,94 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
   ]
 }))
 
+const paneMenuModel = computed<AppMenuModel>(() => {
+  const pane = panes.value.find((entry) => entry.id === paneMenuPaneId.value)
+  return {
+    label: 'Device actions',
+    sections: [
+      {
+        label: 'Navigate',
+        items: [
+          {
+            id: 'pane:back',
+            label: 'Back',
+            icon: 'back',
+            disabled: !pane?.canGoBack
+          },
+          {
+            id: 'pane:forward',
+            label: 'Forward',
+            icon: 'forward',
+            disabled: !pane?.canGoForward
+          },
+          {
+            id: 'pane:reload',
+            label: 'Reload',
+            icon: 'reset'
+          },
+          {
+            id: 'pane:copy-url',
+            label: 'Copy URL',
+            icon: 'copy',
+            disabled: !pane || pane.url === 'about:blank'
+          }
+        ]
+      },
+      {
+        label: 'Viewport',
+        items: [
+          {
+            id: 'pane:rotate',
+            label: 'Rotate Viewport',
+            icon: 'rotate',
+            disabled: !pane || pane.viewport.preset === 'responsive'
+          },
+          {
+            id: 'pane:screenshot',
+            label: 'Capture Screenshot…',
+            icon: 'camera',
+            disabled: !pane || pane.url === 'about:blank'
+          }
+        ]
+      },
+      {
+        label: 'Manage',
+        items: [
+          {
+            id: 'pane:duplicate',
+            label: 'Duplicate Device',
+            icon: 'duplicate',
+            disabled: !pane
+          },
+          {
+            id: 'pane:rename',
+            label: 'Rename Device…',
+            icon: 'rename',
+            disabled: !pane
+          },
+          {
+            id: 'pane:devtools',
+            label: 'Open DevTools',
+            icon: 'devtools',
+            disabled: !pane
+          }
+        ]
+      },
+      {
+        items: [
+          {
+            id: 'pane:close',
+            label: 'Close Device',
+            icon: 'close',
+            separatorBefore: true,
+            disabled: !pane
+          }
+        ]
+      }
+    ]
+  }
+})
+
 const gridLayout = computed<GridLayout | null>(() => {
   if (
     orderedPanes.value.length === 0 ||
@@ -649,7 +737,7 @@ const slotRects = computed(() =>
 )
 
 const paneGridHeight = computed(() =>
-  maximizedPaneId.value || layoutMode.value === 'canvas'
+  layoutMode.value === 'canvas'
     ? workspaceSize.value.height
     : layoutMode.value === 'grid'
       ? gridContentHeight.value
@@ -674,14 +762,6 @@ function requestPaneRename(paneId: string): void {
     ...paneRenameRequests.value,
     [paneId]: (paneRenameRequests.value[paneId] ?? 0) + 1
   }
-}
-
-function requestPaneMaximize(paneId: string): void {
-  if (!panes.value.some((pane) => pane.id === paneId)) {
-    return
-  }
-  selectPane(paneId)
-  toggleMaximize(paneId)
 }
 
 function removePaneNotice(paneId: string): void {
@@ -785,36 +865,6 @@ function paneSlotStyle(paneId: string): Record<string, string> {
 
   if (!rect && !canvasFrame) {
     return { visibility: 'hidden' }
-  }
-
-  if (maximizedPaneId.value) {
-    if (paneId !== maximizedPaneId.value) {
-      return canvasFrame
-        ? {
-            left: `${canvasFrame.x + canvasPan.value.x}px`,
-            top: `${canvasFrame.y + canvasPan.value.y}px`,
-            width: `${canvasFrame.width}px`,
-            height: `${canvasFrame.height}px`,
-            visibility: 'hidden'
-          }
-        : {
-            left: `${rect?.x ?? 0}px`,
-            top: `${rect?.y ?? 0}px`,
-            width: `${rect?.width ?? 0}px`,
-            height: `${rect?.height ?? 0}px`,
-            visibility: 'hidden'
-          }
-    }
-
-    return {
-      left: '8px',
-      top: '8px',
-      width: `${Math.max(0, workspaceSize.value.width - 16)}px`,
-      height: `${Math.max(0, workspaceSize.value.height - 16)}px`,
-      '--pane-zoom': '1',
-      '--pane-world-width': `${Math.max(0, workspaceSize.value.width - 16)}px`,
-      zIndex: '100'
-    }
   }
 
   if (canvasFrame) {
@@ -1090,7 +1140,7 @@ function beginInteraction(state: DragState): void {
 }
 
 function beginCanvasPan(event: PointerEvent, empty = true): void {
-  if (canvasDrag.value || maximizedPaneId.value) {
+  if (canvasDrag.value) {
     return
   }
   event.preventDefault()
@@ -1164,7 +1214,7 @@ function finishCanvasPan(event?: PointerEvent): void {
 }
 
 function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
-  if (canvasPaneDrag.value || maximizedPaneId.value) {
+  if (canvasPaneDrag.value) {
     return
   }
   const frame = canvasFrames.value.get(paneId)
@@ -1401,7 +1451,7 @@ function scheduleCanvasWheelEnd(): void {
 }
 
 function onWorkspaceWheel(event: WheelEvent): void {
-  if (layoutMode.value !== 'canvas' || maximizedPaneId.value) {
+  if (layoutMode.value !== 'canvas') {
     return
   }
   event.preventDefault()
@@ -1603,7 +1653,6 @@ function onCanvasSpaceDown(event: KeyboardEvent): void {
   }
   if (
     layoutMode.value !== 'canvas' ||
-    maximizedPaneId.value ||
     profilesOpen.value ||
     workspacesOpen.value ||
     devicePaletteOpen.value ||
@@ -1715,7 +1764,6 @@ function applyPersistedLayout(layout: WorkspaceLayout): void {
   canvasPositions.value = Object.fromEntries(
     Object.entries(layout.canvas ?? {}).filter(([paneId]) => ids.has(paneId))
   )
-  maximizedPaneId.value = null
 }
 
 function applyThemeToDocument(): void {
@@ -1752,8 +1800,7 @@ function applyState(state: ShellState): void {
     devicePaletteIndex.value = 0
     layoutMode.value = 'canvas'
     gridColumns.value = DEFAULT_GRID_COLUMNS
-    maximizedPaneId.value = null
-    activePaneId.value = null
+      activePaneId.value = null
     paneSelectionCleared.value = false
     layoutRestored = false
     layoutPersistenceReady = false
@@ -1787,9 +1834,6 @@ function applyState(state: ShellState): void {
     .filter((paneId) => !retainedZIds.has(paneId))
   freeformOrder.value = [...retainedZ, ...appendedZ]
 
-  if (maximizedPaneId.value && !nextIds.has(maximizedPaneId.value)) {
-    maximizedPaneId.value = null
-  }
   if (activePaneId.value && !nextIds.has(activePaneId.value)) {
     activePaneId.value = null
     paneSelectionCleared.value = false
@@ -1873,12 +1917,15 @@ async function prepareMenuSnapshots(): Promise<void> {
 }
 
 async function openAppMenu(
-  mode: 'add' | 'canvas' | 'zoom' | 'appearance',
+  mode: 'add' | 'canvas' | 'zoom' | 'appearance' | 'pane',
   anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
   if (profilesOpen.value || workspacesOpen.value) {
     return
+  }
+  if (mode !== 'pane') {
+    paneMenuPaneId.value = null
   }
   await prepareMenuSnapshots()
   actionError.value = null
@@ -1917,6 +1964,7 @@ function closeAppMenu(restoreFocus = true): void {
   }
   appMenuMode.value = null
   appMenuBounds.value = null
+  paneMenuPaneId.value = null
   const target = appMenuReturnFocus
   appMenuReturnFocus = null
   syncCanvasMinimapVisibility()
@@ -1975,7 +2023,72 @@ function openCanvasAppearanceMenu(): void {
   )
 }
 
+async function runPaneMenuAction(paneId: string, action: string): Promise<void> {
+  actionError.value = null
+  try {
+    switch (action) {
+      case 'back':
+        await window.paneflow.back(paneId)
+        break
+      case 'forward':
+        await window.paneflow.forward(paneId)
+        break
+      case 'reload':
+        await window.paneflow.reload(paneId)
+        break
+      case 'copy-url': {
+        const result = await window.paneflow.copyPaneUrl(paneId)
+        if (!result.ok) {
+          actionError.value = result.error
+        }
+        break
+      }
+      case 'rotate': {
+        const result = await window.paneflow.rotatePaneViewport(paneId)
+        if (!result.ok) {
+          actionError.value = result.error
+        }
+        break
+      }
+      case 'screenshot': {
+        const result = await window.paneflow.capturePaneScreenshot(paneId)
+        if (!result.ok) {
+          actionError.value = result.error
+        }
+        break
+      }
+      case 'duplicate':
+        await duplicatePane(paneId)
+        break
+      case 'rename':
+        requestPaneRename(paneId)
+        break
+      case 'devtools': {
+        const result = await window.paneflow.openPaneDevTools(paneId)
+        if (!result.ok) {
+          actionError.value = result.error
+        }
+        break
+      }
+      case 'close':
+        await closePane(paneId)
+        break
+    }
+  } catch {
+    actionError.value = 'Could not complete the device action.'
+  }
+}
+
 function onAppMenuSelect(id: string): void {
+  if (id.startsWith('pane:')) {
+    const paneId = paneMenuPaneId.value
+    closeAppMenu(false)
+    if (paneId) {
+      void runPaneMenuAction(paneId, id.slice('pane:'.length))
+    }
+    return
+  }
+
   if (id.startsWith('zoom:')) {
     closeAppMenu(false)
     const value = id.slice('zoom:'.length)
@@ -2742,6 +2855,10 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
 
 async function reloadAll(): Promise<void> {
   actionError.value = null
+  const activeBefore = activePaneId.value
+  // Reloading every native view can emit incidental focus events. Keep the
+  // selected device stable while the bulk reload settles.
+  suppressPaneFocusUntil = Date.now() + 1500
   try {
     const result = await window.paneflow.reloadAll()
     if (!result.ok) {
@@ -2749,23 +2866,30 @@ async function reloadAll(): Promise<void> {
     }
   } catch {
     actionError.value = 'Could not reload the devices.'
+  } finally {
+    if (activeBefore && panes.value.some((pane) => pane.id === activeBefore)) {
+      selectPane(activeBefore)
+    }
   }
 }
 
 async function openPaneMenu(paneId: string, position: { x: number; y: number }): Promise<void> {
-  try {
-    const result = await window.paneflow.showPaneMenu({
-      paneId,
-      x: position.x,
-      y: position.y,
-      maximized: maximizedPaneId.value === paneId
-    })
-    if (!result.ok) {
-      actionError.value = result.error
-    }
-  } catch {
-    actionError.value = 'Could not open the device menu.'
+  if (profilesOpen.value || workspacesOpen.value) {
+    return
   }
+  const pane = panes.value.find((entry) => entry.id === paneId)
+  if (!pane) {
+    return
+  }
+  paneMenuPaneId.value = paneId
+  const trigger = document.querySelector<HTMLElement>(
+    `[data-pane-id="${paneId}"] button[aria-label="Device actions"]`
+  )
+  await openAppMenu(
+    'pane',
+    { x: position.x, y: position.y, align: 'end' },
+    trigger
+  )
 }
 
 async function openCanvasMenu(event: MouseEvent): Promise<void> {
@@ -2823,20 +2947,6 @@ function dismissErrors(): void {
   layoutError.value = null
 }
 
-function toggleMaximize(paneId: string): void {
-  maximizedPaneId.value = maximizedPaneId.value === paneId ? null : paneId
-  if (maximizedPaneId.value) {
-    if (workspaceEl.value) {
-      workspaceEl.value.scrollTop = 0
-    }
-    if (layoutMode.value === 'freeform') {
-      raisePane(paneId)
-    }
-  }
-  guides.value = { vertical: [], horizontal: [] }
-  void nextTick(scheduleMeasure)
-}
-
 function currentPane(): PaneState | undefined {
   return panes.value.find((pane) => pane.id === activePaneId.value)
 }
@@ -2887,11 +2997,6 @@ function handlePaneCommand(command: PaneCommand): void {
       break
     case 'reload-all':
       void reloadAll()
-      break
-    case 'toggle-maximize':
-      if (pane) {
-        toggleMaximize(pane.id)
-      }
       break
     case 'open-profiles':
       openProfiles()
@@ -2989,10 +3094,6 @@ function onPointerMove(event: PointerEvent): void {
 }
 
 function onWorkspacePointerDown(event: PointerEvent): void {
-  if (maximizedPaneId.value) {
-    return
-  }
-
   const target = event.target
   if (!(target instanceof Element)) {
     return
@@ -3152,7 +3253,6 @@ async function measurePanes(): Promise<void> {
       menuCovers
     const visible =
       !nativeViewsHidden &&
-      (!maximizedPaneId.value || paneId === maximizedPaneId.value) &&
       isRectFullyVisible(rect, workspaceRect)
     if (!visible && !nativeViewsHidden) {
       suspended.add(paneId)
@@ -3207,7 +3307,6 @@ watch(layoutMode, (mode) => {
   dropTargetId.value = null
   isDragging.value = false
   dragState.value = null
-  maximizedPaneId.value = null
   document.body.classList.remove('paneflow-dragging')
   if (workspaceEl.value) {
     workspaceEl.value.scrollTop = 0
@@ -3344,6 +3443,9 @@ onMounted(async () => {
   disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
   disposeCommandListener = window.paneflow.onPaneCommand(handlePaneCommand)
   disposeFocusListener = window.paneflow.onPaneFocused((paneId) => {
+    if (Date.now() < suppressPaneFocusUntil) {
+      return
+    }
     if (panes.value.some((pane) => pane.id === paneId)) {
       selectPane(paneId)
     }
@@ -3352,7 +3454,6 @@ onMounted(async () => {
     }
   })
   disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
-  disposeMaximizeListener = window.paneflow.onPaneMaximizeRequested(requestPaneMaximize)
   disposeNoticeListener = window.paneflow.onPaneNotice(showPaneNotice)
 
   resizeObserver = new ResizeObserver(() => {
@@ -3395,7 +3496,6 @@ onBeforeUnmount(() => {
 
   disposeCommandListener?.()
   disposeFocusListener?.()
-  disposeMaximizeListener?.()
   disposeNoticeListener?.()
   disposeRenameListener?.()
   resizeObserver?.disconnect()
@@ -3542,6 +3642,7 @@ onBeforeUnmount(() => {
           :key="pane.id"
           class="pane-slot"
           :class="{
+            'pane-slot-active': activePaneId === pane.id,
             'pane-slot-dragging': isDragging && dragState?.paneId === pane.id,
             'pane-slot-drop-target': dropTargetId === pane.id
           }"
@@ -3549,7 +3650,7 @@ onBeforeUnmount(() => {
         >
           <PaneCard
             :pane="pane"
-            :freeform="layoutMode === 'freeform' && !maximizedPaneId"
+            :freeform="layoutMode === 'freeform'"
             :suspended="suspendedPaneIds.has(pane.id)"
             :active="activePaneId === pane.id"
             :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
@@ -4104,7 +4205,9 @@ onBeforeUnmount(() => {
             ? zoomMenuModel
             : appMenuMode === 'appearance'
               ? appearanceMenuModel
-              : canvasMenuModel
+              : appMenuMode === 'pane'
+                ? paneMenuModel
+                : canvasMenuModel
       "
       :anchor="appMenuAnchor"
       :placement="
@@ -4327,6 +4430,11 @@ onBeforeUnmount(() => {
 
 .pane-slot {
   position: absolute;
+}
+
+.pane-slot-active {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .pane-slot-dragging {

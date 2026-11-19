@@ -294,11 +294,6 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
         shellView.webContents.send(IPC_CHANNELS.paneFocused, paneId)
       }
     },
-    onPaneMaximizeRequested: (paneId) => {
-      if (shellView && !shellView.webContents.isDestroyed()) {
-        shellView.webContents.send(IPC_CHANNELS.paneMaximizeRequested, paneId)
-      }
-    },
     onPaneNotice: (notice) => {
       sendPaneNotice(notice.paneId, notice.message)
     },
@@ -821,13 +816,6 @@ function buildApplicationMenu(): void {
           label: 'Reload All Devices',
           accelerator: 'CmdOrCtrl+Alt+Shift+R',
           click: () => sendCommand('reload-all')
-        },
-        { type: 'separator' },
-        {
-          id: 'pane-maximize',
-          label: 'Toggle Maximize',
-          accelerator: 'CmdOrCtrl+Shift+M',
-          click: () => sendCommand('toggle-maximize')
         }
       ]
     },
