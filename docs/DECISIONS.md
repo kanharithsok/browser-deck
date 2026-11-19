@@ -1149,10 +1149,10 @@ Record material technical decisions here. Keep entries short but include context
   1. Add a trusted `WebContentsView` rendered from `zoom.html`, pinned to the bottom center at 204 × 40 DIP with a 12 px margin, above pane views and the minimap.
   2. Show zoom-out and zoom-in buttons with a 10% step and a percentage button between them. Clicking the percentage button opens the standard in-shell `AppMenu` above the bar with 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%).
   3. Extend the Canvas zoom range to 25–200%. The shell clamps every wheel, step, preset, and reset action and applies it around the workspace center for button/menu actions.
-  4. Hide the zoom bar and minimap while any shell menu or dialog is open. The zoom menu hides intersecting native pane views through the existing menu path; the bar returns when the menu closes.
+  4. Hide the zoom bar and minimap for dialogs and non-zoom custom menus. Keep both visible while the zoom menu is open because the menu sits above the bar and does not overlap the minimap; using a zoom-bar or minimap action closes the menu first. The zoom menu still hides intersecting native pane views through the existing menu path.
   5. Validate the zoom bar sender separately from the shell and minimap. State flows main → bar; actions flow bar → main → shell. Main only accepts the built `paneflow://shell/zoom.html` document or the validated development origin.
   6. Fit all panes when a workspace first appears and after switching workspaces, using a short ready/retry loop until the workspace has non-zero size. Do not refit on ordinary state updates.
-  7. A primary click on empty canvas with less than 4 px of movement clears the active pane and hides its global bar. Panning, middle-button drags, pointer cancellation, and clicks that start on a pane do not clear it. Selecting a pane, its header, or a minimap frame restores selection. The cleared state is transient.
+  7. A primary click on empty canvas with less than 4 px of movement clears the active pane; the bar stays mounted with a quiet empty state. Panning, middle-button drags, pointer cancellation, and clicks that start on a pane do not clear it. Selecting a pane, its header, or a minimap frame restores selection. The cleared state is transient.
   8. Remove the top-right percentage control and make all top-right toolbar buttons borderless.
 
 - **Alternatives considered:**
@@ -1165,13 +1165,44 @@ Record material technical decisions here. Keep entries short but include context
 - **Consequences:**
   - The bar occupies a small bottom-center rectangle and intercepts input there.
   - The window owns one more persistent webContents that is not part of pane or workspace persistence.
-  - Opening the zoom menu briefly hides the bar and snapshots intersecting panes, matching other custom menus.
+  - Opening the zoom menu keeps the bar and minimap visible; other custom menus and dialogs still hide them.
+  - Using the zoom bar or minimap while the zoom menu is open closes the menu before applying the action.
   - Zoom range increases from 50–200% to 25–200%; very small zoom can make pane chrome and snapshots harder to read.
   - The cleared active-pane state is not persisted and does not modify workspace data.
 
 - **Evidence / verification:**
   - Unit tests cover zoom clamping, presets, state/action validation, and trusted zoom document URLs in production and development.
-  - E2e verifies the bar's bottom-center bounds, step control, 7 preset radio items, Fit all, Reset, startup fit, empty-canvas deselection/reselection, and borderless top-right toolbar buttons. Accessibility e2e verifies the bar's named controls, the menu's keyboard focus, Escape dismissal, and an axe audit of the bar.
+  - E2e verifies the bar's bottom-center bounds, step control, 7 preset radio items, Fit all, Reset, startup fit, empty-canvas deselection/reselection, and borderless top-right toolbar buttons. It also verifies that the bar and minimap remain visible while the zoom menu is open. Accessibility e2e verifies the bar's named controls, the menu's keyboard focus, Escape dismissal, and an axe audit of the bar.
+
+## ADR-039 — Keep the active-pane bar mounted to stabilize the Canvas
+
+- **Status:** Accepted
+- **Date:** 2026-11-19
+- **Context:** In Canvas, selecting a pane mounted a 34 px active-pane bar between the toolbar and the workspace; clearing the selection removed it. The workspace therefore moved down and up on every selection change, which made panes appear to jump. A left or right inspector was considered as an alternative home for the address and viewport controls.
+
+- **Decision:**
+  1. Keep the active-pane bar mounted whenever Canvas chrome is active. It always occupies the same 34 px row above the workspace.
+  2. When no pane is selected, show a quiet empty state: "No pane selected" plus "Click a pane to edit its address". When the workspace has no panes, show "No panes" plus "Add a pane to get started". Keep the Canvas Fit all control at the right and disable it when there are no panes.
+  3. Keep the bar's populated content within the same height at supported window widths. Titles, profiles, and status text truncate instead of wrapping the bar.
+  4. Do not move the address/viewport controls into a left or right sidebar in this slice. A persistent side panel would permanently narrow the canvas and add more chrome; the stable top bar preserves the canvas-first layout with a smaller change.
+  5. Clear selection without resizing the workspace, so pane frames and native views do not shift.
+
+- **Alternatives considered:**
+  - **Reserve a blank 34 px strip when no pane is selected.** Rejected; it stabilizes the layout but wastes the row. The empty state explains the row and keeps Fit all available.
+  - **Overlay the bar on top of the workspace.** Rejected; it would cover the top of panes or require an extra canvas inset, complicating fit and pan.
+  - **Left or right inspector panel.** Deferred; it is a larger redesign that permanently reduces canvas width. The stable top bar solves the reported jump without changing the canvas-first model.
+  - **Keep removing the bar and animate the workspace.** Rejected; animation does not remove the layout shift and adds motion without solving the underlying instability.
+
+- **Consequences:**
+  - The workspace is always 34 px shorter in Canvas, including when nothing is selected.
+  - The empty row provides a stable place for the address controls and a hint for new users.
+  - Selecting or clearing a pane no longer changes the workspace rectangle or native bounds.
+  - A future side-inspector design can reuse the same empty-state and stable-height principles.
+
+- **Evidence / verification:**
+  - E2e captures the workspace rectangle while a pane is selected, after an empty-canvas click, and after reselecting a pane; all three rectangles are identical.
+  - E2e verifies the empty bar shows "No pane selected" and the populated bar exposes the address input.
+  - Visual check at 1280 × 860 and 720 × 560 confirms the bar stays 34 px and the empty state remains readable.
 
 ## ADR template
 

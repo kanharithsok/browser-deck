@@ -6,11 +6,15 @@ import type { PaneViewport } from '../../../shared/viewports'
 
 const props = withDefaults(
   defineProps<{
-    pane: PaneState
+    pane: PaneState | null
     showCanvasTools?: boolean
+    fitAllDisabled?: boolean
+    hasPanes?: boolean
   }>(),
   {
-    showCanvasTools: false
+    showCanvasTools: false,
+    fitAllDisabled: false,
+    hasPanes: true
   }
 )
 
@@ -21,29 +25,45 @@ const emit = defineEmits<{
 }>()
 
 const addressError = ref<string | null>(null)
-const statusId = computed(() => `global-pane-status-${props.pane.id}`)
+const statusId = computed(() =>
+  props.pane ? `global-pane-status-${props.pane.id}` : 'global-pane-status-empty'
+)
 </script>
 
 <template>
-  <section class="global-pane-bar" aria-label="Active pane">
-    <div class="global-pane-context">
-      <span
-        v-if="pane.isLoading"
-        class="spinner"
-        aria-hidden="true"
-      ></span>
-      <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
-      <span class="global-pane-title">{{ pane.title }}</span>
-      <span class="global-pane-profile">{{ pane.profileLabel }}</span>
-    </div>
+  <section
+    class="global-pane-bar"
+    :aria-label="pane ? 'Active pane' : 'No active pane'"
+  >
+    <template v-if="pane">
+      <div class="global-pane-context">
+        <span
+          v-if="pane.isLoading"
+          class="spinner"
+          aria-hidden="true"
+        ></span>
+        <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
+        <span class="global-pane-title">{{ pane.title }}</span>
+        <span class="global-pane-profile">{{ pane.profileLabel }}</span>
+      </div>
 
-    <PaneNavigation
-      :pane="pane"
-      :status-id="statusId"
-      @address-error="addressError = $event"
-      @set-viewport="emit('set-viewport', $event)"
-      @layout-changed="emit('layout-changed')"
-    />
+      <PaneNavigation
+        :pane="pane"
+        :status-id="statusId"
+        @address-error="addressError = $event"
+        @set-viewport="emit('set-viewport', $event)"
+        @layout-changed="emit('layout-changed')"
+      />
+    </template>
+
+    <div v-else class="global-pane-empty" role="status">
+      <span class="global-pane-empty-title">
+        {{ hasPanes ? 'No pane selected' : 'No panes' }}
+      </span>
+      <span class="global-pane-empty-hint">
+        {{ hasPanes ? 'Click a pane to edit its address' : 'Add a pane to get started' }}
+      </span>
+    </div>
 
     <div v-if="showCanvasTools" class="global-canvas-tools">
       <button
@@ -51,6 +71,7 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
         type="button"
         title="Fit all panes to view"
         aria-label="Fit all panes to view"
+        :disabled="fitAllDisabled"
         @click="emit('fit-all')"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -59,7 +80,7 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
       </button>
     </div>
 
-    <span :id="statusId" class="global-pane-status" role="status" aria-live="polite">
+    <span v-if="pane" :id="statusId" class="global-pane-status" role="status" aria-live="polite">
       {{ addressError ?? (pane.error ? 'Load failed' : '') }}
     </span>
   </section>
@@ -111,6 +132,27 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
   content: '· ';
 }
 
+.global-pane-empty {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.global-pane-empty-title {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.global-pane-empty-hint {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .spinner {
   flex: none;
   width: 9px;
@@ -154,7 +196,7 @@ const statusId = computed(() => `global-pane-status-${props.pane.id}`)
   color: var(--text-muted);
 }
 
-.global-canvas-tool:hover {
+.global-canvas-tool:hover:not(:disabled) {
   background: var(--surface-inset);
   color: var(--text);
 }

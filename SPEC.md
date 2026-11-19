@@ -222,14 +222,16 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
 - Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
 - Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
+- The zoom menu is the exception to hiding overlays: keep the bottom zoom bar and the overview visible while it is open, and close it when a zoom or overview action is used.
 
 ### 7.4 Canvas mode
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
-- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center zoom bar with zoom-out and zoom-in buttons and a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%). Keep the page's CSS viewport stable while visually scaling native views through device emulation.
+- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center zoom bar with zoom-out and zoom-in buttons and a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%). Keep the zoom bar and overview visible while this menu is open. Keep the page's CSS viewport stable while visually scaling native views through device emulation.
 - Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
-- Clicking empty canvas with the primary button and without dragging clears the active pane and hides its global bar. Interacting with a pane, its header, or the minimap restores selection.
+- Clicking empty canvas with the primary button and without dragging clears the active pane. Interacting with a pane, its header, or the minimap restores selection.
+- Keep the active-pane bar mounted at a stable height in Canvas. When no pane is selected, show a quiet empty state instead of removing the bar, so selecting or clearing a pane never moves or resizes the canvas.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
 - Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
