@@ -7,7 +7,6 @@ export type AppMenuIcon =
   | 'phone'
   | 'tablet'
   | 'desktop'
-  | 'profiles'
   | 'workspaces'
   | 'system'
   | 'sun'
@@ -15,12 +14,17 @@ export type AppMenuIcon =
   | 'back'
   | 'forward'
   | 'copy'
+  | 'external'
   | 'rotate'
   | 'camera'
   | 'duplicate'
   | 'rename'
   | 'devtools'
   | 'close'
+  | 'showcase'
+  | 'row'
+  | 'grid'
+  | 'stack'
 
 export interface AppMenuItem {
   id: string

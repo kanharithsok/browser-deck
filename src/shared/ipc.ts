@@ -2,7 +2,6 @@ import type {
   CanvasMinimapAction,
   CanvasMinimapState
 } from './minimap'
-import type { ProfileSummary } from './profiles'
 import type { PaneViewport } from './viewports'
 import type { CanvasZoomAction, CanvasZoomState } from './zoom'
 import type {
@@ -15,7 +14,6 @@ export const IPC_CHANNELS = {
   getState: 'paneflow:get-state',
   addPane: 'paneflow:add-pane',
   addPaneWithViewport: 'paneflow:add-pane-with-viewport',
-  addPaneWithProfile: 'paneflow:add-pane-with-profile',
   duplicatePane: 'paneflow:duplicate-pane',
   closePane: 'paneflow:close-pane',
   renamePane: 'paneflow:rename-pane',
@@ -29,12 +27,10 @@ export const IPC_CHANNELS = {
   rotatePaneViewport: 'paneflow:rotate-pane-viewport',
   capturePaneScreenshot: 'paneflow:capture-pane-screenshot',
   copyPaneUrl: 'paneflow:copy-pane-url',
+  clearPaneSiteData: 'paneflow:clear-pane-site-data',
+  openPaneExternal: 'paneflow:open-pane-external',
   openPaneDevTools: 'paneflow:open-pane-devtools',
   saveWorkspaceLayout: 'paneflow:save-workspace-layout',
-  listProfiles: 'paneflow:list-profiles',
-  renameProfile: 'paneflow:rename-profile',
-  clearProfile: 'paneflow:clear-profile',
-  deleteProfile: 'paneflow:delete-profile',
   listWorkspaces: 'paneflow:list-workspaces',
   exportWorkspace: 'paneflow:export-workspace',
   importWorkspace: 'paneflow:import-workspace',
@@ -50,6 +46,7 @@ export const IPC_CHANNELS = {
   setCanvasZoom: 'paneflow:set-canvas-zoom',
   updateCanvasMinimap: 'paneflow:update-canvas-minimap',
   setCanvasMinimapVisible: 'paneflow:set-canvas-minimap-visible',
+  setCanvasOverlayVisibility: 'paneflow:set-canvas-overlay-visibility',
   canvasMinimapState: 'paneflow:canvas-minimap-state',
   canvasMinimapAction: 'paneflow:canvas-minimap-action',
   canvasMinimapActionRequested: 'paneflow:canvas-minimap-action-requested',
@@ -57,6 +54,7 @@ export const IPC_CHANNELS = {
   canvasZoomAction: 'paneflow:canvas-zoom-action',
   canvasZoomActionRequested: 'paneflow:canvas-zoom-action-requested',
   setCanvasHandMode: 'paneflow:set-canvas-hand-mode',
+  setCanvasSelectMode: 'paneflow:set-canvas-select-mode',
   paneCommand: 'paneflow:pane-command',
   paneFocused: 'paneflow:pane-focused',
   paneNotice: 'paneflow:pane-notice',
@@ -76,14 +74,9 @@ export type PaneCommand =
   | 'zoom-in'
   | 'zoom-out'
   | 'zoom-reset'
-  | 'open-profiles'
   | 'open-workspaces'
 
 export type ScriptResult = { ok: true } | { ok: false; error: string }
-
-export type ProfileListResult =
-  | { ok: true; profiles: ProfileSummary[] }
-  | { ok: false; error: string }
 
 export type WorkspaceListResult =
   | { ok: true; workspaces: WorkspaceSummary[] }
@@ -141,6 +134,11 @@ export interface PaneNotice {
   message: string
 }
 
+export interface CanvasOverlayVisibility {
+  minimap: boolean
+  zoom: boolean
+}
+
 export type PaneSnapshotsResult =
   | { ok: true; snapshots: Record<string, string> }
   | { ok: false; error: string }
@@ -153,7 +151,6 @@ export interface PaneFlowApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
   addPaneWithViewport(viewport: PaneViewport): Promise<ScriptResult>
-  addPaneWithProfile(profileId: string, url?: string): Promise<ScriptResult>
   duplicatePane(paneId: string): Promise<ScriptResult>
   closePane(paneId: string): Promise<ScriptResult>
   renamePane(paneId: string, title: string): Promise<ScriptResult>
@@ -167,12 +164,10 @@ export interface PaneFlowApi {
   rotatePaneViewport(paneId: string): Promise<ScriptResult>
   capturePaneScreenshot(paneId: string): Promise<PaneScreenshotResult>
   copyPaneUrl(paneId: string): Promise<ScriptResult>
+  clearPaneSiteData(paneId: string): Promise<ScriptResult>
+  openPaneExternal(paneId: string): Promise<ScriptResult>
   openPaneDevTools(paneId: string): Promise<ScriptResult>
   saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
-  listProfiles(): Promise<ProfileListResult>
-  renameProfile(profileId: string, label: string): Promise<ScriptResult>
-  clearProfile(profileId: string, closePanes?: boolean): Promise<ScriptResult>
-  deleteProfile(profileId: string, closePanes?: boolean): Promise<ScriptResult>
   listWorkspaces(): Promise<WorkspaceListResult>
   exportWorkspace(workspaceId: string): Promise<WorkspaceTransferResult>
   importWorkspace(): Promise<WorkspaceTransferResult>
@@ -188,6 +183,7 @@ export interface PaneFlowApi {
   setCanvasZoom(zoom: number): Promise<ScriptResult>
   updateCanvasMinimap(state: CanvasMinimapState): Promise<ScriptResult>
   setCanvasMinimapVisible(visible: boolean): Promise<ScriptResult>
+  setCanvasOverlayVisibility(visibility: CanvasOverlayVisibility): Promise<ScriptResult>
   sendCanvasMinimapAction(action: CanvasMinimapAction): Promise<ScriptResult>
   onCanvasMinimapState(listener: (state: CanvasMinimapState) => void): () => void
   onCanvasMinimapAction(listener: (action: CanvasMinimapAction) => void): () => void
@@ -195,6 +191,7 @@ export interface PaneFlowApi {
   onCanvasZoomState(listener: (state: CanvasZoomState) => void): () => void
   onCanvasZoomAction(listener: (action: CanvasZoomAction) => void): () => void
   setCanvasHandMode(active: boolean): Promise<ScriptResult>
+  setCanvasSelectMode(active: boolean): Promise<ScriptResult>
   onStateChanged(listener: (state: ShellState) => void): () => void
   onRequestMeasurement(listener: () => void): () => void
   onPaneCommand(listener: (command: PaneCommand) => void): () => void

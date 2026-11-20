@@ -97,17 +97,18 @@ renderer exploits.
 - Profile partitions are derived only from internally generated UUIDs:
   `persist:paneflow-profile-<uuid>`. User labels, URLs, and workspace names
   never influence partition or directory names.
-- New panes and duplicated panes receive fresh profiles. Sharing an existing
-  profile is an explicit profile-manager action and is labeled in the shell.
-- Clearing a profile uses Electron session APIs and removes cookies, storage,
-  cache, and auth cache. Deleting a profile additionally removes metadata and
-  best-effort removes its partition directory after all its panes close.
+- New and duplicated panes receive independent sessions. Sessions are never
+  shared between panes, and there is no user-facing profile manager.
+- Closing a pane uses Electron session APIs to remove its cookies, storage,
+  cache, and auth cache, then removes metadata and best-effort deletes its
+  partition directory. **Clear Site Data…** performs the same clear for a live
+  pane after confirmation and reloads it.
 - Workspace JSON contains pane IDs, profile references, URLs, viewport settings,
   and layout only. It never contains cookies, tokens, page contents, or profile
   databases.
 - Imported workspace files are untrusted: they are size-limited, schema-checked,
   URL/viewport/layout-validated, stripped of profile identities, and given
-  fresh profiles and pane IDs. Import never executes file content or restores
+  fresh sessions and pane IDs. Import never executes file content or restores
   arbitrary filesystem paths.
 - Invalid store files are preserved with a `.corrupt-<timestamp>` suffix rather
   than silently overwritten.

@@ -22,7 +22,7 @@ PaneFlow is not a screenshot viewer, a collection of iframes, or a static respon
 
 ## 2. Product principles
 
-1. **Isolation by default:** a new pane gets its own browser profile. Sharing a profile requires an explicit user action.
+1. **Isolation by default:** a new pane gets its own browser profile and session. Sessions are never shared between panes.
 2. **Flexible workspace:** pane count and arrangement are user-controlled. Never hardcode an 8- or 10-pane product limit.
 3. **Minimal UI:** the websites and workspace are the primary content; application chrome stays compact and quiet.
 4. **Predictability:** navigation, dragging, resizing, snapping, focus, and persistence behave consistently.
@@ -147,20 +147,20 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** the active pane's compact centered address and viewport controls, and the compact **+** add-pane control with its device menu. Back, forward, and reload live in each device header. Keep this a stable single row.
+1. **Top toolbar:** a minimal stable row with the compact **+** add-pane control and empty draggable space. The active pane's address and viewport controls belong to its device header.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
 3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, find-device, reload-all, and appearance.
-4. **Pane chrome:** compact single-row title and actions, with back, forward, reload, contextual actions, and close visible; lower-priority actions such as rotate and screenshot live in the contextual menu.
+4. **Pane chrome:** a compact two-row header. The top row carries the drag grip, title, viewport preset, navigation, contextual actions, and close; the second row carries that pane's address bar. Lower-priority actions such as rotate, screenshot, and clear site data live in the contextual menu.
 5. **Empty state:** one clear action to add the first browser device. Never show fake sample websites as if they were live pages.
 6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
-Workspace and profile management live in the native menu bar, not the top toolbar. Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
+Workspace management lives in the native menu bar, not the top toolbar. Browser sessions are internal to panes and require no manager. Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
 
 ### 6.3 Pane controls
 
-Each device exposes a compact title, loading/error status, back, forward, reload, contextual menu, and close action. The active Canvas device additionally exposes address and viewport controls in the top toolbar.
+Each device exposes its own compact title, loading/error status, address bar, viewport preset, back, forward, reload, contextual menu, and close action. No pane's address or viewport control lives in the main top toolbar.
 
-When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep back, forward, reload, contextual-menu, and close available at every zoom level; hide lower-priority metadata such as the profile or viewport badge before hiding actions.
+When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep the address, viewport, back, forward, reload, contextual-menu, and close controls available at every zoom level.
 
 User-facing copy calls each browser frame a **device**. The internal model and APIs may continue to use **pane**.
 
@@ -174,7 +174,7 @@ Supported device actions:
 - Change viewport preset or custom dimensions.
 - Open DevTools for an individual pane when native-view composition supports it cleanly; this may follow the first stable MVP slice.
 
-Closing a pane destroys its active native view and `webContents`, but does not automatically delete its browser profile. Profile deletion is a separate explicit action.
+Closing a pane destroys its active native view and `webContents`. When a pane closes, clear its cookies/storage/cache, remove its profile metadata, and delete its partition. Workspace switching and app shutdown do not release profiles.
 
 ### 6.4 Accessibility and interaction quality
 
@@ -190,8 +190,8 @@ Closing a pane destroys its active native view and `webContents`, but does not a
 
 Use standard platform conventions and document the final shortcuts. At minimum, plan for:
 
-- Add pane.
-- Duplicate selected pane (`Cmd/Ctrl+D`).
+- Open the Add pane/device picker (`Cmd/Ctrl+N`); do not create a pane until the user chooses a viewport or preset.
+- Duplicate selected pane (`Cmd/Ctrl+D`); the duplicate is placed beside the source, or directly below it when the adjacent slot is occupied.
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
 - Find a device by name, host, profile, or viewport (`Cmd/Ctrl+K`).
 - Focus the selected pane address (`Cmd/Ctrl+L`).
@@ -222,21 +222,21 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 ### 7.3 Canvas add and context menus
 
 - The toolbar **+** control opens a compact menu grouped into Phone viewports, Tablet viewports, and Desktop viewports. It includes responsive mode and popular devices such as iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop.
-- Right-clicking empty Canvas opens a menu with Add pane, Fit all panes, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance.
+- Right-clicking empty Canvas opens a menu with Add pane, Fit all panes, Reset zoom, Hand tool, Workspaces, and Appearance.
 - The Add pane item switches the menu to the device picker without opening a separate modal.
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
 - Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
 - Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
-- The zoom and appearance menus are the exception to hiding overlays: keep the bottom canvas bar and the overview visible while they are open, and close them when a bar or overview action is used.
+- Keep the bottom canvas bar and overview visible when an open menu does not intersect them. Hide only the overlay a menu actually covers. The zoom, Arrange, and appearance menus always keep both visible, and a bar or overview action closes the menu.
 
 ### 7.4 Canvas mode
 
 - Provide an infinite dotted workspace for arranging browser frames in world coordinates.
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
-- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center canvas bar with Hand, zoom-out and zoom-in buttons, a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%), find-device, reload-all, and appearance. Keep this bar and the overview visible while its zoom or appearance menu is open. Canvas zoom scales the whole pane as a unit (frame, header chrome, and page content) while the declared viewport stays fixed; do not reflow or change the page's CSS viewport dimensions.
+- While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center canvas bar with Hand, Select, zoom-out and zoom-in buttons, a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%), find-device, reload-all, Arrange, and appearance. Keep this bar and the overview visible while its zoom, Arrange, or appearance menu is open. Arrange offers Showcase (compact, centered rows), Horizontal row, 2 × 2 grid, and Vertical stack, preserves pane order, and fits the camera to the result. Canvas zoom scales the whole pane as a unit (frame, header chrome, and page content) while the declared viewport stays fixed; do not reflow or change the page's CSS viewport dimensions.
 - Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
 - Clicking empty canvas with the primary button and without dragging clears the active pane. Interacting with a pane, its header, or the minimap restores selection.
-- Keep the top toolbar and its active-pane controls mounted at a stable height in Canvas. When no pane is selected, show a quiet empty state instead of removing the controls, so selecting or clearing a pane never moves or resizes the canvas.
+- Keep the minimal top toolbar mounted at a stable height in Canvas. The workspace keeps a quiet empty state when no pane is selected, so selecting or clearing a pane never moves or resizes the Canvas.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
 - Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
@@ -246,8 +246,10 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
 - Provide a Fit all panes action in the overview and in the zoom menu. It must bring every pane back inside the workspace.
-- Use the top toolbar for the active-pane compact address and viewport controls, with back, forward, and reload in each device header.
+- Keep the top toolbar limited to Add and draggable space. Each device header owns its address bar, viewport preset trigger, preset name plus dimensions, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
+- Give pane headers a visible drag grip. Keep the one-row header compact and hide non-essential metadata at narrow frame widths.
 - Provide the + device menu and right-click canvas context menu described in §7.3.
+- Provide a Select tool in the bottom canvas bar. While active, dragging a marquee across the Canvas selects every pane whose frame intersects it. Give selected panes a visible ring and show the selected count with a close action. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
 - Persist canvas positions and the last Canvas camera (pan and zoom) plus the active-device selection per workspace. Restore that view when the workspace is reopened or switched; only fit when the workspace has no saved camera.
 - Device bezels and pane frame resizing are not required.
 
@@ -261,8 +263,10 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 ### 7.6 Snapping behavior
 
 - Snap pane edges and centers to neighboring pane edges and centers in world space.
-- Show a 1px alignment guide while a snap is active; clear guides on pointer release or cancel.
-- Use an 8 screen-pixel snap threshold, divided by canvas zoom for world-space calculations.
+- Use an 8 screen-pixel threshold for the flush snap, divided by canvas zoom for world-space calculations.
+- Add a first magnetic stop with a 16 screen-pixel gap when opposite pane edges are within 24 screen pixels. Keep the flush snap as the second stop.
+- Show a solid 1px alignment guide for both snap stages; clear guides on pointer release or cancel.
+- Use a wider 64 screen-pixel proximity range to show lighter dashed guides before the gap snap. Proximity guides must not replace a solid guide when the pane locks.
 - Do not snap to the dragged pane itself. The minimap and Fit all remain the recovery paths for distant panes.
 - A configurable snap sensitivity may be added later if it can be exposed without cluttering the interface.
 
@@ -274,6 +278,9 @@ It must handle:
 
 - Canvas frame sizing from pane viewport presets.
 - World-coordinate placement, default row arrangement, and persisted positions.
+- Duplicate placement beside a source frame with a below-source fallback that keeps the source's left edge.
+- Showcase, horizontal-row, 2 × 2 grid, and vertical-stack arrangements.
+- Marquee hit testing against pane frames in a shared coordinate space.
 - Edge/center snap candidate calculation and thresholds.
 - Minimap projection and adaptive minimap panel sizing.
 - Viewport preset validation and fit-scale math.
@@ -327,7 +334,7 @@ Do not pass arbitrary untrusted URLs directly to `shell.openExternal`.
 
 ### 8.5 Known website limitations
 
-Some identity providers, payment pages, streaming services, or bot-protection systems may block embedded Electron user agents or behave differently from a standard Chrome installation. Do not spoof a user agent to bypass restrictions. A user may explicitly configure a user-agent override for legitimate testing, but PaneFlow must not promise compatibility with every website.
+Some identity providers, payment pages, streaming services, or bot-protection systems may block embedded Electron user agents or behave differently from a standard Chrome installation. Fixed device presets use category-appropriate user agents so sites serve their mobile layout; this is for layout fidelity, not for bypassing restrictions. Responsive and custom panes keep the runtime default UA. Do not promise compatibility with every website.
 
 ---
 
@@ -341,9 +348,7 @@ Every newly created pane receives a newly generated internal browser profile ID 
 
 Never derive partition names from user-entered names, URLs, tenant labels, or other untrusted input.
 
-Keep pane IDs and profile IDs separate. A pane may reference a profile; a profile may be explicitly shared by multiple panes.
-
-Two panes may intentionally share a profile only when the user explicitly selects an existing profile. Make shared-profile status visible in the UI so it cannot happen accidentally.
+Keep pane IDs and profile IDs separate internally. Each pane references exactly one profile, and profiles are never shared between panes.
 
 ### 9.2 Isolation behavior
 
@@ -362,25 +367,17 @@ This is browser-session isolation, not a guarantee that two panes run in separat
 ### 9.3 Profile lifecycle
 
 - Persistent profile data survives normal application restarts.
-- Closing a pane destroys its active `WebContentsView` and `webContents`, but retains the profile for later reuse.
-- Clearing profile data requires an explicit user action and confirmation.
-- Deleting a profile must be blocked while it is in use, or use a clearly confirmed close-and-delete flow.
-- Duplicating a pane creates a new profile by default; copy URL and viewport settings, not cookies or authentication.
-- Duplicating a workspace creates fresh profiles for its panes by default.
-- Reusing an existing profile is an explicit choice.
+- Closing a pane destroys its active `WebContentsView` and `webContents`. If that was the last pane using its profile, release the profile: clear cookies/storage/cache, remove metadata, and delete the partition. No extra confirmation is required.
+- A profile shared by multiple panes remains until its last pane closes.
+- Workspace switching, app shutdown, and internal view teardown must not release profiles.
+- Provide **Clear Site Data…** in the device actions menu. It clears that pane's cookies, storage, cache, and auth state after confirmation, then reloads the pane.
+- Duplicating a pane creates an independent session; it copies URL and viewport settings, not cookies or authentication.
+- Duplicating a workspace creates independent sessions for its panes.
+- Do not provide a profile manager, profile labels in the UI, or shared sessions between panes. Profiles are an internal storage detail.
 
-### 9.4 Profile manager
+### 9.4 Session manager
 
-The MVP must provide a simple profile manager that:
-
-- Lists profiles with a human-readable label and creation metadata.
-- Shows whether a profile is currently in use and which panes reference it.
-- Allows renaming a profile.
-- Allows clearing its browsing data with confirmation.
-- Allows deleting an unused profile with confirmation.
-- Prevents deleting a profile while active, unless the user confirms a flow that closes all panes using it.
-
-Do not expose raw cookies, tokens, or other secrets in the profile manager.
+There is no user-facing profile manager. Pane sessions are created internally, referenced by stable IDs in workspace files, and released with the pane. Do not expose raw cookies, tokens, or other secrets in the UI or IPC.
 
 ### 9.5 Session implementation
 
@@ -402,7 +399,7 @@ Provide sensible presets for common:
 
 Also support custom width and height.
 
-Preset labels in the viewport and Add menus must always show the CSS viewport dimensions and use “viewport”/“emulation” language. A compact toolbar trigger may show the short device name, with the full label and dimensions available in its tooltip. Do not present a preset as physical hardware accuracy.
+Preset labels in the viewport and Add menus must always show the CSS viewport dimensions and use “viewport”/“emulation” language. A compact header trigger may show the short device name, with the full label and dimensions available in its tooltip. Do not present a preset as physical hardware accuracy.
 
 ### 10.2 Per-pane settings
 
@@ -411,7 +408,7 @@ Each pane can have independent:
 - Viewport width.
 - Viewport height.
 - Device scale factor.
-- Optional user-agent override.
+- Category-appropriate user agent for fixed presets: iPhone/iPad Safari for Apple and generic presets, Android Chrome for Galaxy/Pixel presets, and desktop Chrome for laptop/desktop presets. Responsive and custom viewports keep the runtime default UA.
 
 Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
@@ -425,8 +422,9 @@ New devices can be created directly with a fixed viewport preset from the **+** 
 - Confirm that different panes can use different viewport configurations simultaneously.
 - Confirm that creating a pane from the **+** device menu applies the selected preset without changing other panes.
 - Confirm that the visual fit scale is recalculated after pane and window resizing without changing the intended emulated CSS viewport.
+- Confirm that fixed presets send the documented category user agent and that responsive/custom panes return to the runtime default UA.
 
-Do not claim a preset reproduces physical hardware, touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Do not spoof user agents to bypass identity-provider restrictions.
+Do not claim a preset reproduces physical hardware, touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Category user agents exist for layout fidelity, not to bypass identity-provider restrictions, paywalls, or bot protection. Do not present a preset UA as a security or identity-evasion feature.
 
 ---
 
@@ -816,8 +814,9 @@ Use local fixture pages/servers.
 - Verify back/forward/reload are pane-specific.
 - Verify closing one pane does not affect another pane.
 - Verify persistent cookie/localStorage data survives an application restart.
-- Verify that panes explicitly sharing a profile share the expected cookie/storage state.
-- Verify that new/duplicated panes receive a fresh profile by default.
+- Verify that closing the last pane using a session clears its cookies/storage/cache and removes the profile record.
+- Verify that **Clear Site Data…** signs out and reloads one pane without affecting another.
+- Verify that new/duplicated panes receive independent sessions.
 - Verify denied permissions and popup behavior.
 - Document that session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation/restart.
 
@@ -831,8 +830,8 @@ Use local fixture pages/servers.
 - Test Retina coordinate behavior where available.
 - Verify viewport values from inside each page.
 - Test invalid URLs, navigation failures, rejected schemes, and popup policy.
-- Restart the app and restore workspace configuration and persistent profile state.
-- Clear and delete profiles with correct confirmation and in-use protection.
+- Restart the app and restore workspace configuration and persistent session state.
+- Clear one pane's site data with confirmation and verify other panes are untouched.
 - Close panes repeatedly and check for orphaned views/processes.
 - Test recovery from an individual renderer crash.
 
@@ -898,10 +897,10 @@ Do not build the full product UI until this experiment passes.
 - Add device/viewport presets and custom dimensions.
 - Verify emulation using local fixture pages.
 - Save/restore workspaces and active state.
-- Implement profile manager, clear, and delete lifecycle.
+- Implement per-pane Clear Site Data and session release on close.
 - Test restart/recovery behavior.
 
-**Exit condition:** different panes can use different viewport configurations, and workspace/profile state restores reliably after restart.
+**Exit condition:** different panes can use different viewport configurations, and workspace/session state restores reliably after restart.
 
 ### Phase 4 — Polish, performance, and macOS packaging
 
@@ -930,8 +929,8 @@ The MVP is complete when a user can:
 7. Arrange panes on the Canvas and navigate the workspace without losing them.
 8. Drag, snap, zoom, and fit panes.
 9. Apply different viewport configurations to different panes and verify actual page viewport values.
-10. Restart the app and restore workspace configuration and persistent profile data.
-11. Manage, clear, and delete profiles safely.
+10. Restart the app and restore workspace configuration and persistent session data.
+11. Clear one pane's site data safely.
 12. Close panes without orphaned views or destabilizing other panes.
 13. Pass applicable typecheck, lint, unit, integration/e2e, and build checks.
 14. Use the application with the documented minimal UI and no Docker dependency.

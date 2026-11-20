@@ -15,7 +15,9 @@ import {
 } from 'electron'
 import {
   IPC_CHANNELS,
+  type CanvasOverlayVisibility,
   type PaneCommand,
+  type ScriptResult,
   type ShellState,
   type WorkspaceTransferResult
 } from '../shared/ipc'
@@ -24,8 +26,7 @@ import type { CanvasSize } from '../shared/geometry'
 import { RESPONSIVE_VIEWPORT } from '../shared/viewports'
 import {
   profilePartitionDirectoryName,
-  type BrowserProfile,
-  type ProfileSummary
+  type BrowserProfile
 } from '../shared/profiles'
 import {
   CANVAS_MINIMAP_MARGIN,
@@ -59,6 +60,7 @@ import {
   type ThemePreference,
   type WindowBounds,
   type WorkspaceCycleDirection,
+  type WorkspaceData,
   type WorkspacePaneDefinition
 } from '../shared/workspace'
 import {
@@ -96,6 +98,7 @@ let zoomView: WebContentsView | null = null
 let zoomVisible = false
 let zoomLoaded = false
 let canvasHandActive = false
+let canvasSelectActive = false
 let lastCanvasZoomState: CanvasZoomState | null = null
 let browserManager: BrowserManager | null = null
 let profileStore: ProfileStore | null = null
@@ -305,6 +308,9 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
       if (shellView && !shellView.webContents.isDestroyed()) {
         shellView.webContents.send(IPC_CHANNELS.paneRenameRequested, paneId)
       }
+    },
+    onPaneRemoved: (_paneId, profileId) => {
+      void releaseProfileIfUnused(profileId)
     }
   })
 }
@@ -543,24 +549,6 @@ function messageFromError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-function profileSummaries(): ProfileSummary[] {
-  const store = profileStore
-  if (!store) {
-    return []
-  }
-  const usage = browserManager?.profilePaneIds() ?? new Map<string, string[]>()
-  return store.list().map((profile) => {
-    const paneIds = [...(usage.get(profile.id) ?? [])]
-    return {
-      id: profile.id,
-      label: profile.label,
-      createdAt: profile.createdAt,
-      paneIds,
-      inUse: paneIds.length > 0
-    }
-  })
-}
-
 function profileInUse(profileId: string): boolean {
   return (browserManager?.profilePaneIds().get(profileId)?.length ?? 0) > 0
 }
@@ -570,6 +558,68 @@ async function clearProfileSession(profileId: string): Promise<void> {
   await profileSession.clearStorageData()
   await profileSession.clearCache()
   await profileSession.clearAuthCache()
+}
+
+/**
+ * Closing the last pane using a profile releases the profile with the pane.
+ * Shared profiles remain until their final pane closes. Workspace switches and
+ * app shutdown destroy panes through destroyAll, which does not call this.
+ */
+async function releaseProfileIfUnused(profileId: string): Promise<void> {
+  if (profileInUse(profileId)) {
+    return
+  }
+  try {
+    await clearProfileSession(profileId)
+    if (profileStore?.get(profileId)) {
+      await profileStore.remove(profileId)
+    }
+    await removeProfilePartition(profileId).catch((error) => {
+      console.error('Could not remove the closed profile partition.', error)
+    })
+    browserManager?.notifyProfilesChanged()
+  } catch (error) {
+    console.error('Could not release the closed profile.', error)
+  }
+}
+
+async function clearPaneSiteData(paneId: string): Promise<ScriptResult> {
+  const manager = browserManager
+  if (!manager) {
+    return { ok: false, error: 'Device manager is not ready.' }
+  }
+  const profileId = manager.profileIdForPane(paneId)
+  if (!profileId) {
+    return { ok: false, error: 'Device not found.' }
+  }
+  await clearProfileSession(profileId)
+  return manager.reload(paneId)
+}
+
+async function releaseProfilesForDeletedWorkspace(
+  data: WorkspaceData
+): Promise<void> {
+  const store = workspaceStore
+  if (!store) {
+    return
+  }
+  const referenced = new Set<string>()
+  for (const summary of await store.listWorkspaces()) {
+    if (summary.id === data.id) {
+      continue
+    }
+    const workspace = await store.getWorkspaceData(summary.id)
+    for (const pane of workspace.panes) {
+      referenced.add(pane.profileId)
+    }
+  }
+  const live = new Set(browserManager?.profilePaneIds().keys() ?? [])
+  const candidates = new Set(data.panes.map((pane) => pane.profileId))
+  for (const profileId of candidates) {
+    if (!referenced.has(profileId) && !live.has(profileId)) {
+      await releaseProfileIfUnused(profileId)
+    }
+  }
 }
 
 async function removeProfilePartition(profileId: string): Promise<void> {
@@ -769,17 +819,6 @@ function buildApplicationMenu(): void {
         }
       ]
     },
-    {
-      label: 'Profiles',
-      submenu: [
-        {
-          id: 'profiles-manage',
-          label: 'Manage Profiles…',
-          accelerator: 'CmdOrCtrl+Shift+P',
-          click: () => sendCommand('open-profiles')
-        }
-      ]
-    },
     { role: 'editMenu' },
     {
       label: 'Device',
@@ -787,7 +826,7 @@ function buildApplicationMenu(): void {
         {
           id: 'pane-add',
           label: 'Add Device',
-          accelerator: 'CmdOrCtrl+T',
+          accelerator: 'CmdOrCtrl+N',
           click: () => sendCommand('add-pane')
         },
         {
@@ -1000,25 +1039,35 @@ function raiseCanvasOverlays(): void {
   raiseZoomView()
 }
 
-// The shell uses one visibility signal for both Canvas overlays so menus and
-// dialogs never leave a native bar floating above trusted DOM.
-function setCanvasMinimapVisible(visible: boolean): void {
+function setCanvasOverlayVisibility(visibility: CanvasOverlayVisibility): void {
   const wasVisible = minimapVisible || zoomVisible
-  minimapVisible = visible
-  zoomVisible = visible
-  if (!visible) {
-    if (minimapView && !minimapView.webContents.isDestroyed()) {
-      minimapView.setVisible(false)
-    }
-    if (zoomView && !zoomView.webContents.isDestroyed()) {
-      zoomView.setVisible(false)
-    }
-    return
+  minimapVisible = visibility.minimap
+  zoomVisible = visibility.zoom
+  if (
+    !visibility.minimap &&
+    minimapView &&
+    !minimapView.webContents.isDestroyed()
+  ) {
+    minimapView.setVisible(false)
   }
-  raiseCanvasOverlays()
-  if (!wasVisible) {
+  if (!visibility.zoom && zoomView && !zoomView.webContents.isDestroyed()) {
+    zoomView.setVisible(false)
+  }
+  if (visibility.minimap) {
+    raiseMinimapView()
+  }
+  if (visibility.zoom) {
+    raiseZoomView()
+  }
+  if ((visibility.minimap || visibility.zoom) && !wasVisible) {
     forwardCanvasZoomState()
   }
+}
+
+// Internal visibility resets hide both overlays; the shell uses the per-overlay
+// signal when a menu only covers one of them.
+function setCanvasMinimapVisible(visible: boolean): void {
+  setCanvasOverlayVisibility({ minimap: visible, zoom: visible })
 }
 
 function forwardCanvasZoomState(): void {
@@ -1026,7 +1075,8 @@ function forwardCanvasZoomState(): void {
     theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
     themePreference: workspaceStore?.theme() ?? 'system',
     zoom: browserManager?.canvasZoomValue() ?? 1,
-    handMode: canvasHandActive
+    handMode: canvasHandActive,
+    selectMode: canvasSelectActive
   }
   lastCanvasZoomState = state
   if (zoomLoaded && zoomView && !zoomView.webContents.isDestroyed()) {
@@ -1039,6 +1089,14 @@ function setCanvasHandModeActive(active: boolean): void {
     return
   }
   canvasHandActive = active
+  forwardCanvasZoomState()
+}
+
+function setCanvasSelectModeActive(active: boolean): void {
+  if (canvasSelectActive === active) {
+    return
+  }
+  canvasSelectActive = active
   forwardCanvasZoomState()
 }
 
@@ -1170,6 +1228,7 @@ async function createWindow(): Promise<void> {
   shell.webContents.on('did-start-loading', () => {
     setCanvasMinimapVisible(false)
     setCanvasHandModeActive(false)
+    setCanvasSelectModeActive(false)
   })
   shell.webContents.on('render-process-gone', () => {
     setCanvasMinimapVisible(false)
@@ -1484,11 +1543,13 @@ app.whenReady().then(async () => {
     getDevServerUrl: () => devServerUrl?.origin ?? null,
     updateCanvasMinimapState: forwardCanvasMinimapState,
     setCanvasMinimapVisible,
+    setCanvasOverlayVisibility,
     setCanvasMinimapCollapsed,
     forwardCanvasMinimapAction,
     updateCanvasZoomState: forwardCanvasZoomState,
     forwardCanvasZoomAction,
     setCanvasHandMode: setCanvasHandModeActive,
+    setCanvasSelectMode: setCanvasSelectModeActive,
     getCanvasSize: canvasSize,
     getWorkspaceLayout: () => workspaceStore?.layout() ?? defaultWorkspaceLayout([]),
     getWorkspaceIdentity: () => ({
@@ -1508,74 +1569,7 @@ app.whenReady().then(async () => {
       await workspaceStore.setLayout(input)
       return { ok: true }
     },
-    listProfiles: async () => {
-      if (!profileStore) {
-        return { ok: false, error: 'Profiles are not ready.' }
-      }
-      return { ok: true, profiles: profileSummaries() }
-    },
-    renameProfile: async (profileId, label) => {
-      if (!profileStore) {
-        return { ok: false, error: 'Profiles are not ready.' }
-      }
-      try {
-        await profileStore.rename(profileId, label)
-        browserManager?.notifyProfilesChanged()
-        return { ok: true }
-      } catch (error) {
-        return { ok: false, error: messageFromError(error, 'Could not rename the profile.') }
-      }
-    },
-    clearProfile: async (profileId, closePanes) => {
-      if (!profileStore?.get(profileId)) {
-        return { ok: false, error: 'Profile not found.' }
-      }
-      if (profileInUse(profileId) && !closePanes) {
-        return {
-          ok: false,
-          error: 'Confirm closing devices using this profile before clearing its data.'
-        }
-      }
-      try {
-        if (closePanes) {
-          browserManager?.closePanesForProfile(profileId)
-        }
-        if (profileInUse(profileId)) {
-          return { ok: false, error: 'Could not close all devices using this profile.' }
-        }
-        await clearProfileSession(profileId)
-        return { ok: true }
-      } catch (error) {
-        return { ok: false, error: messageFromError(error, 'Could not clear the profile.') }
-      }
-    },
-    deleteProfile: async (profileId, closePanes) => {
-      if (!profileStore?.get(profileId)) {
-        return { ok: false, error: 'Profile not found.' }
-      }
-      if (profileInUse(profileId) && !closePanes) {
-        return {
-          ok: false,
-          error: 'Confirm closing devices using this profile before deleting it.'
-        }
-      }
-      try {
-        if (closePanes) {
-          browserManager?.closePanesForProfile(profileId)
-        }
-        if (profileInUse(profileId)) {
-          return { ok: false, error: 'Could not close all devices using this profile.' }
-        }
-        await clearProfileSession(profileId)
-        await profileStore.remove(profileId)
-        await removeProfilePartition(profileId).catch((error) => {
-          console.error('Could not remove the profile partition directory.', error)
-        })
-        return { ok: true }
-      } catch (error) {
-        return { ok: false, error: messageFromError(error, 'Could not delete the profile.') }
-      }
-    },
+    clearPaneSiteData,
     listWorkspaces: async () => {
       if (!workspaceStore) {
         return { ok: false, error: 'Workspace is not ready.' }
@@ -1643,7 +1637,9 @@ app.whenReady().then(async () => {
         return { ok: false, error: 'Workspace is not ready.' }
       }
       try {
+        const data = await workspaceStore.getWorkspaceData(workspaceId)
         await workspaceStore.deleteWorkspace(workspaceId)
+        await releaseProfilesForDeletedWorkspace(data)
         await refreshWorkspaceMenu()
         return { ok: true }
       } catch (error) {

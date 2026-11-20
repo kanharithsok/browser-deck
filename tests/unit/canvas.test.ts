@@ -3,9 +3,13 @@ import {
   CANVAS_GAP,
   CANVAS_HEADER_HEIGHT,
   CANVAS_ORIGIN,
+  CANVAS_SHOWCASE_GAP,
+  arrangeCanvasFrames,
   canvasContentSize,
   canvasFrameSize,
+  canvasPaneIdsInRect,
   defaultCanvasPositions,
+  duplicateCanvasPosition,
   isValidCanvasPosition,
   snapCanvasRect
 } from '../../src/shared/canvas'
@@ -68,7 +72,8 @@ describe('canvas layout helpers', () => {
       y: 100,
       snappedX: true,
       snappedY: false,
-      guides: { vertical: [600], horizontal: [] }
+      guides: { vertical: [600], horizontal: [] },
+      proximity: { vertical: [], horizontal: [40] }
     })
 
     expect(
@@ -78,8 +83,45 @@ describe('canvas layout helpers', () => {
       y: 840,
       snappedX: false,
       snappedY: true,
-      guides: { vertical: [], horizontal: [840] }
+      guides: { vertical: [], horizontal: [840] },
+      proximity: { vertical: [800], horizontal: [] }
     })
+  })
+
+  it('shows a proximity guide before the near-gap snap', () => {
+    const target = { x: 0, y: 0, width: 400, height: 800 }
+    const preview = snapCanvasRect({ x: 450, y: 1000, width: 300, height: 500 }, [target], {
+      threshold: 8,
+      nearThreshold: 24,
+      nearGap: 16,
+      proximityThreshold: 64
+    })
+    expect(preview.x).toBe(450)
+    expect(preview.snappedX).toBe(false)
+    expect(preview.guides).toEqual({ vertical: [], horizontal: [] })
+    expect(preview.proximity).toEqual({ vertical: [400], horizontal: [] })
+  })
+
+  it('snaps to a near gap before the flush snap', () => {
+    const target = { x: 0, y: 0, width: 400, height: 800 }
+    const options = {
+      threshold: 8,
+      nearThreshold: 24,
+      nearGap: 16,
+      proximityThreshold: 64
+    }
+
+    const near = snapCanvasRect({ x: 420, y: 1000, width: 300, height: 500 }, [target], options)
+    expect(near.x).toBe(416)
+    expect(near.snappedX).toBe(true)
+    expect(near.guides.vertical).toEqual([400])
+    expect(near.proximity).toEqual({ vertical: [], horizontal: [] })
+
+    const flush = snapCanvasRect({ x: 396, y: 1000, width: 300, height: 500 }, [target], options)
+    expect(flush.x).toBe(400)
+    expect(flush.snappedX).toBe(true)
+    expect(flush.guides.vertical).toEqual([400])
+    expect(flush.proximity).toEqual({ vertical: [], horizontal: [] })
   })
 
   it('snaps centers without moving beyond the threshold', () => {
@@ -99,6 +141,7 @@ describe('canvas layout helpers', () => {
       x: 700,
       y: 700,
       guides: { vertical: [], horizontal: [] },
+      proximity: { vertical: [], horizontal: [] },
       snappedX: false,
       snappedY: false
     })
@@ -111,9 +154,126 @@ describe('canvas layout helpers', () => {
       x: 10,
       y: 20,
       guides: { vertical: [], horizontal: [] },
+      proximity: { vertical: [], horizontal: [] },
       snappedX: false,
       snappedY: false
     })
+  })
+
+  it('places a duplicate beside its source and skips occupied slots', () => {
+    const source = { x: 100, y: 50, width: 300, height: 500 }
+
+    expect(duplicateCanvasPosition(source, [])).toEqual({
+      x: 460,
+      y: 50
+    })
+
+    expect(
+      duplicateCanvasPosition(source, [
+        { x: 460, y: 50, width: 300, height: 500 }
+      ])
+    ).toEqual({ x: 100, y: 610 })
+
+    expect(
+      duplicateCanvasPosition(source, [
+        { x: 460, y: 50, width: 300, height: 500 },
+        { x: 100, y: 610, width: 300, height: 500 }
+      ])
+    ).toEqual({ x: 100, y: 1170 })
+
+    expect(
+      duplicateCanvasPosition(source, [
+        { x: 460, y: 600, width: 300, height: 500 }
+      ])
+    ).toEqual({ x: 460, y: 50 })
+  })
+
+  it('arranges frames in a horizontal row and vertical stack', () => {
+    const frames = [
+      { id: PANE_A, width: 300, height: 500 },
+      { id: PANE_B, width: 200, height: 400 },
+      { id: '33333333-3333-4333-8333-333333333333', width: 400, height: 300 }
+    ]
+
+    expect(arrangeCanvasFrames(frames, 'row')).toEqual({
+      [PANE_A]: { x: CANVAS_ORIGIN, y: CANVAS_ORIGIN },
+      [PANE_B]: { x: CANVAS_ORIGIN + 300 + CANVAS_GAP, y: CANVAS_ORIGIN },
+      '33333333-3333-4333-8333-333333333333': {
+        x: CANVAS_ORIGIN + 300 + CANVAS_GAP + 200 + CANVAS_GAP,
+        y: CANVAS_ORIGIN
+      }
+    })
+
+    expect(arrangeCanvasFrames(frames, 'stack')).toEqual({
+      [PANE_A]: { x: CANVAS_ORIGIN, y: CANVAS_ORIGIN },
+      [PANE_B]: { x: CANVAS_ORIGIN, y: CANVAS_ORIGIN + 500 + CANVAS_GAP },
+      '33333333-3333-4333-8333-333333333333': {
+        x: CANVAS_ORIGIN,
+        y: CANVAS_ORIGIN + 500 + CANVAS_GAP + 400 + CANVAS_GAP
+      }
+    })
+  })
+
+  it('arranges frames in a two-column grid with aligned columns and rows', () => {
+    const frames = [
+      { id: PANE_A, width: 300, height: 500 },
+      { id: PANE_B, width: 200, height: 400 },
+      { id: '33333333-3333-4333-8333-333333333333', width: 400, height: 300 }
+    ]
+
+    expect(arrangeCanvasFrames(frames, 'grid')).toEqual({
+      [PANE_A]: { x: CANVAS_ORIGIN, y: CANVAS_ORIGIN },
+      [PANE_B]: { x: CANVAS_ORIGIN + 400 + CANVAS_GAP, y: CANVAS_ORIGIN },
+      '33333333-3333-4333-8333-333333333333': {
+        x: CANVAS_ORIGIN,
+        y: CANVAS_ORIGIN + 500 + CANVAS_GAP
+      }
+    })
+  })
+
+  it('packs showcase rows tightly and centers shorter rows', () => {
+    const frames = [
+      { id: PANE_A, width: 1000, height: 700 },
+      { id: PANE_B, width: 1000, height: 700 },
+      { id: '33333333-3333-4333-8333-333333333333', width: 1000, height: 700 }
+    ]
+
+    expect(arrangeCanvasFrames(frames, 'showcase')).toEqual({
+      [PANE_A]: { x: CANVAS_ORIGIN, y: CANVAS_ORIGIN },
+      [PANE_B]: {
+        x: CANVAS_ORIGIN + 1000 + CANVAS_SHOWCASE_GAP,
+        y: CANVAS_ORIGIN
+      },
+      '33333333-3333-4333-8333-333333333333': {
+        x: CANVAS_ORIGIN + (1000 + CANVAS_SHOWCASE_GAP) / 2,
+        y: CANVAS_ORIGIN + 700 + CANVAS_SHOWCASE_GAP
+      }
+    })
+  })
+
+  it('selects frames overlapping a marquee rectangle', () => {
+    const frames = [
+      { id: PANE_A, x: 40, y: 40, width: 300, height: 500 },
+      { id: PANE_B, x: 400, y: 40, width: 300, height: 500 },
+      { id: '33333333-3333-4333-8333-333333333333', x: 40, y: 600, width: 300, height: 500 }
+    ]
+
+    expect(canvasPaneIdsInRect(frames, { x: 20, y: 20, width: 350, height: 550 })).toEqual([
+      PANE_A
+    ])
+    expect(canvasPaneIdsInRect(frames, { x: 20, y: 20, width: 720, height: 550 })).toEqual([
+      PANE_A,
+      PANE_B
+    ])
+    expect(canvasPaneIdsInRect(frames, { x: 340, y: 0, width: 60, height: 40 })).toEqual([])
+    expect(canvasPaneIdsInRect(frames, { x: 0, y: 0, width: 0, height: 10 })).toEqual([])
+  })
+
+  it('returns no positions for an empty or invalid arrangement', () => {
+    expect(arrangeCanvasFrames([], 'row')).toEqual({})
+    expect(
+      arrangeCanvasFrames([{ id: PANE_A, width: 0, height: 500 }], 'row')
+    ).toEqual({})
   })
 
   it('normalizes canvas mode and drops unknown or invalid positions', () => {

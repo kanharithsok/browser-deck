@@ -981,3 +981,186 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Visual check | Confirmed 304 px menus at 1280 × 860 with left-aligned names, right-aligned dimensions, a right-side checkmark, no horizontal clipping, and the complete catalog visible without scrolling. Shorter windows scroll within the shared 660 px maximum height. |
 
 **Known behavior / limitations:** The viewport trigger deliberately shows the short device name to avoid clipping; the full name and dimensions are available on hover and in the menu. Custom… exists only in the viewport menu because adding a device from custom dimensions would need an add-time dimension form. The complete catalog is visible at typical window sizes; both menus scroll on shorter windows. This supersedes the native-selector wording and the earlier curated Add-menu subset noted above.
+
+## Post-MVP — Duplicate anchoring, Cmd+N, and Canvas Arrange
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** `Cmd/Ctrl+D` now anchors the duplicate to the selected device. The renderer computes the right-hand slot and, when it is occupied, places the duplicate at the source's left edge directly below it, scanning down past existing frames. The pending position is applied before default placement, camera reveal, and persistence, so the duplicate never jumps away from its source. `Cmd/Ctrl+N` replaces `Cmd/Ctrl+T` as the native Add Device accelerator. A new Arrange menu in the bottom canvas bar offers Showcase layout, Horizontal row, 2 × 2 grid, and Vertical stack. Showcase packs panes into 24 px rows that wrap at 2400 px and centers shorter rows; the other modes use the standard canvas gap. Every arrangement preserves pane order, writes new world positions, and fits the camera to the result. The placement and arrangement math lives in pure `src/shared/canvas.ts` helpers.
+
+**Files changed:** `src/shared/canvas.ts`, `src/shared/zoom.ts`, `src/main/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/zoom.ts`, `src/renderer/zoom.html`, `src/renderer/src/menu.ts`, `src/renderer/src/components/MenuIcon.vue`, `tests/unit/canvas.test.ts`, `tests/unit/zoom.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-054), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 163 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.9 s. Verifies `CmdOrCtrl+N` metadata, duplicate coordinates beside/below the source, and the four Arrange actions plus horizontal-row positions. |
+| Build | Passed as part of e2e: main 151.68 kB, preload 9.28 kB, renderer JS 359.58 kB, shell CSS 30.97 kB. |
+
+**Known behavior / limitations:** Arrange is a one-shot command and replaces manual positions for every device in the workspace. Showcase wrapping and centering are covered by unit tests but only Horizontal row is exercised end-to-end. Duplicate placement falls back below the source rather than pushing existing panes aside.
+
+## Post-MVP — Per-device viewport control and a quieter main toolbar
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Canvas device headers now have a six-dot drag grip and a per-device viewport trigger that shows the short preset name plus CSS dimensions and opens the 17-item preset menu for that specific pane from the trigger's left edge. Dimensions drop out below a 470 px header width, keeping every action inside a 390 px mobile frame. The full viewport selector was removed from the main top toolbar; selecting Custom… from a header still opens the existing inline width/height/DPR editor in the toolbar, and a compact edit button remains while the active device uses a custom viewport. A new Open in Browser action is available from the header and the device actions menu, backed by a validated `paneflow:open-pane-external` channel that accepts only the pane's current HTTP(S) URL, rejects blank and non-web addresses, and calls `shell.openExternal` in main. The header stays on one row; synced/mirroring UI and global zoom controls were intentionally not added.
+
+**Files changed:** `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/browser-manager.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/e2e/accessibility.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-055), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 163 unit tests, and all light/dark contrast pairs. |
+| `npm run build` | Passed: main 152.60 kB, preload 9.43 kB, renderer JS 364.11 kB, shell CSS 32.14 kB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 16.9 s. Verifies per-device preset selection, toolbar Custom handoff, mobile-header containment, 11 device actions, external URL handoff through a stubbed `shell.openExternal`, and the updated tab order. |
+| Accessibility | Axe/role/AX checks pass with the viewport trigger in the device header. Focus order is address → Add → viewport → reload → open in browser → actions → close, then the next device. |
+
+**Known behavior / limitations:** The header remains one row, so the profile and viewport dimensions are hidden first on narrow frames. Custom viewport dimensions are still edited in the top toolbar rather than inline in the header. Open in Browser launches the system default browser and is intentionally disabled for blank devices. There is no synchronized/mirroring feature, so no Synced badge or toggle is shown.
+
+## Post-MVP — Marquee multi-select
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Added a Select toggle to the bottom canvas bar. While active, dragging from empty canvas or pane chrome draws a marquee instead of panning or moving a pane; native views are hidden for the gesture so the rectangle and selected rings remain visible. The pure `canvasPaneIdsInRect` helper selects every intersecting frame. Selected pane slots get a two-pixel accent ring, and the toolbar shows a live `N selected` chip with a close action. `Delete`/`Backspace` closes the selected set, `Escape` clears it and then exits the tool, and clicking a pane without dragging selects only that pane. Select and Hand are mutually exclusive and their states are synchronized to the native bottom bar through a validated `paneflow:set-canvas-select-mode` channel.
+
+**Files changed:** `src/shared/canvas.ts`, `src/shared/zoom.ts`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `src/renderer/src/App.vue`, `src/renderer/src/zoom.ts`, `src/renderer/zoom.html`, `tests/unit/canvas.test.ts`, `tests/unit/zoom.test.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/e2e/accessibility.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-056), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 164 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.0 s. Creates four stress panes, fits them, marquee-selects two, verifies selected rings and the count chip, deletes them, and confirms the remaining panes and leak cycles still pass. |
+| `npm run build` | Passed: main 153.34 kB, preload 9.59 kB, renderer JS 373.05 kB, shell CSS 33.29 kB. |
+| Accessibility | Select has an accessible name, tooltip, and `aria-pressed` state; axe/role checks continue to pass for the bottom bar. |
+
+**Known behavior / limitations:** Multi-select is Canvas-only and has no undo. A marquee cannot start over native page content because that input belongs to the remote page; start from empty canvas or pane chrome. Selection is ephemeral and clears on workspace switch. Selection does not change the active pane, so address and viewport controls still target the existing active device.
+
+## Post-MVP — Preset user agents for real mobile layouts
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Fixed device presets now send a category-appropriate browser user agent: iPhone Safari for Apple and generic phones, Android Chrome for Galaxy/Pixel phones, iPad Safari for iPad and generic tablets, Android Chrome for the Galaxy Tab, and desktop Chrome for laptop/desktop presets. Responsive and custom panes keep Electron's default UA. BrowserManager stores the pane's original UA, applies the mapped UA before the first load, and reloads the current URL only when a viewport change moves the pane to a different UA category. Switching between presets in the same category does not reload. This fixes the common mobile-site case where desktop markup has a 400px minimum inside a 375px emulated viewport. The viewport and DPR remain exact; the UA is for layout fidelity, not restriction bypass.
+
+**Files changed:** `src/shared/user-agent.ts`, `src/main/browser-manager.ts`, `tests/unit/user-agent.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-057), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 170 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.1 s. Verifies iPhone UA on Generic phone, iPad UA on Generic tablet, Android 14 UA on Pixel 8, and the default UA after returning to Responsive. |
+| `npm run build` | Passed: main 156.01 kB, preload 9.59 kB, renderer JS 373.05 kB, shell CSS 33.29 kB. |
+| Manual Google check | On the 1× Dell display at iPhone SE, the page changed from `scrollWidth 400` with a horizontal scrollbar to `scrollWidth 360` with no horizontal overflow. Native bounds and emulation stayed `375 × 667 @ DPR 2`. |
+
+**Known behavior / limitations:** UA changes between categories reload the current page and can discard unsaved page state. The UAs are category-level, not exact model identities, and User-Agent Client Hints may still expose Chromium. Touch, GPS, and other device APIs remain unemulated. Responsive and custom panes can still overflow when a site serves desktop markup.
+
+## Post-MVP — Cmd+N opens the Add Device picker
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** The native **Add Device** command and `Cmd/Ctrl+N` now open the same in-shell Add Device menu as the toolbar + button instead of creating a responsive pane immediately. The menu anchors to the + button, keeps the normal focus-return behavior, and creates nothing until the user chooses Responsive or a fixed preset. The direct `paneflow:add-pane` IPC remains available for tests and internal creation paths.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/DECISIONS.md` (ADR-058), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 170 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.9 s. Invokes `pane-add`, verifies the Add Device menu appears while the pane count stays at two, selects Responsive, and confirms a fresh-profile pane is created. |
+| `npm run build` | Passed: main 156.01 kB, preload 9.59 kB, renderer JS 373.20 kB, shell CSS 33.29 kB. |
+
+**Known behavior / limitations:** `Cmd/Ctrl+N` now needs a preset choice before a pane exists. The direct API still creates a responsive pane when called programmatically. The menu opens anchored to the toolbar + rather than at the pointer.
+
+## Post-MVP — Proximity guides and bottom-bar tool icons
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Pane dragging now has two magnetic stops. Within 24 screen pixels of a neighboring opposite edge, the pane snaps to a 16px gap; continuing into the 8-pixel window snaps flush. A wider 64-pixel approach shows a lighter dashed proximity guide before the gap stop. Solid guides appear for both snap stages, dashed guides only while the pane is near but unsnapped, and one nearest guide per axis is used. Both guide sets clear on drag start, release, cancel, workspace switch, and mode change. The bottom-bar Hand and Select controls now use palm and pointer-cursor icons; names, tooltips, pressed state, and behavior are unchanged.
+
+**Files changed:** `src/shared/canvas.ts`, `src/renderer/src/App.vue`, `src/renderer/zoom.html`, `tests/unit/canvas.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-059), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 172 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests. Drags to a 50px pointer gap for the dashed preview, to a 30px pointer gap and verifies the resulting 16px snap, then into flush range; all guides clear on release. |
+| `npm run build` | Passed: main 157.96 kB, preload 9.79 kB, renderer JS 377.72 kB, shell CSS 33.69 kB. |
+
+**Known behavior / limitations:** Proximity shows only the nearest guide per axis, not every nearby edge. At low zoom the 24/64px screen thresholds cover larger world distances by design. Closing in from flush returns to the 16px stop before releasing completely.
+
+## Post-MVP — Profiles follow their pane lifecycle
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Closing the last pane that uses a profile now releases the profile with it: storage, cache, and auth data are cleared, metadata is removed from `profiles.json`, and the partition directory is deleted. The pane disappears immediately; cleanup completes asynchronously. Shared profiles remain until their final pane closes. Workspace switches, app shutdown, and the profile manager's confirmed close-and-delete path skip the automatic release because they either retain the workspace or already own cleanup. Unused profiles from duplicated or imported workspaces still support explicit clear/delete.
+
+**Files changed:** `src/main/browser-manager.ts`, `src/main/index.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-060), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 172 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.1 s. Verifies Bob's exclusive profile and cookies disappear after close, self-closed panes release their profiles, shared Alice-profile panes keep the profile until only Alice remains, and a duplicated-workspace profile still supports rename/clear/delete. |
+| `npm run build` | Passed: main 157.96 kB, preload 9.79 kB, renderer JS 377.72 kB, shell CSS 33.69 kB. |
+
+**Known behavior / limitations:** Reopening a closed device starts signed out. Closing has no extra delete confirmation by design. Cleanup is asynchronous, so a profile may briefly outlive its pane in `profiles.json` while session data is being cleared. A profile referenced only by an inactive workspace is still treated as unused and can be deleted from the manager.
+
+## Post-MVP — Canvas overlays only hide when a menu covers them
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** The bottom canvas bar and minimap no longer disappear for every menu. Each overlay now hides independently only when the open menu rectangle intersects it. Zoom, Arrange, and appearance menus keep both visible. Overlay visibility stays stable until menu bounds arrive, avoiding the hide/show flicker; the menu itself is invisible while positioning. Dialogs, the device palette, and marquee drags still hide both, as before.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/index.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-061), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 172 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.1 s. Opens the upper-left canvas menu and verifies the minimap and bottom bar stay visible; existing dialog/palette hiding remains covered. |
+| `npm run build` | Passed: main 157.96 kB, preload 9.79 kB, renderer JS 377.72 kB, shell CSS 33.69 kB. |
+
+**Known behavior / limitations:** Overlay overlap is estimated from the shell using the shared bar/minimap dimensions and the uncollapsed minimap height, so a collapsed minimap may hide slightly earlier than strictly necessary. Menus near the bottom edge can still hide the overlay they cover.
+
+## Post-MVP — Per-pane sessions, Clear Site Data, and two-row headers
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Removed the native Profiles menu, Profiles dialog, profile labels/counts, explicit sharing, and the profile-picker IPC. Each pane now owns an independent browser session; closing it clears cookies/storage/cache/auth, removes its profile metadata, and best-effort deletes its partition. Deleting an inactive workspace releases sessions referenced only by that workspace. Added a confirmed **Clear Site Data…** action to the device actions menu; it clears one pane and reloads it without touching other panes. Moved the address bar from the top toolbar into a second pane-header row; the top toolbar is now just Add plus draggable space. Canvas headers increased from 32 to 64 CSS pixels, and custom viewport editing now replaces that pane's address row. The device palette no longer searches profile labels.
+
+**Files changed:** `src/shared/ipc.ts`, `src/shared/canvas.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/index.ts`, `src/main/browser-manager.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/GlobalPaneBar.vue` (removed), `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/unit/minimap.test.ts`, `README.md`, `SPEC.md`, `SECURITY.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-062, ADR-063), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 172 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.6 s. Verifies the missing Profiles menu, per-pane address rows, Add-only toolbar, exclusive session release on close/self-close, confirmed Clear Site Data without affecting Alice, workspace cleanup, and the updated accessibility tab order. |
+| `npm run build` | Passed: main 154.18 kB, preload 9.15 kB, renderer JS 357.01 kB, shell CSS 30.73 kB. |
+
+**Known behavior / limitations:** There is no way to reuse a signed-in session after closing its pane. Clear Site Data signs the pane out and loses unsaved page state. Inactive workspaces retain their sessions until opened or deleted. Canvas frames are 32 px taller. The top toolbar intentionally contains only Add and draggable space.
+
+## Post-MVP — Independent pane browsers, Clear Site Data, and two-row headers
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Removed the Profiles menu, Profiles dialog, profile labels/counts, explicit sharing, and profile-picker IPC. Every pane now behaves as an independent browser session: its own address bar, history, viewport, user agent, cookies, storage, cache, and auth. Closing a pane releases its session and partition; deleting an inactive workspace releases sessions referenced only by that workspace. Added a confirmed **Clear Site Data…** action that resets one live pane and reloads it. Moved the address bar into a second pane-header row and reduced the main toolbar to Add plus draggable space. Canvas header allowance increased from 32 to 64 CSS pixels, and custom viewport editing now replaces the pane's address row. The device palette no longer searches profile labels.
+
+**Files changed:** `src/shared/ipc.ts`, `src/shared/canvas.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/index.ts`, `src/main/browser-manager.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/GlobalPaneBar.vue` (removed), `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/unit/minimap.test.ts`, `README.md`, `SPEC.md`, `SECURITY.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-062, ADR-063), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 172 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 17.4 s. Verifies the absent Profiles menu, per-pane address rows, Add-only toolbar, exclusive session release, confirmed Clear Site Data without affecting Alice, workspace session cleanup, and updated focus order. |
+| `npm run build` | Passed: main 154.18 kB, preload 9.15 kB, renderer JS 357.01 kB, shell CSS 30.73 kB. |
+
+**Known behavior / limitations:** Closing a pane permanently discards its session. Clear Site Data signs out and loses unsaved page state. The main toolbar is intentionally almost empty. Canvas frames are 32 px taller. Panes are isolated browser sessions inside one Chromium runtime, not separate browser installations.

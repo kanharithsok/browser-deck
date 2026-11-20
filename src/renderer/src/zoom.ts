@@ -12,8 +12,10 @@ const percent = document.querySelector<HTMLButtonElement>('#percent')
 const out = document.querySelector<HTMLButtonElement>('#out')
 const zoomIn = document.querySelector<HTMLButtonElement>('#in')
 const hand = document.querySelector<HTMLButtonElement>('#hand')
+const select = document.querySelector<HTMLButtonElement>('#select')
 const find = document.querySelector<HTMLButtonElement>('#find')
 const reloadAll = document.querySelector<HTMLButtonElement>('#reload-all')
+const arrange = document.querySelector<HTMLButtonElement>('#arrange')
 const appearance = document.querySelector<HTMLButtonElement>('#appearance')
 
 if (
@@ -22,8 +24,10 @@ if (
   !out ||
   !zoomIn ||
   !hand ||
+  !select ||
   !find ||
   !reloadAll ||
+  !arrange ||
   !appearance
 ) {
   throw new Error('Canvas controls DOM is unavailable.')
@@ -34,8 +38,10 @@ const percentButton = percent
 const outButton = out
 const inButton = zoomIn
 const handButton = hand
+const selectButton = select
 const findButton = find
 const reloadAllButton = reloadAll
+const arrangeButton = arrange
 const appearanceButton = appearance
 const themeIcons = Array.from(
   appearanceButton.querySelectorAll<SVGElement>('[data-theme-icon]')
@@ -67,6 +73,8 @@ function render(state: CanvasZoomState): void {
   inButton.disabled = state.zoom >= CANVAS_MAX_ZOOM
   handButton.classList.toggle('active', state.handMode)
   handButton.setAttribute('aria-pressed', String(state.handMode))
+  selectButton.classList.toggle('active', state.selectMode)
+  selectButton.setAttribute('aria-pressed', String(state.selectMode))
   renderTheme(state.themePreference)
 }
 
@@ -86,12 +94,20 @@ handButton.addEventListener('click', () => {
   send({ type: 'toggle-hand' })
 })
 
+selectButton.addEventListener('click', () => {
+  send({ type: 'toggle-select' })
+})
+
 findButton.addEventListener('click', () => {
   send({ type: 'find-device' })
 })
 
 reloadAllButton.addEventListener('click', () => {
   send({ type: 'reload-all' })
+})
+
+arrangeButton.addEventListener('click', () => {
+  send({ type: 'arrange' })
 })
 
 appearanceButton.addEventListener('click', () => {

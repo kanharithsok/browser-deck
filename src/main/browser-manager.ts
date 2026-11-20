@@ -5,6 +5,7 @@ import {
   app,
   clipboard,
   dialog,
+  shell,
   WebContentsView,
   type BaseWindow,
   type WebContents
@@ -25,6 +26,7 @@ import type {
 import { partitionForProfile, type BrowserProfile } from '../shared/profiles'
 import { screenshotFileName } from '../shared/screenshot'
 import { MAX_URL_LENGTH, isAllowedNavigationUrl, normalizeAddress } from '../shared/url'
+import { userAgentForViewport } from '../shared/user-agent'
 import {
   RESPONSIVE_VIEWPORT,
   parsePaneViewport,
@@ -56,6 +58,8 @@ interface PaneRecord {
   hasBounds: boolean
   shellVisible: boolean
   viewport: PaneViewport
+  defaultUserAgent: string
+  appliedUserAgent: string
   lastEmulationSignature: string
   emulationEnabled: boolean
   appliedScale: number
@@ -70,6 +74,7 @@ interface BrowserManagerOptions {
   onPaneFocused?: (paneId: string) => void
   onPaneNotice?: (notice: PaneNotice) => void
   onPaneRenameRequested?: (paneId: string) => void
+  onPaneRemoved?: (paneId: string, profileId: string) => void
   onPaneLayerChanged?: () => void
   getColorScheme: () => PaneColorScheme
 }
@@ -139,14 +144,6 @@ export class BrowserManager {
     }
     const profile = await this.profileStore.create()
     return this.addPaneForProfile(profile, undefined, parsed.viewport)
-  }
-
-  async addPaneWithProfile(profileId: string, address?: string): Promise<ScriptResult> {
-    const profile = this.profileStore.get(profileId)
-    if (!profile) {
-      return { ok: false, error: 'Profile not found.' }
-    }
-    return this.addPaneForProfile(profile, address)
   }
 
   async duplicatePane(paneId: string): Promise<ScriptResult> {
@@ -221,19 +218,6 @@ export class BrowserManager {
     }
     this.destroyPane(record)
     return { ok: true }
-  }
-
-  closePanesForProfile(profileId: string): string[] {
-    const targets = [...this.panes.values()].filter(
-      (record) => record.profile.id === profileId && this.liveWebContents(record)
-    )
-    for (const record of targets) {
-      this.destroyPane(record, false)
-    }
-    if (targets.length > 0) {
-      this.emitState()
-    }
-    return targets.map((record) => record.id)
   }
 
   navigate(paneId: string, address: string): ScriptResult {
@@ -425,9 +409,14 @@ export class BrowserManager {
     }
 
     record.viewport = parsed.viewport
+    const userAgentChanged = this.applyUserAgent(record)
     record.lastEmulationSignature = ''
     this.applyEmulation(record)
-    this.emitState()
+    if (userAgentChanged && record.url !== 'about:blank') {
+      this.load(record, record.url)
+    } else {
+      this.emitState()
+    }
     return { ok: true }
   }
 
@@ -515,6 +504,11 @@ export class BrowserManager {
     }
 
     return { panes }
+  }
+
+  profileIdForPane(paneId: string): string | null {
+    const record = this.panes.get(paneId)
+    return record && !record.destroyed ? record.profile.id : null
   }
 
   profilePaneIds(): Map<string, string[]> {
@@ -643,6 +637,18 @@ export class BrowserManager {
     return { ok: true }
   }
 
+  async openExternal(paneId: string): Promise<ScriptResult> {
+    const record = this.requirePane(paneId)
+    if (!record) {
+      return { ok: false, error: 'Device not found.' }
+    }
+    if (record.url === 'about:blank' || !isAllowedNavigationUrl(record.url)) {
+      return { ok: false, error: 'This device has no web address to open.' }
+    }
+    await shell.openExternal(record.url)
+    return { ok: true }
+  }
+
   openDevTools(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
@@ -691,7 +697,7 @@ export class BrowserManager {
     this.destroyed = true
 
     for (const record of [...this.panes.values()]) {
-      this.destroyPane(record, false)
+      this.destroyPane(record, false, false)
     }
   }
 
@@ -756,6 +762,8 @@ export class BrowserManager {
       hasBounds: false,
       shellVisible: true,
       viewport: parsedViewport.viewport,
+      defaultUserAgent: view.webContents.getUserAgent(),
+      appliedUserAgent: '',
       lastEmulationSignature: '',
       emulationEnabled: false,
       appliedScale: 0,
@@ -785,6 +793,7 @@ export class BrowserManager {
     // very first request, not just later navigations.
     getProfileSession(profile.id)
 
+    this.applyUserAgent(record)
     this.attachEvents(record)
     this.load(record, initialUrl)
     return record
@@ -902,6 +911,7 @@ export class BrowserManager {
       this.window.contentView.removeChildView(record.view)
     }
 
+    this.options.onPaneRemoved?.(record.id, record.profile.id)
     this.emitState()
   }
 
@@ -958,6 +968,21 @@ export class BrowserManager {
       // flashes before the stop handler reapplies it.
       (!record.isLoading || !record.emulationEnabled)
     record.view.setVisible(visible)
+  }
+
+  private applyUserAgent(record: PaneRecord): boolean {
+    if (record.destroyed || record.view.webContents.isDestroyed()) {
+      return false
+    }
+    const next =
+      userAgentForViewport(record.viewport, process.versions.chrome) ??
+      record.defaultUserAgent
+    if (next === record.appliedUserAgent) {
+      return false
+    }
+    record.appliedUserAgent = next
+    record.view.webContents.setUserAgent(next)
+    return true
   }
 
   private applyEmulation(record: PaneRecord): void {
@@ -1095,7 +1120,11 @@ export class BrowserManager {
     }
   }
 
-  private destroyPane(record: PaneRecord, emitState = true): void {
+  private destroyPane(
+    record: PaneRecord,
+    emitState = true,
+    releaseProfile = true
+  ): void {
     if (record.destroyed) {
       return
     }
@@ -1113,6 +1142,9 @@ export class BrowserManager {
       webContents.close()
     }
 
+    if (releaseProfile) {
+      this.options.onPaneRemoved?.(record.id, record.profile.id)
+    }
     if (emitState) {
       this.emitState()
     }

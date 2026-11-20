@@ -26,12 +26,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Signing out of one profile does not sign out the other. (E2e logs Bob out and verifies Alice remains authenticated.)
 - [x] Persistent cookie, localStorage, and authenticated session data survive app restart. (E2e relaunches with the same user data; profile IDs, cookies, localStorage, and both account sessions persisted.)
 - [x] Closing one pane does not sign out or navigate another. (Remaining pane's session and account stay active; e2e.)
-- [x] New panes receive a fresh profile by default. (New-pane profile ID checked.)
-- [x] Duplicated panes receive a fresh profile by default. (E2e duplicates Alice, verifies a fresh profile and matching URL/viewport, then closes the duplicate.)
-- [x] Explicitly shared profiles share expected cookie/storage state. (E2e opens two panes from one profile, verifies shared localStorage, shared-count labels, and close-and-delete lifecycle.)
-- [x] Profile manager lists usage, renames, clears, and deletes profiles safely. (E2e verifies rename persistence, cookie clearing, metadata deletion, and native-view hiding while the dialog is open.)
-- [x] Clear/delete a profile while its panes are open via a close-and-delete flow. (E2e confirms Close panes & delete, verifies both panes close, the profile is removed, and the remaining pane aligns.)
-- [x] Assign an existing profile to a new device. (Profile manager New device creates a shared-profile device; the toolbar Add device remains fresh-profile only.)
+- [x] New panes receive an independent session. (New-pane profile ID checked.)
+- [x] Duplicated panes receive an independent session. (E2e duplicates Alice, verifies a fresh profile and matching URL/viewport, then closes the duplicate.)
+- [x] No profile manager, sharing, or profile labels are exposed. (E2e asserts the native `profiles-manage` item is absent.)
+- [x] Clear Site Data is confirmed per pane. (E2e cancels once, confirms once, verifies localStorage is cleared, the pane reloads, and Alice's session is untouched.)
 - [x] Session-only cookie and `sessionStorage` limitations are documented. (`SPEC.md`, `README.md`, and architecture docs state the limits.)
 
 ## Workspace
@@ -51,18 +49,17 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Pane IDs, profile references, URLs, and viewport settings survive restart. (E2e verifies the same pane ID, Alice profile ID, authenticated URL, and mobile 390 × 844 DPR 3 settings.)
 - [x] Legacy grid/freeform workspaces normalize to Canvas. (Unit tests assert Canvas normalization; old fields remain readable.)
 - [x] Canvas positions and viewport settings survive restart. (E2e compares the persisted Canvas position and restores the iPhone SE viewport.)
-- [x] Closed profile data is retained and isolated. (E2e reads Bob's persistent partition cookies after Bob's pane was closed and the app restarted.)
+- [x] Closing the last pane using a profile releases its data. (E2e closes Bob, verifies his profile disappears from `profiles.json`, and confirms his partition has no cookies after restart. Self-closed panes release their profiles too.)
 - [x] Corrupt workspace and app-state files recover safely. (Unit tests verify `.corrupt-<timestamp>` preservation and safe defaults.)
 - [x] Invalid workspace pane URLs/viewports are rejected before writing. (Unit tests reject `javascript:` URLs and malformed profiles/panes.)
 - [x] Normal window bounds restore safely after restart. (E2e saves a distinctive 1120 × 820 window, verifies app-state, and compares bounds after relaunch.)
 - [x] Maximized/full-screen window state restores. (E2e maximizes, verifies app-state, relaunches, confirms maximized state, then unmaximizes; a focused full-screen relaunch script verified the full-screen path and clearing.)
 - [x] Theme preference restores. (E2e selects Dark, verifies dark tokens and app-state, relaunches, confirms Dark restores, then resets to System.)
 - [ ] Theme preference is stored per workspace. (Theme is application-wide.)
-- [x] Workspace create/rename/duplicate/switch/delete. (E2e creates a second workspace, switches, adds a pane, renames, duplicates with fresh profiles, switches back to the authenticated original, verifies active-state persistence, and deletes the extras.)
+- [x] Workspace create/rename/duplicate/switch/delete. (E2e creates a second workspace, switches, adds a pane, renames, duplicates with independent sessions, switches back to the authenticated original, verifies active-state persistence, and deletes the extras.)
 - [x] Workspace export/import serialization excludes profiles and restores fresh identities. (Unit tests cover round-trip, profile stripping, fresh IDs, unsafe URLs/viewports, and invalid layout.)
 - [ ] Native workspace import/export dialogs. (Pure logic is unit-tested; the Save/Open dialog path is not automated or manually re-run in this slice.)
 - [ ] Workspace switching keeps background pages warm. (Switching destroys and recreates native views; pages reload.)
-- [x] Explicit profile assignment/sharing across devices. (Profile manager New device; shared count shown in the toolbar and profile usage.)
 
 ## Viewport emulation
 
@@ -74,7 +71,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] The **+** add menu creates a pane with the selected device preset. (E2e opens the custom menu, selects iPhone 15 Pro, and verifies the new pane's viewport.)
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
-- [x] Pane chrome and the embedded top toolbar remain usable at narrow widths. (Manual review at 720 × 560; the toolbar collapses the active-pane context, steps the viewport selector down to 112 px, and keeps the address/viewport/add controls separated.)
+- [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame; the address bar uses the full second row.)
 - [x] Canvas pans an infinite dotted workspace and hides native views during the gesture. (E2e pans, verifies all native views hide, and verifies visible bounds realign afterward.)
 - [x] Canvas snapshots cover native views during panning. (E2e waits for two `.pane-snapshot` images before panning; the image stays behind native views at rest.)
 - [x] Dragging a pane header moves only that pane; dragging empty canvas pans the world. (E2e drags a label and verifies the other frame and canvas background position do not move.)
@@ -84,11 +81,11 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Wheel panning realigns native views after the gesture. (E2e wheel-pans and verifies visible native bounds match the DOM at the new positions.)
 - [x] Canvas restores the last camera and selected device per workspace; new workspaces fit. (E2e sets 50%/75% zoom, pans, selects a device, closes immediately, relaunches, and verifies the final zoom, pan, selected device, and that a partially offscreen restored pane still loads. Saved views restore on workspace switches; only workspaces without a view run the fit path.)
 - [x] Bottom canvas bar Hand, zoom steps, presets, Fit all, Reset, find-device, reload-all, and appearance work. (E2e checks the native bar at bottom center, toggles Hand, zooms out, opens the 7-preset menu, selects 50%, resets to 100%, and opens the appearance menu. The bar and minimap stay visible while its menus are open.)
-- [x] The top toolbar embeds the active-pane centered address and viewport controls and keeps only Add on the right. (E2e verifies the single-row toolbar, the embedded address controls, the custom viewport menu button with a short current label, and the absence of Workspace/Profiles/Hand/Appearance toolbar buttons.)
+- [x] The top toolbar is minimal and each pane owns its address bar. (E2e verifies the Add-only toolbar, per-pane second-row address inputs, and the absence of Workspace/Profiles/Hand/Appearance toolbar buttons.)
 - [x] The viewport menu and Add menu expose the same fixed preset catalog. (E2e checks 17 viewport items including Custom and 16 Add items, the same category groups and dimensions, and the previously missing Generic phone, iPhone 15 Pro Max, Samsung Galaxy S24 Ultra, Google Pixel 8 Pro, Generic tablet, and Laptop. Menu names are left-aligned and dimensions right-aligned.)
-- [x] Workspace and profile management live in the native menu bar. (E2e triggers `workspace-manage` and `profiles-manage` menu items, opens both dialogs, and verifies focus returns to the active address input.)
-- [x] Clicking empty canvas clears the active pane and interacting with a pane restores it. (E2e clicks empty canvas, verifies no active card and an empty "No device selected" toolbar state, then clicks a pane title and verifies the address input returns.)
-- [x] The top toolbar does not shift the canvas. (E2e captures the workspace rectangle before deselection, after deselection, and after reselection; all three are identical. The toolbar stays 42 px with an empty state.)
+- [x] Workspace management lives in the native menu bar; Profiles does not. (E2e opens `workspace-manage`, verifies focus returns to the active pane address, and asserts `profiles-manage` is absent.)
+- [x] Clicking empty canvas clears the active pane and interacting with a pane restores it. (E2e clicks empty canvas, verifies no active card and a stable Add-only toolbar, then clicks a pane title and verifies its address input returns.)
+- [x] The top toolbar does not shift the canvas. (E2e captures the workspace rectangle before deselection, after deselection, and after reselection; all three are identical. The toolbar stays 42 px with only Add.)
 - [x] All top-toolbar buttons are borderless. (E2e computes 0 px borders for every button in the toolbar.)
 - [x] Device actions stay visible at every Canvas zoom. (E2e sets 430 × 932 and 393 × 852 devices, zooms to 80% so their widths straddle the old 340 px breakpoint, and verifies back, forward, reload, actions, and close on both.)
 - [x] Canvas zoom scales the whole pane while the viewport stays fixed. (Measured a 560 × 700 viewport at 100%, 50%, and 200%: the card/header scale to 560 × 732/32, 280 × 366/16, and 1120 × 1464/64 while `window.innerWidth/Height` stays 560 × 700.)
@@ -105,7 +102,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 
 ## Accessibility and appearance
 
-Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/accessible-name checks, keyboard focus order and focus-visible assertions, dialog focus trapping and dialog focus return to the active address, Chromium's CDP accessibility tree, and an axe-core WCAG 2.x/best-practice audit for the shell toolbar, pane cards, profile dialog, workspace dialog, and bottom canvas bar. VoiceOver and other screen-reader behavior still require manual review; axe cannot verify spoken order, announcements, or whether a focus ring is meaningful to a particular user.
+Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/accessible-name checks, keyboard focus order and focus-visible assertions, dialog focus trapping and dialog focus return to the active address, Chromium's CDP accessibility tree, and an axe-core WCAG 2.x/best-practice audit for the shell toolbar, pane cards, workspace dialog, and bottom canvas bar. VoiceOver and other screen-reader behavior still require manual review; axe cannot verify spoken order, announcements, or whether a focus ring is meaningful to a particular user.
 
 - [x] Icon-only controls have accessible names and tooltips. (Automated role/name checks for reload-all, device actions, close, header navigation, the viewport menu button, and the bottom Hand/zoom/find/reload/appearance controls; tooltips are asserted for shell reload-all, device actions, close, and reload device.)
 - [x] Keyboard focus is visible on shell controls. (Automated Tab/Shift+Tab assertions verify `:focus-visible` and a 2 px accent outline; the dialog container shows the same ring when opened from the keyboard.)
@@ -167,16 +164,55 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 
 ## Post-MVP — Toolbar clarity and shortcut semantics
 
-- [x] Address validation errors are visible in the toolbar. (E2e enters a rejected `javascript:` address, asserts the visible `.address-error` text and the screen-reader live region, and verifies Escape restores the URL.)
-- [x] Shared profiles are visible from Canvas. (E2e creates two devices with one profile and verifies the top toolbar reads `Profile N · 2 devices` with a shared-profile tooltip.)
+- [x] Address validation errors are visible in the pane header. (E2e enters a rejected `javascript:` address, asserts the visible `.address-error` text and live status in the active pane, and verifies Escape restores the URL.)
 - [x] `Cmd/Ctrl+R` reloads the selected device and `Cmd/Ctrl+L` focuses its address. (Menu accelerators are asserted in e2e; Focus Address is invoked through the native menu command and its resulting DOM focus is checked.)
 - [x] `Cmd/Ctrl+=`, `Cmd/Ctrl+-`, and `Cmd/Ctrl+0` zoom the Canvas in, out, and reset. (Native View-menu accelerators are asserted in e2e, and the command routing updates the bottom-bar percentage.)
 - [x] Copy URL is present in the in-shell device actions menu. (E2e opens the menu, checks the items, and verifies Copy URL through the clipboard.)
-- [x] Add/profile copy distinguishes devices from viewport presets. (E2e checks `Start with viewport`, `Phone viewports`, `Tablet viewports`, `Desktop viewports`, and the persisted profile action is now `New device`.)
+- [x] Add-menu copy distinguishes devices from viewport presets. (E2e checks `Start with viewport`, `Phone viewports`, `Tablet viewports`, and `Desktop viewports`.)
 - [x] Blocked popups, downloads, and permission requests are visible. (E2e clicks the fixture popup and notification actions and triggers a blob download; each pane header shows the matching notice.)
 - [x] `Cmd/Ctrl+K` opens a searchable device palette. (E2e opens it from the native Device menu, verifies the overlay hides native views/minimap/zoom bar, filters by title, selects with Enter, centers the device, and returns focus. Escape and the no-match state are also covered.)
 - [x] The toolbar exposes the palette and search matches are highlighted. (E2e checks the Find device toolbar button, viewport badges, title/query highlighting, and the no-match state.)
 - [x] Reloading at a non-100% Canvas zoom preserves the zoom and the declared viewport. (E2e sets 80%, reloads the pane through its header, and verifies emulation is re-enabled at 0.8 with the page still 560 × 700. Emulated views stay hidden until the scale is reapplied, showing the snapshot/loader instead of flashing.)
 - [x] Device actions use the same custom menu component as the + menu. (E2e opens the pane `…` menu, verifies `.app-menu`, section headings, 11 menu items, native-view hiding, Escape focus return, and Copy URL.)
 - [x] The selected pane ring surrounds the whole frame. (Visual check at 1280 × 860; the outline is drawn on the pane slot outside native bounds so the website cannot cover it.)
-- [x] Find device and Reload all moved from the top toolbar to the bottom canvas bar. (E2e verifies their bottom-bar accessible names and actions; the top right contains only Add and the active-pane controls.)
+- [x] Find device and Reload all live in the bottom canvas bar. (E2e verifies their bottom-bar accessible names and actions; the top right contains only Add.)
+
+## Post-MVP — Canvas placement, Arrange, and per-device header controls
+
+- [x] `Cmd/Ctrl+N` opens the Add Device picker. (E2e invokes the native `pane-add` command, verifies the menu opens without changing pane count, selects Responsive, and confirms a fresh-profile pane is created.)
+- [x] `Cmd/Ctrl+D` places the duplicate beside the selected device, or directly below it when the adjacent slot is occupied. (E2e verifies the persisted Canvas coordinates against the source frame.)
+- [x] The bottom-bar Arrange menu offers Showcase, Horizontal row, 2 × 2 grid, and Vertical stack. (E2e verifies all four items and the resulting horizontal-row coordinates. Unit tests cover every arrangement, Showcase wrapping/centering, and empty input.)
+- [x] Each device header carries its own viewport preset trigger. (E2e opens the 17-item preset menu, selects fixed and custom presets, and verifies the trigger's `data-preset`, label, dimensions, tooltip, and `aria-expanded`.)
+- [x] The main top toolbar carries no viewport or address control. (E2e uses the per-device controls; custom viewport editing happens in that pane's address row.)
+- [x] Pane headers expose a visible drag grip. (Visual/structural check; the whole header remains the drag surface.)
+- [x] Open in Browser hands the current page to the system browser. (E2e stubs `shell.openExternal`, clicks the header control, and verifies the exact validated URL. Blank devices disable the action.)
+- [x] Mobile-width pane headers keep every action inside the frame. (E2e sets a 390 × 844 viewport and asserts every header button stays within the header bounds.)
+- [x] Device actions include Open in Browser. (E2e verifies the 11-item menu, including the new action.)
+
+## Post-MVP — Marquee multi-select
+
+- [x] The bottom canvas bar has a Select tool with a pressed state. (E2e verifies its accessible name, tooltip, `aria-pressed` transition, and the `canvas-select` workspace cursor state.)
+- [x] Dragging a marquee selects every intersecting pane. (E2e creates four stress panes, fits them, drags around two, and verifies two selected rings plus a `2 selected` toolbar chip.)
+- [x] Delete closes the selected set. (E2e presses Delete and verifies only the two selected pane IDs disappear; the remaining workspace and later leak cycles stay intact.)
+- [x] The marquee is visible and native pages do not cover it. (Native views are hidden during the gesture by the existing visibility path; selected rings are drawn on pane slots outside native bounds.)
+- [x] Escape clears the selection and a second press exits the tool. (Implemented in the trusted shell key handler; covered by the marquee flow and manual check.)
+- [x] Select and Hand are mutually exclusive. (Toolbar state is validated through `paneflow:set-canvas-select-mode`; activating one clears the other.)
+
+## Post-MVP — Preset user agents
+
+- [x] Phone presets send a mobile UA. (E2e selects Generic phone and verifies `navigator.userAgent` contains `iPhone`; Galaxy/Pixel presets use Android Chrome.)
+- [x] Tablet presets send a tablet UA. (E2e selects Generic tablet and verifies `navigator.userAgent` contains `iPad`; Galaxy Tab uses Android tablet Chrome.)
+- [x] Desktop presets send a desktop Chrome UA. (Unit tests verify Macintosh/Chrome strings and the absence of Electron/Mobile tokens.)
+- [x] Responsive and custom viewports keep the default Electron UA. (E2e switches back to Responsive and verifies the UA is no longer iPhone.)
+- [x] A UA-category change reloads the current page. (BrowserManager applies the UA and reloads only when the mapped UA changes; same-category preset changes do not reload.)
+- [x] Google fits an iPhone SE viewport on the 1× Dell display. (Manual probe: before UA, `scrollWidth 400` vs `innerWidth 375`; after UA, `scrollWidth 360` with no horizontal overflow while the viewport stays `375 × 667 @ DPR 2`.)
+
+## Post-MVP — Proximity guides and bottom-bar icons
+
+- [x] A dashed guide appears before the first magnetic stop. (E2e drags a pane to a 50 screen-pixel gap and asserts `.alignment-guide.proximity` exists.)
+- [x] The first magnetic stop leaves a 16px gap. (E2e moves to a 30px pointer gap, verifies a solid guide, and asserts the final pane gap is 16px ±1.)
+- [x] The second stop snaps flush when the pane keeps moving. (The existing snap drag asserts `.alignment-guide:not(.proximity)` and verifies flush edges.)
+- [x] Dashed and solid guides clear on release. (E2e asserts `.alignment-guide` count returns to zero after both drags.)
+- [x] Proximity uses the same 24px gap-stop and 64px preview thresholds at every zoom. (Thresholds are divided by Canvas zoom in the shared helper; unit tests cover the world-space behavior.)
+- [x] Hand and Select use palm and pointer icons. (Bottom-bar markup changed; accessible names, tooltips, pressed state, and behavior are unchanged.)
+- [x] Menus leave the bottom bar and minimap visible unless they cover them. (E2e opens the upper-left canvas menu and verifies both overlays stay visible; each overlay now hides independently only on intersection.)

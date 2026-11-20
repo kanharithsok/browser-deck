@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppMenu from './components/AppMenu.vue'
-import GlobalPaneBar from './components/GlobalPaneBar.vue'
 import PaneCard from './components/PaneCard.vue'
 import type { AppMenuIcon, AppMenuModel } from './menu'
 import {
   CANVAS_GAP,
+  CANVAS_NEAR_GAP,
+  CANVAS_NEAR_THRESHOLD,
   CANVAS_ORIGIN,
+  CANVAS_PROXIMITY_THRESHOLD,
   CANVAS_SNAP_THRESHOLD,
+  arrangeCanvasFrames,
+  canvasPaneIdsInRect,
   defaultCanvasPositions,
   canvasFrameSize,
+  duplicateCanvasPosition,
   snapCanvasRect,
+  type CanvasArrangeMode,
   type CanvasPosition
 } from '../../shared/canvas'
-import type {
-  CanvasMinimapAction,
-  CanvasMinimapState
+import {
+  CANVAS_MINIMAP_MARGIN,
+  canvasMinimapSize,
+  type CanvasMinimapAction,
+  type CanvasMinimapState
 } from '../../shared/minimap'
 import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrome'
 import type {
@@ -25,7 +33,6 @@ import type {
   ScriptResult,
   ShellState
 } from '../../shared/ipc'
-import type { ProfileSummary } from '../../shared/profiles'
 import {
   VIEWPORT_CATEGORY_LABELS,
   VIEWPORT_PRESETS,
@@ -40,6 +47,7 @@ import {
   CANVAS_MAX_ZOOM,
   CANVAS_MIN_ZOOM,
   CANVAS_ZOOM_BAR_HEIGHT,
+  CANVAS_ZOOM_BAR_WIDTH,
   CANVAS_ZOOM_MARGIN,
   CANVAS_ZOOM_MENU_WIDTH,
   CANVAS_ZOOM_PRESETS,
@@ -76,7 +84,6 @@ import {
 } from '../../shared/layout'
 
 type LayoutMode = 'grid' | 'freeform' | 'canvas'
-type ProfileActionKind = 'clear' | 'delete'
 
 const CANVAS_FIT_PADDING = 24
 
@@ -94,6 +101,18 @@ interface CanvasPaneDragState {
   startX: number
   startY: number
   base: CanvasPosition
+}
+
+interface PendingDuplicatePlacement {
+  sourcePaneId: string
+  position: CanvasPosition
+}
+
+interface MarqueeDragState {
+  startX: number
+  startY: number
+  anchorPaneId: string | null
+  moved: boolean
 }
 
 const PANE_CHROME_STORAGE_KEY = 'paneflow.preview.paneChrome'
@@ -115,11 +134,6 @@ function persistPaneChromePreference(style: PaneChromeStyle): void {
   }
 }
 
-interface ProfileActionState {
-  kind: ProfileActionKind
-  profileId: string
-}
-
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
@@ -138,6 +152,10 @@ const isCanvasPanning = ref(false)
 const isCanvasPaneDragging = ref(false)
 const canvasDrag = ref<CanvasDragState | null>(null)
 const canvasPaneDrag = ref<CanvasPaneDragState | null>(null)
+const selectionToolActive = ref(false)
+const selectedPaneIds = ref<ReadonlySet<string>>(new Set())
+const marqueeRect = ref<Rect | null>(null)
+const isMarqueeSelecting = ref(false)
 const paneSnapshots = ref<Record<string, string>>({})
 const paneNotices = ref<Record<string, string>>({})
 const usesMacTitlebar = navigator.platform.startsWith('Mac')
@@ -149,7 +167,15 @@ const actionError = ref<string | null>(null)
 const layoutError = ref<string | null>(null)
 const addingPane = ref(false)
 const appMenuMode = ref<
-  'add' | 'canvas' | 'zoom' | 'appearance' | 'pane' | 'viewport' | null
+  | 'add'
+  | 'canvas'
+  | 'zoom'
+  | 'appearance'
+  | 'arrange'
+  | 'pane'
+  | 'viewport'
+  | 'clear-site-data'
+  | null
 >(null)
 const paneMenuPaneId = ref<string | null>(null)
 const devicePaletteOpen = ref(false)
@@ -169,16 +195,7 @@ const appMenuAnchor = ref<{
 const appMenuBounds = ref<Rect | null>(null)
 let appMenuReturnFocus: HTMLElement | null = null
 const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
-const profilesOpen = ref(false)
-const profiles = ref<ProfileSummary[]>([])
-const profilesLoading = ref(false)
-const profileError = ref<string | null>(null)
-const profileNotice = ref<string | null>(null)
-const profileBusy = ref(false)
-const profileAction = ref<ProfileActionState | null>(null)
-const renamingProfileId = ref<string | null>(null)
-const renameDraft = ref('')
-const profilesDialogEl = ref<HTMLElement | null>(null)
+const proximityGuides = ref<SnapGuides>({ vertical: [], horizontal: [] })
 const profileDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
 const workspacesOpen = ref(false)
@@ -227,6 +244,8 @@ let focusManagementEnabled = false
 let suppressPaneFocusUntil = 0
 let layoutPersistenceReady = false
 let layoutRestored = false
+let pendingDuplicatePlacement: PendingDuplicatePlacement | null = null
+let marqueeDrag: MarqueeDragState | null = null
 let lastSavedLayoutKey = ''
 let canvasViewReady = false
 let canvasViewSaveTimer: ReturnType<typeof setTimeout> | null = null
@@ -280,6 +299,18 @@ const canvasWorkspaceStyle = computed(() =>
     : undefined
 )
 
+const marqueeStyle = computed(() => {
+  const rect = marqueeRect.value
+  return rect
+    ? {
+        left: `${rect.x}px`,
+        top: `${rect.y}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`
+      }
+    : undefined
+})
+
 const canvasMinimapViewport = computed(() => {
   const zoom = canvasZoom.value
   if (zoom <= 0) {
@@ -319,16 +350,6 @@ const canvasMinimapState = computed<CanvasMinimapState>(() => ({
     height: Math.max(1, workspaceSize.value.height)
   }
 }))
-
-const showGlobalPaneBar = computed(() => effectivePaneChrome.value === 'c')
-
-const profilePaneCounts = computed(() => {
-  const counts = new Map<string, number>()
-  for (const pane of panes.value) {
-    counts.set(pane.profileId, (counts.get(pane.profileId) ?? 0) + 1)
-  }
-  return counts
-})
 
 interface DevicePaletteResult {
   pane: PaneState
@@ -398,13 +419,8 @@ const devicePaletteResults = computed<DevicePaletteResult[]>(() => {
   return orderedPanes.value
     .map((pane) => {
       const hostname = paneHostname(pane.url)
-      const profileCount = profilePaneCounts.value.get(pane.profileId) ?? 1
-      const profile =
-        profileCount > 1
-          ? `${pane.profileLabel} · ${profileCount} devices`
-          : pane.profileLabel
       const viewport = devicePaletteViewportLabel(pane.viewport)
-      const detail = `${hostname} · ${profile}`
+      const detail = hostname
       return {
         pane,
         title: pane.title,
@@ -477,8 +493,12 @@ const addPaneMenuModel = computed<AppMenuModel>(() => ({
   ]
 }))
 
+const viewportMenuPane = computed(
+  () => panes.value.find((pane) => pane.id === paneMenuPaneId.value) ?? activePane.value
+)
+
 const viewportMenuModel = computed<AppMenuModel>(() => {
-  const pane = activePane.value
+  const pane = viewportMenuPane.value
   const selected = pane?.viewport.preset
   return {
     label: 'Viewport preset',
@@ -625,11 +645,6 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
       label: 'Manage',
       items: [
         {
-          id: 'open-profiles',
-          label: 'Profiles…',
-          icon: 'profiles'
-        },
-        {
           id: 'open-workspaces',
           label: 'Workspaces…',
           icon: 'workspaces'
@@ -639,6 +654,41 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
     {
       label: 'Appearance',
       items: themeMenuItems.value
+    }
+  ]
+}))
+
+const arrangeMenuModel = computed<AppMenuModel>(() => ({
+  label: 'Arrange devices',
+  sections: [
+    {
+      items: [
+        {
+          id: 'arrange:showcase',
+          label: 'Showcase layout',
+          icon: 'showcase',
+          detail: 'Compact rows',
+          disabled: panes.value.length === 0
+        },
+        {
+          id: 'arrange:row',
+          label: 'Horizontal row',
+          icon: 'row',
+          disabled: panes.value.length === 0
+        },
+        {
+          id: 'arrange:grid',
+          label: '2 × 2 grid',
+          icon: 'grid',
+          disabled: panes.value.length === 0
+        },
+        {
+          id: 'arrange:stack',
+          label: 'Vertical stack',
+          icon: 'stack',
+          disabled: panes.value.length === 0
+        }
+      ]
     }
   ]
 }))
@@ -672,6 +722,12 @@ const paneMenuModel = computed<AppMenuModel>(() => {
             id: 'pane:copy-url',
             label: 'Copy URL',
             icon: 'copy',
+            disabled: !pane || pane.url === 'about:blank'
+          },
+          {
+            id: 'pane:external',
+            label: 'Open in Browser',
+            icon: 'external',
             disabled: !pane || pane.url === 'about:blank'
           }
         ]
@@ -709,6 +765,12 @@ const paneMenuModel = computed<AppMenuModel>(() => {
             disabled: !pane
           },
           {
+            id: 'pane:clear-site-data',
+            label: 'Clear Site Data…',
+            icon: 'reset',
+            disabled: !pane
+          },
+          {
             id: 'pane:devtools',
             label: 'Open DevTools',
             icon: 'devtools',
@@ -724,6 +786,30 @@ const paneMenuModel = computed<AppMenuModel>(() => {
             icon: 'close',
             separatorBefore: true,
             disabled: !pane
+          }
+        ]
+      }
+    ]
+  }
+})
+
+const clearSiteDataMenuModel = computed<AppMenuModel>(() => {
+  const pane = panes.value.find((entry) => entry.id === paneMenuPaneId.value)
+  return {
+    label: pane ? `Clear site data for ${pane.title}` : 'Clear site data',
+    sections: [
+      {
+        items: [
+          {
+            id: 'clear-site-data:confirm',
+            label: 'Clear Site Data and Reload',
+            icon: 'reset',
+            detail: 'Signs out'
+          },
+          {
+            id: 'clear-site-data:cancel',
+            label: 'Cancel',
+            separatorBefore: true
           }
         ]
       }
@@ -796,9 +882,9 @@ const paneGridHeight = computed(() =>
 
 function focusPaneAddress(paneId: string): void {
   selectPane(paneId)
-  const input =
-    document.querySelector<HTMLInputElement>(`[data-pane-id="${paneId}"] .address-input`) ??
-    document.querySelector<HTMLInputElement>('.global-pane-bar .address-input')
+  const input = document.querySelector<HTMLInputElement>(
+    `[data-pane-id="${paneId}"] .address-input`
+  )
   input?.focus()
   input?.select()
 }
@@ -898,7 +984,6 @@ function clearPaneSelection(): void {
 function recoverFocus(): void {
   const target =
     document.querySelector<HTMLInputElement>('[data-pane-id] .address-input') ??
-    document.querySelector<HTMLInputElement>('.global-pane-bar .address-input') ??
     document.querySelector<HTMLButtonElement>('.empty-state .toolbar-button')
   target?.focus()
 }
@@ -1149,6 +1234,11 @@ function applyFreeformRect(paneId: string, rect: Rect): void {
   }
 }
 
+function clearCanvasGuides(): void {
+  guides.value = { vertical: [], horizontal: [] }
+  proximityGuides.value = { vertical: [], horizontal: [] }
+}
+
 function updateGuidesFromSnap(snapped: SnapGuides): void {
   const workspace = workspaceEl.value
   if (!workspace) {
@@ -1231,7 +1321,7 @@ function beginCanvasPan(event: PointerEvent, empty = true): void {
     moved: false,
     empty
   }
-  guides.value = { vertical: [], horizontal: [] }
+  clearCanvasGuides()
   isCanvasPanning.value = true
   document.body.classList.add('paneflow-canvas-panning')
   void nextTick(scheduleMeasure)
@@ -1303,7 +1393,7 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
   }
   isCanvasPaneDragging.value = true
   document.body.classList.add('paneflow-canvas-pane-dragging')
-  guides.value = { vertical: [], horizontal: [] }
+  clearCanvasGuides()
   void nextTick(scheduleMeasure)
   window.addEventListener('pointermove', onCanvasPanePointerMove)
   window.addEventListener('pointerup', finishCanvasPaneDrag)
@@ -1331,7 +1421,12 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
   const snapped = snapCanvasRect(
     { x: rawX, y: rawY, width: frame.width, height: frame.height },
     neighbors,
-    CANVAS_SNAP_THRESHOLD / canvasZoom.value
+    {
+      threshold: CANVAS_SNAP_THRESHOLD / canvasZoom.value,
+      nearThreshold: CANVAS_NEAR_THRESHOLD / canvasZoom.value,
+      nearGap: CANVAS_NEAR_GAP / canvasZoom.value,
+      proximityThreshold: CANVAS_PROXIMITY_THRESHOLD / canvasZoom.value
+    }
   )
 
   canvasPositions.value = {
@@ -1349,6 +1444,14 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
       (guide) => canvasPan.value.y + guide * canvasZoom.value
     )
   }
+  proximityGuides.value = {
+    vertical: snapped.proximity.vertical.map(
+      (guide) => canvasPan.value.x + guide * canvasZoom.value
+    ),
+    horizontal: snapped.proximity.horizontal.map(
+      (guide) => canvasPan.value.y + guide * canvasZoom.value
+    )
+  }
 }
 
 function finishCanvasPaneDrag(): void {
@@ -1357,7 +1460,7 @@ function finishCanvasPaneDrag(): void {
   }
   canvasPaneDrag.value = null
   isCanvasPaneDragging.value = false
-  guides.value = { vertical: [], horizontal: [] }
+  clearCanvasGuides()
   document.body.classList.remove('paneflow-canvas-pane-dragging')
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
@@ -1370,6 +1473,11 @@ function finishCanvasPaneDrag(): void {
 }
 
 function setCanvasHandMode(active: boolean): void {
+  if (active && selectionToolActive.value) {
+    selectionToolActive.value = false
+    clearSelectedPanes()
+    cancelMarqueeSelection()
+  }
   if (canvasHandMode.value === active) {
     return
   }
@@ -1384,8 +1492,186 @@ function toggleCanvasHand(): void {
   setCanvasHandMode(!canvasHandMode.value)
 }
 
+function clearSelectedPanes(): void {
+  if (selectedPaneIds.value.size > 0) {
+    selectedPaneIds.value = new Set()
+  }
+}
+
+function setSelectionToolActive(active: boolean): void {
+  if (selectionToolActive.value === active) {
+    return
+  }
+  if (active) {
+    setCanvasHandMode(false)
+  } else {
+    cancelMarqueeSelection()
+    clearSelectedPanes()
+  }
+  selectionToolActive.value = active
+  void nextTick(scheduleMeasure)
+}
+
+function toggleSelectionTool(): void {
+  setSelectionToolActive(!selectionToolActive.value)
+}
+
+function cancelMarqueeSelection(): void {
+  if (!isMarqueeSelecting.value && marqueeDrag === null) {
+    return
+  }
+  marqueeDrag = null
+  marqueeRect.value = null
+  isMarqueeSelecting.value = false
+  document.body.classList.remove('paneflow-canvas-selecting')
+  window.removeEventListener('pointermove', onMarqueePointerMove)
+  window.removeEventListener('pointerup', finishMarqueeSelection)
+  window.removeEventListener('pointercancel', finishMarqueeSelection)
+  syncCanvasMinimapVisibility()
+  void nextTick(scheduleMeasure)
+}
+
+function normalizedMarqueeRect(endX: number, endY: number): Rect | null {
+  const drag = marqueeDrag
+  if (!drag) {
+    return null
+  }
+  return {
+    x: Math.min(drag.startX, endX),
+    y: Math.min(drag.startY, endY),
+    width: Math.abs(endX - drag.startX),
+    height: Math.abs(endY - drag.startY)
+  }
+}
+
+function beginMarqueeSelection(event: PointerEvent, anchorPaneId: string | null): void {
+  if (marqueeDrag !== null || !selectionToolActive.value) {
+    return
+  }
+  event.preventDefault()
+  blurActiveShellControl()
+  const captureTarget = event.currentTarget
+  if (captureTarget instanceof Element) {
+    try {
+      captureTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture is best-effort; window listeners still handle the drag.
+    }
+  }
+  marqueeDrag = {
+    startX: event.clientX,
+    startY: event.clientY,
+    anchorPaneId,
+    moved: false
+  }
+  marqueeRect.value = {
+    x: event.clientX,
+    y: event.clientY,
+    width: 0,
+    height: 0
+  }
+  selectedPaneIds.value = new Set()
+  isMarqueeSelecting.value = true
+  document.body.classList.add('paneflow-canvas-selecting')
+  syncCanvasMinimapVisibility()
+  void nextTick(scheduleMeasure)
+  if (Object.keys(paneSnapshots.value).length === 0) {
+    scheduleSnapshotRefresh(0)
+  }
+  window.addEventListener('pointermove', onMarqueePointerMove)
+  window.addEventListener('pointerup', finishMarqueeSelection)
+  window.addEventListener('pointercancel', finishMarqueeSelection)
+}
+
+function onMarqueePointerMove(event: PointerEvent): void {
+  const drag = marqueeDrag
+  if (!drag) {
+    return
+  }
+  event.preventDefault()
+  if (
+    Math.abs(event.clientX - drag.startX) > 2 ||
+    Math.abs(event.clientY - drag.startY) > 2
+  ) {
+    drag.moved = true
+  }
+  const rect = normalizedMarqueeRect(event.clientX, event.clientY)
+  if (!rect) {
+    return
+  }
+  marqueeRect.value = rect
+
+  const workspace = workspaceEl.value
+  if (!workspace) {
+    return
+  }
+  const workspaceRect = workspace.getBoundingClientRect()
+  const zoom = canvasZoom.value
+  const frames = [...canvasFrames.value.entries()].map(([paneId, frame]) => ({
+    id: paneId,
+    x: workspaceRect.left + canvasPan.value.x + frame.x * zoom,
+    y: workspaceRect.top + canvasPan.value.y + frame.y * zoom,
+    width: frame.width * zoom,
+    height: frame.height * zoom
+  }))
+  selectedPaneIds.value = new Set(canvasPaneIdsInRect(frames, rect))
+}
+
+function finishMarqueeSelection(event?: PointerEvent): void {
+  const drag = marqueeDrag
+  if (!drag) {
+    return
+  }
+  const cancelled = event?.type === 'pointercancel'
+  const moved = drag.moved
+  const anchorPaneId = drag.anchorPaneId
+  marqueeDrag = null
+  marqueeRect.value = null
+  isMarqueeSelecting.value = false
+  document.body.classList.remove('paneflow-canvas-selecting')
+  window.removeEventListener('pointermove', onMarqueePointerMove)
+  window.removeEventListener('pointerup', finishMarqueeSelection)
+  window.removeEventListener('pointercancel', finishMarqueeSelection)
+
+  if (cancelled) {
+    clearSelectedPanes()
+  } else if (!moved) {
+    selectedPaneIds.value = anchorPaneId ? new Set([anchorPaneId]) : new Set()
+  }
+
+  syncCanvasMinimapVisibility()
+  void nextTick(async () => {
+    await measurePanes()
+    scheduleSnapshotRefresh()
+  })
+}
+
+async function closeSelectedPanes(): Promise<void> {
+  const ids = [...selectedPaneIds.value]
+  if (ids.length === 0) {
+    return
+  }
+  selectedPaneIds.value = new Set()
+  actionError.value = null
+  try {
+    for (const paneId of ids) {
+      const result = await window.paneflow.closePane(paneId)
+      if (!result.ok) {
+        actionError.value = result.error
+        return
+      }
+    }
+  } catch {
+    actionError.value = 'Could not close the selected devices.'
+  }
+}
+
 watch(canvasHandActive, (active) => {
   void window.paneflow.setCanvasHandMode(active).catch(() => undefined)
+})
+
+watch(selectionToolActive, (active) => {
+  void window.paneflow.setCanvasSelectMode(active).catch(() => undefined)
 })
 
 function syncCanvasZoomToMain(zoom: number): void {
@@ -1438,6 +1724,10 @@ function zoomCanvasAtCenter(zoom: number): void {
   saveCanvasViewNow()
 }
 
+function isBottomBarMenu(mode = appMenuMode.value): boolean {
+  return mode === 'zoom' || mode === 'appearance' || mode === 'arrange'
+}
+
 function applyCanvasZoomAction(action: CanvasZoomAction): void {
   if (action.type === 'menu') {
     if (appMenuMode.value === 'zoom') {
@@ -1455,14 +1745,29 @@ function applyCanvasZoomAction(action: CanvasZoomAction): void {
     }
     return
   }
+  if (action.type === 'arrange') {
+    if (appMenuMode.value === 'arrange') {
+      closeAppMenu(false)
+    } else {
+      openCanvasArrangeMenu()
+    }
+    return
+  }
   if (action.type === 'toggle-hand') {
-    if (appMenuMode.value === 'zoom' || appMenuMode.value === 'appearance') {
+    if (isBottomBarMenu()) {
       closeAppMenu(false)
     }
     toggleCanvasHand()
     return
   }
-  if (appMenuMode.value === 'zoom' || appMenuMode.value === 'appearance') {
+  if (action.type === 'toggle-select') {
+    if (isBottomBarMenu()) {
+      closeAppMenu(false)
+    }
+    toggleSelectionTool()
+    return
+  }
+  if (isBottomBarMenu()) {
     closeAppMenu(false)
   }
   switch (action.type) {
@@ -1712,18 +2017,44 @@ function scheduleCanvasMinimapState(delay = 40): void {
 }
 
 function syncCanvasMinimapVisibility(): void {
-  const visible =
+  const baseVisible =
     layoutMode.value === 'canvas' &&
-    !profilesOpen.value &&
     !workspacesOpen.value &&
     !devicePaletteOpen.value &&
-    (appMenuMode.value === null ||
-      appMenuMode.value === 'zoom' ||
-      appMenuMode.value === 'appearance')
+    !isMarqueeSelecting.value
+  let minimapVisible = baseVisible
+  let zoomVisible = baseVisible
+
+  if (baseVisible && appMenuMode.value !== null && !isBottomBarMenu()) {
+    const menu = appMenuBounds.value
+    if (menu) {
+      const minimapSize = canvasMinimapSize(
+        { width: window.innerWidth, height: window.innerHeight },
+        false
+      )
+      const minimapRect = {
+        x: window.innerWidth - minimapSize.width - CANVAS_MINIMAP_MARGIN,
+        y: window.innerHeight - minimapSize.height - CANVAS_MINIMAP_MARGIN,
+        width: minimapSize.width,
+        height: minimapSize.height
+      }
+      const zoomRect = {
+        x: Math.max(0, Math.round((window.innerWidth - CANVAS_ZOOM_BAR_WIDTH) / 2)),
+        y: window.innerHeight - CANVAS_ZOOM_MARGIN - CANVAS_ZOOM_BAR_HEIGHT,
+        width: CANVAS_ZOOM_BAR_WIDTH,
+        height: CANVAS_ZOOM_BAR_HEIGHT
+      }
+      minimapVisible = !rectsIntersect(menu, minimapRect)
+      zoomVisible = !rectsIntersect(menu, zoomRect)
+    }
+    // Before bounds arrive the menu is still invisible; keep overlays stable
+    // instead of hiding and immediately showing them again.
+  }
+
   void window.paneflow
-    .setCanvasMinimapVisible(visible)
+    .setCanvasOverlayVisibility({ minimap: minimapVisible, zoom: zoomVisible })
     .catch(() => undefined)
-  if (visible) {
+  if (minimapVisible || zoomVisible) {
     scheduleCanvasMinimapState(0)
   }
 }
@@ -1732,7 +2063,7 @@ function onCanvasMinimapAction(action: CanvasMinimapAction): void {
   if (layoutMode.value !== 'canvas') {
     return
   }
-  if (appMenuMode.value === 'zoom' || appMenuMode.value === 'appearance') {
+  if (isBottomBarMenu()) {
     closeAppMenu(false)
   }
   if (action.type === 'focus') {
@@ -1793,7 +2124,6 @@ function onCanvasSpaceDown(event: KeyboardEvent): void {
   }
   if (
     layoutMode.value !== 'canvas' ||
-    profilesOpen.value ||
     workspacesOpen.value ||
     devicePaletteOpen.value ||
     isEditableTarget(event.target)
@@ -1974,6 +2304,11 @@ function applyState(state: ShellState): void {
   applyThemeToDocument()
   const workspaceChanged = currentWorkspaceId.value !== state.workspace.id
   if (workspaceChanged) {
+    pendingDuplicatePlacement = null
+    selectionToolActive.value = false
+    selectedPaneIds.value = new Set()
+    cancelMarqueeSelection()
+    clearCanvasGuides()
     currentWorkspaceId.value = state.workspace.id
     paneOrder.value = []
     freeformGeometries.value = {}
@@ -2016,8 +2351,25 @@ function applyState(state: ShellState): void {
       : undefined
   const removedPane =
     !workspaceChanged && focusManagementEnabled && state.panes.length < panes.value.length
+  const duplicatePlacement =
+    addedPane &&
+    pendingDuplicatePlacement &&
+    state.panes.some((pane) => pane.id === pendingDuplicatePlacement?.sourcePaneId)
+      ? pendingDuplicatePlacement
+      : null
+  if (addedPane) {
+    pendingDuplicatePlacement = null
+  }
 
   const nextIds = new Set(state.panes.map((pane) => pane.id))
+  if (selectedPaneIds.value.size > 0) {
+    const retainedSelection = [...selectedPaneIds.value].filter((paneId) =>
+      nextIds.has(paneId)
+    )
+    if (retainedSelection.length !== selectedPaneIds.value.size) {
+      selectedPaneIds.value = new Set(retainedSelection)
+    }
+  }
   for (const paneId of Object.keys(paneNotices.value)) {
     if (!nextIds.has(paneId)) {
       clearPaneNotice(paneId)
@@ -2055,6 +2407,12 @@ function applyState(state: ShellState): void {
   ) {
     applyPersistedLayout(state.layout)
     layoutRestored = true
+  }
+  if (addedPane && duplicatePlacement && layoutMode.value === 'canvas') {
+    canvasPositions.value = {
+      ...canvasPositions.value,
+      [addedPane.id]: duplicatePlacement.position
+    }
   }
   void nextTick(() => {
     if (layoutMode.value === 'freeform') {
@@ -2105,10 +2463,6 @@ async function runAddPane(add: () => Promise<ScriptResult>): Promise<void> {
   }
 }
 
-async function addPane(): Promise<void> {
-  await runAddPane(() => window.paneflow.addPane())
-}
-
 async function addPaneWithViewport(preset: ViewportPresetId): Promise<void> {
   await runAddPane(() => window.paneflow.addPaneWithViewport(viewportFromPreset(preset)))
 }
@@ -2123,14 +2477,22 @@ async function prepareMenuSnapshots(): Promise<void> {
 }
 
 async function openAppMenu(
-  mode: 'add' | 'canvas' | 'zoom' | 'appearance' | 'pane' | 'viewport',
+  mode:
+    | 'add'
+    | 'canvas'
+    | 'zoom'
+    | 'appearance'
+    | 'arrange'
+    | 'pane'
+    | 'viewport'
+    | 'clear-site-data',
   anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
-  if (profilesOpen.value || workspacesOpen.value) {
+  if (workspacesOpen.value) {
     return
   }
-  if (mode !== 'pane') {
+  if (mode !== 'pane' && mode !== 'viewport' && mode !== 'clear-site-data') {
     paneMenuPaneId.value = null
   }
   await prepareMenuSnapshots()
@@ -2144,11 +2506,21 @@ async function openAppMenu(
 }
 
 async function openAddMenu(event: MouseEvent): Promise<void> {
-  if (addingPane.value) {
-    return
-  }
   const button = event.currentTarget
-  if (!(button instanceof HTMLElement)) {
+  if (button instanceof HTMLElement) {
+    await openAddMenuAt(button)
+  }
+}
+
+function openAddMenuFromCommand(): void {
+  const button = document.querySelector<HTMLButtonElement>('.toolbar .add-pane-button')
+  if (button) {
+    void openAddMenuAt(button)
+  }
+}
+
+async function openAddMenuAt(button: HTMLElement): Promise<void> {
+  if (addingPane.value) {
     return
   }
   const rect = button.getBoundingClientRect()
@@ -2164,14 +2536,37 @@ async function openAddMenu(event: MouseEvent): Promise<void> {
   )
 }
 
-async function openViewportMenu(trigger: HTMLElement): Promise<void> {
-  if (!activePane.value) {
+async function openClearSiteDataConfirm(paneId: string): Promise<void> {
+  if (!panes.value.some((pane) => pane.id === paneId)) {
     return
   }
+  paneMenuPaneId.value = paneId
+  await openAppMenu('clear-site-data', appMenuAnchor.value, null)
+}
+
+async function clearPaneSiteData(paneId: string): Promise<void> {
+  actionError.value = null
+  try {
+    const result = await window.paneflow.clearPaneSiteData(paneId)
+    if (!result.ok) {
+      actionError.value = result.error
+      return
+    }
+    showPaneNotice({ paneId, message: 'Site data cleared' })
+  } catch {
+    actionError.value = 'Could not clear the device data.'
+  }
+}
+
+async function openViewportMenu(paneId: string, trigger: HTMLElement): Promise<void> {
+  if (!panes.value.some((pane) => pane.id === paneId)) {
+    return
+  }
+  paneMenuPaneId.value = paneId
   const rect = trigger.getBoundingClientRect()
   await openAppMenu(
     'viewport',
-    { x: rect.right, y: rect.bottom + 6, align: 'end' },
+    { x: rect.left, y: rect.bottom + 6, align: 'start' },
     trigger
   )
 }
@@ -2196,6 +2591,7 @@ function closeAppMenu(restoreFocus = true): void {
 
 function onAppMenuBounds(bounds: Rect): void {
   appMenuBounds.value = bounds
+  syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
 }
 
@@ -2212,7 +2608,7 @@ async function applyMenuTheme(theme: ThemePreference): Promise<void> {
 }
 
 function openCanvasZoomMenu(): void {
-  if (profilesOpen.value || workspacesOpen.value || layoutMode.value !== 'canvas') {
+  if (workspacesOpen.value || layoutMode.value !== 'canvas') {
     return
   }
   void openAppMenu(
@@ -2227,7 +2623,7 @@ function openCanvasZoomMenu(): void {
 }
 
 function openCanvasAppearanceMenu(): void {
-  if (profilesOpen.value || workspacesOpen.value || layoutMode.value !== 'canvas') {
+  if (workspacesOpen.value || layoutMode.value !== 'canvas') {
     return
   }
   void openAppMenu(
@@ -2239,6 +2635,36 @@ function openCanvasAppearanceMenu(): void {
     },
     null
   )
+}
+
+function openCanvasArrangeMenu(): void {
+  if (workspacesOpen.value || layoutMode.value !== 'canvas') {
+    return
+  }
+  void openAppMenu(
+    'arrange',
+    {
+      x: window.innerWidth / 2,
+      y: window.innerHeight - CANVAS_ZOOM_MARGIN - CANVAS_ZOOM_BAR_HEIGHT - 6,
+      align: 'center'
+    },
+    null
+  )
+}
+
+function arrangeCanvas(mode: CanvasArrangeMode): void {
+  if (layoutMode.value !== 'canvas' || orderedPanes.value.length === 0) {
+    return
+  }
+  const frames = orderedPanes.value.map((pane) => ({
+    id: pane.id,
+    ...canvasFrameSize(pane.viewport)
+  }))
+  canvasPositions.value = arrangeCanvasFrames(frames, mode)
+  void nextTick(() => {
+    fitCanvasToPanes()
+    scheduleMeasure()
+  })
 }
 
 async function runPaneMenuAction(paneId: string, action: string): Promise<void> {
@@ -2261,6 +2687,9 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
         }
         break
       }
+      case 'external':
+        await openPaneExternal(paneId)
+        break
       case 'rotate': {
         const result = await window.paneflow.rotatePaneViewport(paneId)
         if (!result.ok) {
@@ -2280,6 +2709,9 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
         break
       case 'rename':
         requestPaneRename(paneId)
+        break
+      case 'clear-site-data':
+        openClearSiteDataConfirm(paneId)
         break
       case 'devtools': {
         const result = await window.paneflow.openPaneDevTools(paneId)
@@ -2307,6 +2739,15 @@ function onAppMenuSelect(id: string): void {
     return
   }
 
+  if (id.startsWith('clear-site-data:')) {
+    const paneId = paneMenuPaneId.value
+    closeAppMenu(false)
+    if (id === 'clear-site-data:confirm' && paneId) {
+      void clearPaneSiteData(paneId)
+    }
+    return
+  }
+
   if (id.startsWith('zoom:')) {
     closeAppMenu(false)
     const value = id.slice('zoom:'.length)
@@ -2325,6 +2766,15 @@ function onAppMenuSelect(id: string): void {
     return
   }
 
+  if (id.startsWith('arrange:')) {
+    const mode = id.slice('arrange:'.length)
+    closeAppMenu(false)
+    if (mode === 'showcase' || mode === 'row' || mode === 'grid' || mode === 'stack') {
+      arrangeCanvas(mode)
+    }
+    return
+  }
+
   if (id === 'open-add-menu') {
     appMenuBounds.value = null
     appMenuMode.value = 'add'
@@ -2335,7 +2785,7 @@ function onAppMenuSelect(id: string): void {
 
   if (id.startsWith('viewport:')) {
     const preset = id.slice('viewport:'.length)
-    const pane = activePane.value
+    const pane = viewportMenuPane.value
     if (preset === 'custom') {
       closeAppMenu(false)
       if (pane) {
@@ -2360,7 +2810,7 @@ function onAppMenuSelect(id: string): void {
     return
   }
 
-  const opensDialog = id === 'open-profiles' || id === 'open-workspaces'
+  const opensDialog = id === 'open-workspaces'
   closeAppMenu(!opensDialog)
 
   switch (id) {
@@ -2372,9 +2822,6 @@ function onAppMenuSelect(id: string): void {
       break
     case 'toggle-hand':
       toggleCanvasHand()
-      break
-    case 'open-profiles':
-      openProfiles()
       break
     case 'open-workspaces':
       openWorkspaces()
@@ -2391,14 +2838,41 @@ function onAppMenuSelect(id: string): void {
   }
 }
 
-async function duplicatePane(paneId: string): Promise<void> {
+async function openPaneExternal(paneId: string): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.duplicatePane(paneId)
+    const result = await window.paneflow.openPaneExternal(paneId)
     if (!result.ok) {
       actionError.value = result.error
     }
   } catch {
+    actionError.value = 'Could not open the browser.'
+  }
+}
+
+async function duplicatePane(paneId: string): Promise<void> {
+  actionError.value = null
+  const sourceFrame =
+    layoutMode.value === 'canvas' ? canvasFrames.value.get(paneId) : undefined
+  if (sourceFrame) {
+    const targets = [...canvasFrames.value.entries()]
+      .filter(([id]) => id !== paneId)
+      .map(([, frame]) => frame)
+    pendingDuplicatePlacement = {
+      sourcePaneId: paneId,
+      position: duplicateCanvasPosition(sourceFrame, targets)
+    }
+  } else {
+    pendingDuplicatePlacement = null
+  }
+  try {
+    const result = await window.paneflow.duplicatePane(paneId)
+    if (!result.ok) {
+      pendingDuplicatePlacement = null
+      actionError.value = result.error
+    }
+  } catch {
+    pendingDuplicatePlacement = null
     actionError.value = 'Could not duplicate the device.'
   }
 }
@@ -2420,33 +2894,12 @@ function formatProfileDate(value: string): string {
   return Number.isNaN(date.getTime()) ? 'Unknown' : profileDateFormatter.format(date)
 }
 
-function profilePaneTitles(profile: ProfileSummary): string {
-  const count = `${profile.paneIds.length} ${profile.paneIds.length === 1 ? 'device' : 'devices'}`
-  const titles = profile.paneIds
-    .map((paneId) => panes.value.find((pane) => pane.id === paneId)?.title)
-    .filter((title): title is string => Boolean(title))
-  return titles.length > 0 ? `${count}: ${titles.join(', ')}` : count
-}
-
-async function refreshProfiles(): Promise<void> {
-  profilesLoading.value = true
-  profileError.value = null
-  try {
-    const result = await window.paneflow.listProfiles()
-    if (result.ok) {
-      profiles.value = result.profiles
-    } else {
-      profileError.value = result.error
-    }
-  } catch {
-    profileError.value = 'Could not read profiles.'
-  } finally {
-    profilesLoading.value = false
-  }
-}
-
 function focusAfterDialog(): void {
-  const input = document.querySelector<HTMLInputElement>('.global-pane-bar .address-input')
+  const input = activePaneId.value
+    ? document.querySelector<HTMLInputElement>(
+        `[data-pane-id="${activePaneId.value}"] .address-input`
+      )
+    : document.querySelector<HTMLInputElement>('.pane-card .address-input')
   if (input) {
     input.focus()
     return
@@ -2463,7 +2916,7 @@ function ensureDevicePaletteSelectionVisible(): void {
 }
 
 function openDevicePalette(): void {
-  if (profilesOpen.value || workspacesOpen.value || appMenuMode.value !== null) {
+  if (workspacesOpen.value || appMenuMode.value !== null) {
     return
   }
   if (devicePaletteOpen.value) {
@@ -2550,198 +3003,6 @@ watch(devicePaletteResults, (results) => {
     devicePaletteIndex.value = Math.max(0, results.length - 1)
   }
 })
-
-function openProfiles(): void {
-  if (profilesOpen.value) {
-    return
-  }
-  profilesOpen.value = true
-  profileError.value = null
-  profileNotice.value = null
-  profileAction.value = null
-  renamingProfileId.value = null
-  void refreshProfiles()
-  void nextTick(() => {
-    scheduleMeasure()
-    profilesDialogEl.value?.focus()
-  })
-}
-
-function closeProfiles(): void {
-  profilesOpen.value = false
-  profiles.value = []
-  profilesLoading.value = false
-  profileError.value = null
-  profileNotice.value = null
-  profileAction.value = null
-  renamingProfileId.value = null
-  renameDraft.value = ''
-  void nextTick(() => {
-    scheduleMeasure()
-    focusAfterDialog()
-  })
-}
-
-async function openPaneWithProfile(profile: ProfileSummary): Promise<void> {
-  if (profileBusy.value) {
-    return
-  }
-  profileBusy.value = true
-  profileError.value = null
-  try {
-    const result = await window.paneflow.addPaneWithProfile(profile.id)
-    if (!result.ok) {
-      profileError.value = result.error
-      return
-    }
-    closeProfiles()
-  } catch {
-    profileError.value = 'Could not create a device with this profile.'
-  } finally {
-    profileBusy.value = false
-  }
-}
-
-function startProfileRename(profile: ProfileSummary): void {
-  if (profileBusy.value) {
-    return
-  }
-  profileError.value = null
-  profileNotice.value = null
-  profileAction.value = null
-  renamingProfileId.value = profile.id
-  renameDraft.value = profile.label
-  void nextTick(() => {
-    const input = profilesDialogEl.value?.querySelector<HTMLInputElement>(
-      '.profile-rename-input'
-    )
-    input?.focus()
-    input?.select()
-  })
-}
-
-function cancelProfileRename(): void {
-  renamingProfileId.value = null
-  renameDraft.value = ''
-  profileError.value = null
-}
-
-async function submitProfileRename(profile: ProfileSummary): Promise<void> {
-  if (profileBusy.value) {
-    return
-  }
-  const label = renameDraft.value.trim()
-  if (!label) {
-    profileError.value = 'Enter a profile name.'
-    return
-  }
-
-  profileBusy.value = true
-  profileError.value = null
-  try {
-    const result = await window.paneflow.renameProfile(profile.id, label)
-    if (!result.ok) {
-      profileError.value = result.error
-      return
-    }
-    renamingProfileId.value = null
-    renameDraft.value = ''
-    profileNotice.value = `Renamed profile to “${label}”.`
-    await refreshProfiles()
-  } catch {
-    profileError.value = 'Could not rename the profile.'
-  } finally {
-    profileBusy.value = false
-  }
-}
-
-function requestProfileAction(kind: ProfileActionKind, profile: ProfileSummary): void {
-  if (profileBusy.value) {
-    return
-  }
-  profileError.value = null
-  profileNotice.value = null
-  renamingProfileId.value = null
-  profileAction.value = { kind, profileId: profile.id }
-}
-
-function cancelProfileAction(): void {
-  profileAction.value = null
-  profileError.value = null
-}
-
-async function confirmProfileAction(profile: ProfileSummary): Promise<void> {
-  const action = profileAction.value
-  if (profileBusy.value || !action || action.profileId !== profile.id) {
-    return
-  }
-
-  profileBusy.value = true
-  profileError.value = null
-  try {
-    const result =
-      action.kind === 'clear'
-        ? await window.paneflow.clearProfile(profile.id, profile.inUse)
-        : await window.paneflow.deleteProfile(profile.id, profile.inUse)
-    if (!result.ok) {
-      profileError.value = result.error
-      await refreshProfiles()
-      return
-    }
-
-    profileAction.value = null
-    const panesClosed = profile.inUse ? ' Closed its devices.' : ''
-    profileNotice.value =
-      action.kind === 'clear'
-        ? `Cleared browser data for “${profile.label}”.${panesClosed}`
-        : `Deleted profile “${profile.label}”.${panesClosed}`
-    await refreshProfiles()
-  } catch {
-    profileError.value =
-      action.kind === 'clear' ? 'Could not clear the profile.' : 'Could not delete the profile.'
-  } finally {
-    profileBusy.value = false
-  }
-}
-
-function onProfilesKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    if (renamingProfileId.value) {
-      cancelProfileRename()
-    } else if (profileAction.value) {
-      cancelProfileAction()
-    } else {
-      closeProfiles()
-    }
-    return
-  }
-
-  if (event.key !== 'Tab') {
-    return
-  }
-  const dialog = profilesDialogEl.value
-  if (!dialog) {
-    return
-  }
-  const focusable = Array.from(
-    dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])')
-  ).filter((element) => element.getClientRects().length > 0)
-  if (focusable.length === 0) {
-    event.preventDefault()
-    dialog.focus()
-    return
-  }
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
-    event.preventDefault()
-    last?.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first?.focus()
-  }
-}
 
 async function refreshWorkspaces(): Promise<void> {
   workspacesLoading.value = true
@@ -2971,7 +3232,7 @@ async function duplicateWorkspace(workspace: WorkspaceSummary): Promise<void> {
       workspaceError.value = result.error
       return
     }
-    workspaceNotice.value = `Duplicated “${workspace.name}” with fresh profiles.`
+    workspaceNotice.value = `Duplicated “${workspace.name}” as an independent copy.`
     await refreshWorkspaces()
   } catch {
     workspaceError.value = 'Could not duplicate the workspace.'
@@ -3064,7 +3325,6 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
     event.defaultPrevented ||
     event.isComposing ||
     event.repeat ||
-    profilesOpen.value ||
     workspacesOpen.value ||
     devicePaletteOpen.value ||
     appMenuMode.value !== null
@@ -3074,10 +3334,24 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
   if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
     return
   }
+  if (isTextEntryTarget(event.target)) {
+    return
+  }
+  if (event.key === 'Escape' && selectionToolActive.value) {
+    event.preventDefault()
+    if (selectedPaneIds.value.size > 0) {
+      clearSelectedPanes()
+    } else {
+      setSelectionToolActive(false)
+    }
+    return
+  }
   if (event.key !== 'Delete' && event.key !== 'Backspace') {
     return
   }
-  if (isTextEntryTarget(event.target)) {
+  if (selectedPaneIds.value.size > 0) {
+    event.preventDefault()
+    void closeSelectedPanes()
     return
   }
   const pane = currentPane()
@@ -3109,7 +3383,7 @@ async function reloadAll(): Promise<void> {
 }
 
 async function openPaneMenu(paneId: string, position: { x: number; y: number }): Promise<void> {
-  if (profilesOpen.value || workspacesOpen.value) {
+  if (workspacesOpen.value) {
     return
   }
   const pane = panes.value.find((entry) => entry.id === paneId)
@@ -3128,7 +3402,7 @@ async function openPaneMenu(paneId: string, position: { x: number; y: number }):
 }
 
 async function openCanvasMenu(event: MouseEvent): Promise<void> {
-  if (profilesOpen.value || workspacesOpen.value) {
+  if (workspacesOpen.value) {
     return
   }
 
@@ -3167,12 +3441,6 @@ async function setPaneViewport(paneId: string, viewport: PaneViewport): Promise<
   }
 }
 
-function onGlobalPaneSetViewport(viewport: PaneViewport): void {
-  if (activePane.value) {
-    void setPaneViewport(activePane.value.id, viewport)
-  }
-}
-
 function onPaneLayoutChanged(): void {
   void nextTick(scheduleMeasure)
 }
@@ -3196,7 +3464,7 @@ async function reloadActivePane(): Promise<void> {
 }
 
 function handlePaneCommand(command: PaneCommand): void {
-  if (profilesOpen.value || workspacesOpen.value) {
+  if (workspacesOpen.value) {
     return
   }
   if (devicePaletteOpen.value && command !== 'find-device') {
@@ -3208,7 +3476,7 @@ function handlePaneCommand(command: PaneCommand): void {
       openDevicePalette()
       break
     case 'add-pane':
-      void addPane()
+      openAddMenuFromCommand()
       break
     case 'duplicate-pane':
       if (pane) {
@@ -3241,9 +3509,6 @@ function handlePaneCommand(command: PaneCommand): void {
       break
     case 'zoom-reset':
       resetCanvasZoom()
-      break
-    case 'open-profiles':
-      openProfiles()
       break
     case 'open-workspaces':
       openWorkspaces()
@@ -3294,7 +3559,7 @@ function finishDrag(): void {
   dragState.value = null
   dropTargetId.value = null
   isDragging.value = false
-  guides.value = { vertical: [], horizontal: [] }
+  clearCanvasGuides()
   document.body.classList.remove('paneflow-dragging')
 
   if (wasDragging && state?.kind === 'reorder' && target) {
@@ -3348,18 +3613,33 @@ function onWorkspacePointerDown(event: PointerEvent): void {
       return
     }
     const canvasCard = target.closest('[data-pane-id]')
-    if (canvasHandActive.value || !(canvasCard instanceof HTMLElement)) {
+    if (canvasHandActive.value) {
       beginCanvasPan(event, !(canvasCard instanceof HTMLElement))
       return
     }
-    const canvasPaneId = canvasCard.dataset.paneId
+    const canvasPaneId =
+      canvasCard instanceof HTMLElement ? (canvasCard.dataset.paneId ?? null) : null
+    const interactive = target.closest(
+      'button, a, input, select, textarea, form, [role="button"]'
+    )
+    if (selectionToolActive.value) {
+      if (event.button !== 0 || interactive) {
+        return
+      }
+      if (canvasPaneId) {
+        selectPane(canvasPaneId)
+      }
+      beginMarqueeSelection(event, canvasPaneId)
+      return
+    }
+    if (!(canvasCard instanceof HTMLElement)) {
+      beginCanvasPan(event, true)
+      return
+    }
     if (!canvasPaneId) {
       return
     }
     selectPane(canvasPaneId)
-    const interactive = target.closest(
-      'button, a, input, select, textarea, form, [role="button"]'
-    )
     if (target.closest('.pane-header') && !interactive) {
       beginCanvasPaneDrag(event, canvasPaneId)
       return
@@ -3455,6 +3735,15 @@ function rectsOverlap(a: DOMRect, b: Rect): boolean {
   )
 }
 
+function rectsIntersect(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  )
+}
+
 async function measurePanes(): Promise<void> {
   const workspace = workspaceEl.value
   if (!workspace) {
@@ -3488,11 +3777,11 @@ async function measurePanes(): Promise<void> {
       menuOpen && (menuRect === null || rectsOverlap(rect, menuRect))
     const nativeViewsHidden =
       isDragging.value ||
-      profilesOpen.value ||
       workspacesOpen.value ||
       devicePaletteOpen.value ||
       isCanvasPanning.value ||
       isCanvasPaneDragging.value ||
+      isMarqueeSelecting.value ||
       canvasHandActive.value ||
       menuCovers
     const visible =
@@ -3547,7 +3836,7 @@ watch(
 )
 
 watch(layoutMode, (mode) => {
-  guides.value = { vertical: [], horizontal: [] }
+  clearCanvasGuides()
   dropTargetId.value = null
   isDragging.value = false
   dragState.value = null
@@ -3605,11 +3894,6 @@ watch(isDragging, (dragging) => {
 })
 
 watch(workspacesOpen, () => {
-  syncCanvasMinimapVisibility()
-  void nextTick(scheduleMeasure)
-})
-
-watch(profilesOpen, () => {
   syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
 })
@@ -3763,6 +4047,9 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
   window.removeEventListener('pointercancel', finishCanvasPaneDrag)
+  window.removeEventListener('pointermove', onMarqueePointerMove)
+  window.removeEventListener('pointerup', finishMarqueeSelection)
+  window.removeEventListener('pointercancel', finishMarqueeSelection)
   window.removeEventListener('keydown', onCanvasSpaceDown)
   window.removeEventListener('keyup', onCanvasSpaceUp)
   window.removeEventListener('blur', onWindowBlur)
@@ -3770,6 +4057,7 @@ onBeforeUnmount(() => {
   document.body.classList.remove('paneflow-dragging')
   document.body.classList.remove('paneflow-canvas-panning')
   document.body.classList.remove('paneflow-canvas-pane-dragging')
+  document.body.classList.remove('paneflow-canvas-selecting')
   snapshotRequest += 1
   if (snapshotRefreshTimer !== null) {
     clearTimeout(snapshotRefreshTimer)
@@ -3804,25 +4092,26 @@ onBeforeUnmount(() => {
     <header class="toolbar">
       <h1 class="sr-only">PaneFlow</h1>
 
-      <GlobalPaneBar
-        v-if="showGlobalPaneBar"
-        :key="activePane ? activePane.id : 'empty'"
-        variant="toolbar"
-        :pane="activePane"
-        :profile-pane-count="
-          activePane ? (profilePaneCounts.get(activePane.profileId) ?? 1) : 1
-        "
-        :has-panes="panes.length > 0"
-        :viewport-menu-open="appMenuMode === 'viewport'"
-        :custom-viewport-request="
-          activePane ? (customViewportRequests[activePane.id] ?? 0) : 0
-        "
-        @set-viewport="onGlobalPaneSetViewport"
-        @layout-changed="onPaneLayoutChanged"
-        @open-viewport-menu="openViewportMenu"
-      />
-
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
+      <div
+        v-if="selectedPaneIds.size > 0"
+        class="selection-summary"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="selection-count">{{ selectedPaneIds.size }} selected</span>
+        <button
+          class="icon-button selection-close"
+          type="button"
+          :title="`Close ${selectedPaneIds.size} selected device${selectedPaneIds.size === 1 ? '' : 's'} (Delete)`"
+          :aria-label="`Close ${selectedPaneIds.size} selected device${selectedPaneIds.size === 1 ? '' : 's'}`"
+          @click="closeSelectedPanes"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
       <button
         class="icon-button toolbar-icon add-pane-button"
         type="button"
@@ -3854,7 +4143,8 @@ onBeforeUnmount(() => {
       :class="{
         'workspace-canvas': layoutMode === 'canvas',
         'canvas-panning': isCanvasPanning,
-        'canvas-hand': canvasHandActive
+        'canvas-hand': canvasHandActive,
+        'canvas-select': selectionToolActive && !canvasHandActive
       }"
       :style="canvasWorkspaceStyle"
       aria-label="Browser workspace"
@@ -3875,6 +4165,7 @@ onBeforeUnmount(() => {
           class="pane-slot"
           :class="{
             'pane-slot-active': activePaneId === pane.id,
+            'pane-slot-selected': selectedPaneIds.has(pane.id),
             'pane-slot-dragging': isDragging && dragState?.paneId === pane.id,
             'pane-slot-drop-target': dropTargetId === pane.id
           }"
@@ -3885,20 +4176,37 @@ onBeforeUnmount(() => {
             :freeform="layoutMode === 'freeform'"
             :suspended="suspendedPaneIds.has(pane.id)"
             :active="activePaneId === pane.id"
-            :profile-pane-count="profilePaneCounts.get(pane.profileId) ?? 1"
             :rename-request="paneRenameRequests[pane.id] ?? 0"
+            :custom-viewport-request="customViewportRequests[pane.id] ?? 0"
             :notice="paneNotices[pane.id]"
             :chrome-style="effectivePaneChrome"
             :snapshot="layoutMode === 'canvas' ? paneSnapshots[pane.id] : undefined"
             :canvas="layoutMode === 'canvas'"
+            :viewport-menu-open="appMenuMode === 'viewport' && paneMenuPaneId === pane.id"
             @close="closePane(pane.id)"
             @menu="openPaneMenu(pane.id, $event)"
             @raise-pane="raisePane(pane.id)"
             @lower-pane="lowerPane(pane.id)"
             @set-viewport="setPaneViewport(pane.id, $event)"
             @layout-changed="onPaneLayoutChanged"
+            @open-viewport-menu="openViewportMenu"
+            @open-external="openPaneExternal(pane.id)"
           />
         </div>
+        <span
+          v-for="(guide, index) in proximityGuides.vertical"
+          :key="`pv-${index}`"
+          class="alignment-guide proximity vertical"
+          :style="{ left: `${guide}px` }"
+          aria-hidden="true"
+        ></span>
+        <span
+          v-for="(guide, index) in proximityGuides.horizontal"
+          :key="`ph-${index}`"
+          class="alignment-guide proximity horizontal"
+          :style="{ top: `${guide}px` }"
+          aria-hidden="true"
+        ></span>
         <span
           v-for="(guide, index) in guides.vertical"
           :key="`v-${index}`"
@@ -3936,194 +4244,6 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </main>
-
-    <div v-if="profilesOpen" class="modal-backdrop" @click.self="closeProfiles">
-      <section
-        ref="profilesDialogEl"
-        class="profiles-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="profiles-title"
-        aria-describedby="profiles-description"
-        tabindex="-1"
-        @keydown="onProfilesKeydown"
-      >
-        <div class="profiles-header">
-          <div>
-            <h2 id="profiles-title" class="profiles-title">Browser profiles</h2>
-            <p id="profiles-description" class="profiles-description">
-              Each profile keeps its own cookies and site storage. New devices and duplicates use a
-              fresh profile; use New device here to share this one.
-            </p>
-          </div>
-          <button
-            class="icon-button"
-            type="button"
-            title="Close profiles"
-            aria-label="Close profiles"
-            @click="closeProfiles"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
-        </div>
-
-        <div v-if="profileError" class="profiles-message profiles-error" role="alert">
-          {{ profileError }}
-        </div>
-        <div v-else-if="profileNotice" class="profiles-message profiles-notice" role="status">
-          {{ profileNotice }}
-        </div>
-
-        <div v-if="profilesLoading" class="profiles-empty" role="status">Loading profiles…</div>
-        <div v-else-if="profiles.length === 0" class="profiles-empty">
-          No browser profiles yet. Add a device to create one.
-        </div>
-        <ul v-else class="profile-list">
-          <li
-            v-for="profile in profiles"
-            :key="profile.id"
-            class="profile-row"
-            :data-profile-id="profile.id"
-          >
-            <div class="profile-info">
-              <form
-                v-if="renamingProfileId === profile.id"
-                class="profile-rename-form"
-                @submit.prevent="submitProfileRename(profile)"
-              >
-                <input
-                  v-model="renameDraft"
-                  class="profile-rename-input"
-                  type="text"
-                  maxlength="80"
-                  autocomplete="off"
-                  aria-label="Profile name"
-                  @input="profileError = null"
-                />
-                <button class="text-button" type="submit" :disabled="profileBusy">Save</button>
-                <button
-                  class="text-button"
-                  type="button"
-                  :disabled="profileBusy"
-                  @click="cancelProfileRename"
-                >
-                  Cancel
-                </button>
-              </form>
-              <span v-else class="profile-label">{{ profile.label }}</span>
-              <span class="profile-meta">Created {{ formatProfileDate(profile.createdAt) }}</span>
-              <span class="profile-usage" :class="{ 'profile-usage-active': profile.inUse }">
-                {{ profile.inUse ? `In use by ${profilePaneTitles(profile)}` : 'Unused' }}
-              </span>
-            </div>
-
-            <div v-if="renamingProfileId !== profile.id" class="profile-controls">
-              <button
-                class="text-button"
-                type="button"
-                :disabled="profileBusy"
-                title="Create a new device with this profile and share its cookies/storage."
-                :aria-label="`New device with profile ${profile.label}`"
-                @click="openPaneWithProfile(profile)"
-              >
-                New device
-              </button>
-              <button
-                class="text-button"
-                type="button"
-                :disabled="profileBusy"
-                :aria-label="`Rename profile ${profile.label}`"
-                @click="startProfileRename(profile)"
-              >
-                Rename
-              </button>
-              <button
-                class="text-button"
-                type="button"
-                :disabled="profileBusy"
-                :aria-label="`Clear browser data for profile ${profile.label}`"
-                :title="
-                  profile.inUse
-                    ? 'Close its devices and clear cookies, storage, and cache.'
-                    : 'Clear cookies, storage, and cache.'
-                "
-                @click="requestProfileAction('clear', profile)"
-              >
-                Clear
-              </button>
-              <button
-                class="text-button text-button-danger"
-                type="button"
-                :disabled="profileBusy"
-                :aria-label="`Delete profile ${profile.label}`"
-                :title="
-                  profile.inUse
-                    ? 'Close its devices and delete this profile and its browser data.'
-                    : 'Delete this profile and its browser data.'
-                "
-                @click="requestProfileAction('delete', profile)"
-              >
-                Delete
-              </button>
-            </div>
-
-            <div
-              v-if="profileAction?.profileId === profile.id"
-              class="profile-confirm"
-              role="group"
-              :aria-label="`Confirm ${profileAction.kind} for ${profile.label}`"
-            >
-              <span>
-                {{
-                  profile.inUse
-                    ? `Close ${profile.paneIds.length} ${
-                      profile.paneIds.length === 1 ? 'device' : 'devices'
-                    } using “${profile.label}” and ${
-                      profileAction.kind === 'clear' ? 'clear its data' : 'delete it'
-                    }?`
-                    : profileAction.kind === 'clear'
-                      ? `Clear cookies, storage, and cache for “${profile.label}”?`
-                      : `Delete “${profile.label}” and its browser data? This cannot be undone.`
-                }}
-              </span>
-              <button
-                class="text-button"
-                type="button"
-                :disabled="profileBusy"
-                @click="confirmProfileAction(profile)"
-              >
-                {{
-                  profile.inUse
-                    ? profileAction.kind === 'clear'
-                      ? 'Close devices & clear'
-                      : 'Close devices & delete'
-                    : profileAction.kind === 'clear'
-                      ? 'Clear data'
-                      : 'Delete profile'
-                }}
-              </button>
-              <button
-                class="text-button"
-                type="button"
-                :disabled="profileBusy"
-                @click="cancelProfileAction"
-              >
-                Cancel
-              </button>
-            </div>
-          </li>
-        </ul>
-
-        <footer class="profiles-footer">
-          <span class="profiles-count">
-            {{ profiles.length }} profile{{ profiles.length === 1 ? '' : 's' }}
-          </span>
-          <button class="text-button" type="button" @click="closeProfiles">Close</button>
-        </footer>
-      </section>
-    </div>
 
     <div v-if="workspacesOpen" class="modal-backdrop" @click.self="closeWorkspaces">
       <section
@@ -4347,7 +4467,7 @@ onBeforeUnmount(() => {
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
-          placeholder="Find a device by name, host, profile, or viewport"
+          placeholder="Find a device by name, host, or viewport"
           @keydown="onDevicePaletteKeydown"
         />
         <ul
@@ -4427,6 +4547,13 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
+    <div
+      v-if="marqueeRect"
+      class="canvas-marquee"
+      :style="marqueeStyle"
+      aria-hidden="true"
+    ></div>
+
     <AppMenu
       v-if="appMenuMode"
       :key="appMenuMode"
@@ -4439,19 +4566,17 @@ onBeforeUnmount(() => {
               ? zoomMenuModel
               : appMenuMode === 'appearance'
                 ? appearanceMenuModel
-                : appMenuMode === 'pane'
-                  ? paneMenuModel
-                  : canvasMenuModel
+                : appMenuMode === 'arrange'
+                  ? arrangeMenuModel
+                  : appMenuMode === 'pane'
+                    ? paneMenuModel
+                    : appMenuMode === 'clear-site-data'
+                      ? clearSiteDataMenuModel
+                      : canvasMenuModel
       "
       :anchor="appMenuAnchor"
-      :placement="
-        appMenuMode === 'zoom' || appMenuMode === 'appearance' ? 'above' : 'below'
-      "
-      :width="
-        appMenuMode === 'zoom' || appMenuMode === 'appearance'
-          ? CANVAS_ZOOM_MENU_WIDTH
-          : undefined
-      "
+      :placement="isBottomBarMenu() ? 'above' : 'below'"
+      :width="isBottomBarMenu() ? CANVAS_ZOOM_MENU_WIDTH : undefined"
       @select="onAppMenuSelect"
       @close="closeAppMenu()"
       @bounds="onAppMenuBounds"
@@ -4534,7 +4659,46 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--accent-soft) 82%, var(--accent) 18%);
 }
 
+.selection-summary {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 2px 0 9px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.selection-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.selection-close {
+  width: 24px;
+  height: 24px;
+  color: inherit;
+}
+
+.selection-close svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.selection-close:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
 .add-pane-button {
+  margin-left: auto;
   color: var(--text-muted);
 }
 
@@ -4641,9 +4805,23 @@ onBeforeUnmount(() => {
   touch-action: none;
 }
 
+.workspace-canvas.canvas-select {
+  cursor: crosshair;
+}
+
 .workspace-canvas.canvas-panning,
 .workspace-canvas.canvas-hand {
   cursor: grabbing;
+}
+
+.canvas-marquee {
+  position: fixed;
+  z-index: 1500;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--accent-soft);
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .workspace-canvas .pane-grid {
@@ -4662,6 +4840,12 @@ onBeforeUnmount(() => {
 .pane-slot-active {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
+}
+
+.pane-slot-selected {
+  border-radius: 11px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .pane-slot-dragging {
@@ -4691,6 +4875,26 @@ onBeforeUnmount(() => {
   right: 0;
   left: 0;
   height: 1px;
+}
+
+.alignment-guide.proximity {
+  opacity: 0.45;
+}
+
+.alignment-guide.proximity.vertical {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--accent) 0 3px,
+    transparent 3px 7px
+  );
+}
+
+.alignment-guide.proximity.horizontal {
+  background: repeating-linear-gradient(
+    to right,
+    var(--accent) 0 3px,
+    transparent 3px 7px
+  );
 }
 
 .empty-state {

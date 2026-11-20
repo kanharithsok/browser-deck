@@ -274,10 +274,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(banner.getByRole('group', { name: 'Layout mode' })).toHaveCount(0)
       await expect(banner.getByLabel('Grid columns')).toHaveCount(0)
       await expect(shellPage.locator('.workspace')).toHaveClass(/workspace-canvas/)
-      await expect(banner.locator('.global-pane-bar')).toHaveCount(1)
-      const addressInput = banner.locator('.global-pane-bar .address-input')
-      await expect(addressInput).toBeVisible()
-      expect(await addressInput.getAttribute('aria-label')).toMatch(/^Address for /)
+      await expect(shellPage.locator('.pane-card .address-input')).toHaveCount(2)
 
       const paneCount = banner.locator('.pane-count')
       await expect(paneCount).toHaveText('2 devices')
@@ -294,7 +291,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await shellPage.evaluate(() => document.body.focus())
       await shellPage.keyboard.press('Tab')
       const tabFocus = await readFocus(shellPage)
-      expect(tabFocus.ariaLabel).toMatch(/^Address for device /)
+      expect(tabFocus.ariaLabel).toBe('Add device')
       expect(tabFocus.focusVisible).toBe(true)
       expect(tabFocus.outlineStyle).toBe('solid')
       expect(Number.parseFloat(tabFocus.outlineWidth)).toBeGreaterThanOrEqual(2)
@@ -326,6 +323,13 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       const reloadAll = zoomPage.getByRole('button', { name: 'Reload all devices' })
       await expect(reloadAll).toHaveAccessibleName('Reload all devices')
       await expect(reloadAll).toHaveAttribute('title', 'Reload all devices')
+      const selectDevices = zoomPage.getByRole('button', { name: 'Select devices' })
+      await expect(selectDevices).toHaveAccessibleName('Select devices')
+      await expect(selectDevices).toHaveAttribute('aria-pressed', 'false')
+      await expect(selectDevices).toHaveAttribute(
+        'title',
+        'Select devices (drag to select, Delete to close)'
+      )
       const appearanceTrigger = zoomPage.getByRole('button', { name: 'Appearance: System' })
       await expect(appearanceTrigger).toHaveAttribute('aria-haspopup', 'menu')
       expect(await auditWithAxe(zoomPage, '.canvas-bar')).toEqual([])
@@ -424,8 +428,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await firstCard.locator('.pane-title').click()
       await expect(firstCard).toHaveAttribute('aria-current', 'true')
       await expect(secondCard).not.toHaveAttribute('aria-current', 'true')
-      const globalBar = shellPage.locator('.global-pane-bar')
-      const firstAddress = globalBar.getByRole('textbox', {
+      const firstAddress = firstCard.getByRole('textbox', {
         name: `Address for device ${firstPane.title}`
       })
       await firstAddress.focus()
@@ -446,7 +449,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
           'Close device (Delete)'
         )
       }
-      const viewportTrigger = globalBar.getByRole('button', {
+      const viewportTrigger = firstCard.getByRole('button', {
         name: `Viewport preset for device ${firstPane.title}`
       })
       await expect(viewportTrigger).toHaveAttribute('data-preset', 'responsive')
@@ -466,19 +469,18 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       const addressFocus = await readFocus(shellPage)
       expect(addressFocus.ariaLabel).toBe(`Address for device ${firstPane.title}`)
 
-      await shellPage.keyboard.press('Tab')
+      await viewportTrigger.focus()
       const viewportFocus = await readFocus(shellPage)
       expect(viewportFocus.ariaLabel).toContain(`Viewport preset for device ${firstPane.title}`)
       expect(viewportFocus.focusVisible).toBe(true)
       expect(viewportFocus.outlineStyle).toBe('solid')
 
       await shellPage.keyboard.press('Tab')
-      expect((await readFocus(shellPage)).ariaLabel).toBe('Add device')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Reload device')
+      await expect(firstCard).toHaveAttribute('aria-current', 'true')
 
       await shellPage.keyboard.press('Tab')
-      const actionFocus = await readFocus(shellPage)
-      expect(actionFocus.ariaLabel).toBe('Reload device')
-      await expect(firstCard).toHaveAttribute('aria-current', 'true')
+      expect((await readFocus(shellPage)).ariaLabel).toBe('Open in browser')
 
       await shellPage.keyboard.press('Tab')
       expect((await readFocus(shellPage)).ariaLabel).toBe('Device actions')
@@ -487,8 +489,15 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect((await readFocus(shellPage)).ariaLabel).toBe('Close device')
 
       await shellPage.keyboard.press('Tab')
+      expect((await readFocus(shellPage)).ariaLabel).toBe(
+        `Address for device ${firstPane.title}`
+      )
+
+      await shellPage.keyboard.press('Tab')
       const nextCardFocus = await readFocus(shellPage)
-      expect(nextCardFocus.ariaLabel).toBe('Reload device')
+      expect(nextCardFocus.ariaLabel).toContain(
+        `Viewport preset for device ${secondPane.title}`
+      )
       await expect(secondCard).toHaveAttribute('aria-current', 'true')
       await expect(firstCard).not.toHaveAttribute('aria-current', 'true')
       await expect(shellPage.locator('.pane-card-active')).toHaveCount(1)
@@ -496,76 +505,6 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
         'data-pane-id',
         secondPane.id
       )
-    })
-
-    await test.step('profile dialog names, focus trap, axe audit, and focus return', async () => {
-      await clickAppMenuCommand(app as ElectronApplication, 'profiles-manage')
-
-      const dialog = shellPage.getByRole('dialog', { name: 'Browser profiles' })
-      await expect(dialog).toBeVisible()
-      await expect(dialog).toHaveAttribute('aria-modal', 'true')
-      await expect(dialog).toHaveAccessibleName('Browser profiles')
-      await expect(dialog).toHaveAccessibleDescription(/Each profile keeps its own cookies/)
-
-      const dialogFocus = await readFocus(shellPage)
-      expect(dialogFocus.tagName).toBe('SECTION')
-      expect(dialogFocus.className).toContain('profiles-dialog')
-      expect(dialogFocus.focusVisible).toBe(true)
-      expect(dialogFocus.outlineStyle).toBe('solid')
-
-      await shellPage.keyboard.press('Shift+Tab')
-      const lastFocus = await readFocus(shellPage)
-      expect(lastFocus.tagName).toBe('BUTTON')
-      expect(lastFocus.text).toBe('Close')
-      expect(lastFocus.className).toContain('text-button')
-
-      await shellPage.keyboard.press('Tab')
-      const firstFocus = await readFocus(shellPage)
-      expect(firstFocus.ariaLabel).toBe('Close profiles')
-
-      const rows = dialog.locator('.profile-row')
-      await expect(rows).toHaveCount(2)
-      const labels: string[] = []
-      for (const row of await rows.all()) {
-        const label = (await row.locator('.profile-label').innerText()).trim()
-        labels.push(label)
-        await expect(
-          row.getByRole('button', { name: `New device with profile ${label}` })
-        ).toHaveText('New device')
-        await expect(
-          row.getByRole('button', { name: `Rename profile ${label}` })
-        ).toHaveText('Rename')
-        await expect(
-          row.getByRole('button', { name: `Clear browser data for profile ${label}` })
-        ).toHaveText('Clear')
-        await expect(
-          row.getByRole('button', { name: `Delete profile ${label}` })
-        ).toHaveText('Delete')
-      }
-      expect(new Set(labels).size).toBe(2)
-
-      const buttonNames = await dialog
-        .getByRole('button')
-        .evaluateAll((buttons) =>
-          buttons.map(
-            (button) =>
-              button.getAttribute('aria-label') ?? (button.textContent ?? '').trim()
-          )
-        )
-      expect(new Set(buttonNames).size).toBe(buttonNames.length)
-
-      expect(await auditWithAxe(shellPage)).toEqual([])
-
-      const axPairs = await readAccessibilityTree(shellPage)
-      expect(axPairs).toContain('dialog:Browser profiles')
-      expect(axPairs).toContain(`button:New device with profile ${labels[0]}`)
-      expect(axPairs).toContain(`button:Rename profile ${labels[1]}`)
-
-      await shellPage.keyboard.press('Escape')
-      await expect(dialog).toHaveCount(0)
-      const restoredFocus = await readFocus(shellPage)
-      expect(restoredFocus.tagName).toBe('INPUT')
-      expect(restoredFocus.ariaLabel).toMatch(/^Address for /)
     })
 
     await test.step('workspace dialog names, focus trap, axe audit, and focus return', async () => {

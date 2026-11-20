@@ -2,9 +2,9 @@ import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
 import {
   IPC_CHANNELS,
+  type CanvasOverlayVisibility,
   type PaneScreenshotResult,
   type PaneSnapshotsResult,
-  type ProfileListResult,
   type ShellState,
   type ScriptResult,
   type WorkspaceIdentity,
@@ -52,16 +52,15 @@ interface IpcContext {
   setThemePreference: (theme: ThemePreference) => void
   updateCanvasMinimapState: (state: CanvasMinimapState) => void
   setCanvasMinimapVisible: (visible: boolean) => void
+  setCanvasOverlayVisibility: (visibility: CanvasOverlayVisibility) => void
   setCanvasMinimapCollapsed: (collapsed: boolean) => void
   forwardCanvasMinimapAction: (action: CanvasMinimapAction) => void
   updateCanvasZoomState: () => void
   forwardCanvasZoomAction: (action: CanvasZoomAction) => void
   setCanvasHandMode: (active: boolean) => void
+  setCanvasSelectMode: (active: boolean) => void
   saveWorkspaceLayout: (input: unknown) => Promise<ScriptResult>
-  listProfiles: () => Promise<ProfileListResult>
-  renameProfile: (profileId: string, label: string) => Promise<ScriptResult>
-  clearProfile: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
-  deleteProfile: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
+  clearPaneSiteData: (paneId: string) => Promise<ScriptResult>
   listWorkspaces: () => Promise<WorkspaceListResult>
   exportWorkspace: (workspaceId: string) => Promise<WorkspaceTransferResult>
   importWorkspace: () => Promise<WorkspaceTransferResult>
@@ -184,31 +183,6 @@ export function registerIpcHandlers(context: IpcContext): void {
 
       try {
         return await manager.addPaneWithViewport(payload)
-      } catch {
-        return { ok: false, error: 'Could not create the device.' }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.addPaneWithProfile,
-    async (event, profileIdInput: unknown, urlInput: unknown): Promise<ScriptResult> => {
-      if (!isTrustedSender(event, context)) {
-        return unauthorized
-      }
-      const manager = context.getBrowserManager()
-      if (!manager) {
-        return unavailable
-      }
-      const profileId = readString(profileIdInput, 100)
-      if (!profileId) {
-        return { ok: false, error: 'Invalid profile ID.' }
-      }
-      if (urlInput !== undefined && typeof urlInput !== 'string') {
-        return { ok: false, error: 'Invalid address.' }
-      }
-      try {
-        return await manager.addPaneWithProfile(profileId, urlInput)
       } catch {
         return { ok: false, error: 'Could not create the device.' }
       }
@@ -396,6 +370,46 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
 
   ipcMain.handle(
+    IPC_CHANNELS.clearPaneSiteData,
+    async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const paneId = readString(payload, 100)
+      if (!paneId) {
+        return { ok: false, error: 'Invalid device ID.' }
+      }
+      try {
+        return await context.clearPaneSiteData(paneId)
+      } catch {
+        return { ok: false, error: 'Could not clear the device data.' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.openPaneExternal,
+    async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      const manager = context.getBrowserManager()
+      if (!manager) {
+        return unavailable
+      }
+      const paneId = readString(payload, 100)
+      if (!paneId) {
+        return { ok: false, error: 'Invalid device ID.' }
+      }
+      try {
+        return await manager.openExternal(paneId)
+      } catch {
+        return { ok: false, error: 'Could not open the browser.' }
+      }
+    }
+  )
+
+  ipcMain.handle(
     IPC_CHANNELS.openPaneDevTools,
     (event, payload: unknown): ScriptResult => {
       if (!isTrustedSender(event, context)) {
@@ -425,53 +439,6 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
     }
   )
-
-  ipcMain.handle(IPC_CHANNELS.listProfiles, async (event): Promise<ProfileListResult> => {
-    if (!isTrustedSender(event, context)) {
-      return { ok: false, error: 'Unauthorized sender.' }
-    }
-    return context.listProfiles()
-  })
-
-  ipcMain.handle(
-    IPC_CHANNELS.renameProfile,
-    async (event, profileIdInput: unknown, labelInput: unknown): Promise<ScriptResult> => {
-      if (!isTrustedSender(event, context)) {
-        return unauthorized
-      }
-      const profileId = readString(profileIdInput, 100)
-      const label = readString(labelInput, 200)
-      if (!profileId || label === null) {
-        return { ok: false, error: 'Invalid profile name.' }
-      }
-      return context.renameProfile(profileId, label)
-    }
-  )
-
-  const registerProfileAction = (
-    channel: string,
-    action: (profileId: string, closePanes: boolean) => Promise<ScriptResult>
-  ): void => {
-    ipcMain.handle(
-      channel,
-      async (event, payload: unknown, closePanesInput: unknown): Promise<ScriptResult> => {
-        if (!isTrustedSender(event, context)) {
-          return unauthorized
-        }
-        const profileId = readString(payload, 100)
-        if (!profileId) {
-          return { ok: false, error: 'Invalid profile ID.' }
-        }
-        if (closePanesInput !== undefined && typeof closePanesInput !== 'boolean') {
-          return { ok: false, error: 'Invalid close-panes option.' }
-        }
-        return action(profileId, closePanesInput === true)
-      }
-    )
-  }
-
-  registerProfileAction(IPC_CHANNELS.clearProfile, context.clearProfile)
-  registerProfileAction(IPC_CHANNELS.deleteProfile, context.deleteProfile)
 
   ipcMain.handle(IPC_CHANNELS.listWorkspaces, async (event): Promise<WorkspaceListResult> => {
     if (!isTrustedSender(event, context)) {
@@ -652,6 +619,20 @@ export function registerIpcHandlers(context: IpcContext): void {
   )
 
   ipcMain.handle(
+    IPC_CHANNELS.setCanvasSelectMode,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      if (typeof payload !== 'boolean') {
+        return { ok: false, error: 'Invalid canvas select mode.' }
+      }
+      context.setCanvasSelectMode(payload)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
     IPC_CHANNELS.canvasZoomAction,
     (event, payload: unknown): ScriptResult => {
       if (!isTrustedZoomSender(event, context)) {
@@ -691,6 +672,27 @@ export function registerIpcHandlers(context: IpcContext): void {
         return { ok: false, error: 'Invalid canvas minimap visibility.' }
       }
       context.setCanvasMinimapVisible(payload)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.setCanvasOverlayVisibility,
+    (event, payload: unknown): ScriptResult => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        return { ok: false, error: 'Invalid canvas overlay visibility.' }
+      }
+      const record = payload as Record<string, unknown>
+      if (typeof record.minimap !== 'boolean' || typeof record.zoom !== 'boolean') {
+        return { ok: false, error: 'Invalid canvas overlay visibility.' }
+      }
+      context.setCanvasOverlayVisibility({
+        minimap: record.minimap,
+        zoom: record.zoom
+      })
       return { ok: true }
     }
   )

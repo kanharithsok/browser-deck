@@ -7,6 +7,7 @@ export interface CanvasZoomState {
   themePreference: ThemePreference
   zoom: number
   handMode: boolean
+  selectMode: boolean
 }
 
 export type CanvasZoomAction =
@@ -16,7 +17,9 @@ export type CanvasZoomAction =
   | { type: 'reset' }
   | { type: 'menu' }
   | { type: 'toggle-hand' }
+  | { type: 'toggle-select' }
   | { type: 'appearance' }
+  | { type: 'arrange' }
   | { type: 'find-device' }
   | { type: 'reload-all' }
 
@@ -24,7 +27,7 @@ export const CANVAS_MIN_ZOOM = 0.25
 export const CANVAS_MAX_ZOOM = 2
 export const CANVAS_ZOOM_STEP = 0.1
 export const CANVAS_ZOOM_PRESETS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const
-export const CANVAS_ZOOM_BAR_WIDTH = 352
+export const CANVAS_ZOOM_BAR_WIDTH = 422
 export const CANVAS_ZOOM_BAR_HEIGHT = 40
 export const CANVAS_ZOOM_MARGIN = 12
 export const CANVAS_ZOOM_MENU_WIDTH = 224
@@ -54,6 +57,7 @@ export function parseCanvasZoomState(value: unknown): CanvasZoomState | null {
     record.zoom < CANVAS_MIN_ZOOM ||
     record.zoom > CANVAS_MAX_ZOOM ||
     typeof record.handMode !== 'boolean' ||
+    typeof record.selectMode !== 'boolean' ||
     !isThemePreference(record.themePreference)
   ) {
     return null
@@ -62,7 +66,8 @@ export function parseCanvasZoomState(value: unknown): CanvasZoomState | null {
     theme: record.theme,
     themePreference: record.themePreference,
     zoom: record.zoom,
-    handMode: record.handMode
+    handMode: record.handMode,
+    selectMode: record.selectMode
   }
 }
 
@@ -95,8 +100,14 @@ export function parseCanvasZoomAction(value: unknown): CanvasZoomAction | null {
   if (record.type === 'toggle-hand') {
     return { type: 'toggle-hand' }
   }
+  if (record.type === 'toggle-select') {
+    return { type: 'toggle-select' }
+  }
   if (record.type === 'appearance') {
     return { type: 'appearance' }
+  }
+  if (record.type === 'arrange') {
+    return { type: 'arrange' }
   }
   if (record.type === 'find-device') {
     return { type: 'find-device' }

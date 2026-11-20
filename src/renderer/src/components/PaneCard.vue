@@ -3,7 +3,11 @@ import { computed, nextTick, ref, watch } from 'vue'
 import PaneNavigation from './PaneNavigation.vue'
 import type { PaneChromeStyle } from '../../../shared/pane-chrome'
 import type { PaneState } from '../../../shared/ipc'
-import { viewportContentSize, type PaneViewport } from '../../../shared/viewports'
+import {
+  findViewportPreset,
+  viewportContentSize,
+  type PaneViewport
+} from '../../../shared/viewports'
 import { MAX_PANE_TITLE_LENGTH } from '../../../shared/workspace'
 
 const props = withDefaults(
@@ -12,23 +16,25 @@ const props = withDefaults(
     freeform?: boolean
     suspended?: boolean
     active?: boolean
-    profilePaneCount?: number
     renameRequest?: number
     notice?: string
     chromeStyle?: PaneChromeStyle
     snapshot?: string
     canvas?: boolean
+    viewportMenuOpen?: boolean
+    customViewportRequest?: number
   }>(),
   {
     freeform: false,
     suspended: false,
     active: false,
-    profilePaneCount: 1,
     renameRequest: 0,
     notice: undefined,
     chromeStyle: 'a',
     snapshot: undefined,
-    canvas: false
+    canvas: false,
+    viewportMenuOpen: false,
+    customViewportRequest: 0
   }
 )
 
@@ -39,6 +45,8 @@ const emit = defineEmits<{
   'lower-pane': []
   'set-viewport': [viewport: PaneViewport]
   'layout-changed': []
+  'open-viewport-menu': [paneId: string, trigger: HTMLElement]
+  'open-external': []
 }>()
 
 const titleInput = ref<HTMLInputElement | null>(null)
@@ -49,27 +57,35 @@ const titleDraft = ref('')
 const titleError = ref<string | null>(null)
 const statusId = `pane-status-${props.pane.id}`
 
-const profileLabelText = computed(() =>
-  props.profilePaneCount > 1
-    ? `${props.pane.profileLabel} · ${props.profilePaneCount} devices`
-    : props.pane.profileLabel
-)
-
-const viewportLabel = computed(() => {
+const viewportPresetName = computed(() => {
   const viewport = props.pane.viewport
   if (viewport.preset === 'responsive') {
     return 'Responsive'
+  }
+  if (viewport.preset === 'custom') {
+    return 'Custom'
+  }
+  const preset = findViewportPreset(viewport.preset)
+  return preset?.label.split(' — ')[0] ?? preset?.label ?? viewport.preset
+})
+
+const viewportSizeLabel = computed(() => {
+  const viewport = props.pane.viewport
+  if (viewport.preset === 'responsive') {
+    return ''
   }
   const size = viewportContentSize(viewport)
   return `${size.width} × ${size.height}`
 })
 
-const showNavigation = computed(
-  () => props.chromeStyle === 'a' || (props.chromeStyle === 'b' && props.active)
+const viewportLabel = computed(() =>
+  viewportSizeLabel.value
+    ? `${viewportPresetName.value} · ${viewportSizeLabel.value}`
+    : viewportPresetName.value
 )
 
 const showViewportBadge = computed(
-  () => (props.chromeStyle === 'c' || props.chromeStyle === 'b') && !props.active
+  () => props.chromeStyle === 'c' || props.chromeStyle === 'b'
 )
 
 const titleTooltip = computed(() => {
@@ -169,6 +185,17 @@ function openMenu(event: MouseEvent): void {
   emit('menu', { x: rect.right - 2, y: rect.bottom + 2 })
 }
 
+function openViewportMenu(event: MouseEvent): void {
+  const trigger = event.currentTarget
+  if (trigger instanceof HTMLElement) {
+    emit('open-viewport-menu', props.pane.id, trigger)
+  }
+}
+
+function openExternal(): void {
+  emit('open-external')
+}
+
 function requestClose(): void {
   emit('close')
 }
@@ -192,163 +219,190 @@ function requestClose(): void {
   >
     <div class="pane-header-shell">
       <header class="pane-header">
-        <div class="pane-main">
-          <div class="pane-title-row">
-            <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
-            <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
+        <div class="pane-header-row">
+          <span class="pane-drag-grip" aria-hidden="true">
+            <svg viewBox="0 0 6 16">
+              <circle cx="1.5" cy="4" r="1" />
+              <circle cx="4.5" cy="4" r="1" />
+              <circle cx="1.5" cy="8" r="1" />
+              <circle cx="4.5" cy="8" r="1" />
+              <circle cx="1.5" cy="12" r="1" />
+              <circle cx="4.5" cy="12" r="1" />
+            </svg>
+          </span>
+          <div class="pane-main">
+            <div class="pane-title-row">
+              <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
+              <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
 
-            <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
-              {{ pane.title }}
-            </span>
-            <form v-else class="pane-title-form" @submit.prevent="submitRename">
-              <input
-                ref="titleInput"
-                v-model="titleDraft"
-                class="pane-title-input"
-                :class="{ 'pane-title-input-invalid': titleError }"
-                type="text"
-                :maxlength="MAX_PANE_TITLE_LENGTH"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="Use page title"
-                :aria-label="`Device name for ${pane.title}`"
-                :aria-invalid="titleError ? 'true' : 'false'"
-                :aria-describedby="titleError ? statusId : undefined"
-                @input="titleError = null"
-                @blur="onTitleBlur"
-                @keydown.esc.prevent="cancelRename"
-              />
-            </form>
-            <span
-              class="pane-profile"
-              :title="
-                profilePaneCount > 1
-                  ? `Browser profile: ${pane.profileLabel} (shared by ${profilePaneCount} devices)`
-                  : `Browser profile: ${pane.profileLabel}`
-              "
-            >
-              {{ profileLabelText }}
-            </span>
+              <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
+                {{ pane.title }}
+              </span>
+              <form v-else class="pane-title-form" @submit.prevent="submitRename">
+                <input
+                  ref="titleInput"
+                  v-model="titleDraft"
+                  class="pane-title-input"
+                  :class="{ 'pane-title-input-invalid': titleError }"
+                  type="text"
+                  :maxlength="MAX_PANE_TITLE_LENGTH"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="Use page title"
+                  :aria-label="`Device name for ${pane.title}`"
+                  :aria-invalid="titleError ? 'true' : 'false'"
+                  :aria-describedby="titleError ? statusId : undefined"
+                  @input="titleError = null"
+                  @blur="onTitleBlur"
+                  @keydown.esc.prevent="cancelRename"
+                />
+              </form>
+              <button
+                v-if="showViewportBadge"
+                class="pane-viewport-trigger"
+                type="button"
+                :data-preset="pane.viewport.preset"
+                :title="`Viewport preset: ${viewportLabel}`"
+                :aria-label="`Viewport preset for device ${pane.title}: ${viewportLabel}`"
+                aria-haspopup="menu"
+                :aria-expanded="viewportMenuOpen"
+                @click="openViewportMenu"
+              >
+                <span class="viewport-trigger-label">{{ viewportPresetName }}</span>
+                <span v-if="viewportSizeLabel" class="pane-viewport-size">
+                  {{ viewportSizeLabel }}
+                </span>
+                <svg class="pane-viewport-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                  <path d="m3 4.5 3 3 3-3" />
+                </svg>
+              </button>
 
-            <span
-              v-if="showViewportBadge"
-              class="pane-viewport-badge"
-              :title="`Viewport: ${viewportLabel}`"
-            >
-              {{ viewportLabel }}
-            </span>
-
-            <span
-              :id="statusId"
-              class="pane-status"
-              role="status"
-              aria-live="polite"
-              :title="titleError ?? addressError ?? pane.error ?? notice ?? undefined"
-            >
-              <template v-if="titleError">{{ titleError }}</template>
-              <template v-else-if="addressError">{{ addressError }}</template>
-              <template v-else-if="pane.error">Load failed</template>
-              <template v-else-if="notice">{{ notice }}</template>
-              <template v-else-if="pane.isLoading"><span class="sr-only">Loading</span></template>
-            </span>
+              <span
+                :id="statusId"
+                class="pane-status"
+                role="status"
+                aria-live="polite"
+                :title="titleError ?? addressError ?? pane.error ?? notice ?? undefined"
+              >
+                <template v-if="titleError">{{ titleError }}</template>
+                <template v-else-if="addressError">{{ addressError }}</template>
+                <template v-else-if="pane.error">Load failed</template>
+                <template v-else-if="notice">{{ notice }}</template>
+                <template v-else-if="pane.isLoading"><span class="sr-only">Loading</span></template>
+              </span>
+            </div>
           </div>
 
+          <div class="pane-actions">
+            <button
+              v-if="freeform"
+              class="icon-button"
+              type="button"
+              title="Bring device to front"
+              aria-label="Bring device to front"
+              @click="emit('raise-pane')"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 13V3M4 7l4-4 4 4" />
+              </svg>
+            </button>
+            <button
+              v-if="freeform"
+              class="icon-button"
+              type="button"
+              title="Send device to back"
+              aria-label="Send device to back"
+              @click="emit('lower-pane')"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 3v10M4 9l4 4 4-4" />
+              </svg>
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              title="Back"
+              aria-label="Go back"
+              :disabled="!pane.canGoBack"
+              @click="goBack"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M9.5 3.5 5 8l4.5 4.5" />
+              </svg>
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              title="Forward"
+              aria-label="Go forward"
+              :disabled="!pane.canGoForward"
+              @click="goForward"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M6.5 3.5 11 8l-4.5 4.5" />
+              </svg>
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              title="Reload device"
+              aria-label="Reload device"
+              @click="reload"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M12.6 6.3A5 5 0 1 0 13 8" />
+                <path d="M12.8 3.3v3.2H9.6" />
+              </svg>
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              title="Open in browser"
+              aria-label="Open in browser"
+              :disabled="pane.url === 'about:blank'"
+              @click="openExternal"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M9 3h4v4M13 3 7.5 8.5" />
+                <path d="M11.5 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1h2.5" />
+              </svg>
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              title="Device actions"
+              aria-label="Device actions"
+              @click="openMenu"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="3" cy="8" r="1.2" fill="currentColor" />
+                <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+                <circle cx="13" cy="8" r="1.2" fill="currentColor" />
+              </svg>
+            </button>
+            <button
+              class="icon-button"
+              type="button"
+              title="Close device (Delete)"
+              aria-label="Close device"
+              @click="requestClose"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="pane-address-row">
           <PaneNavigation
-            v-if="chromeStyle !== 'c'"
-            v-show="showNavigation"
             :pane="pane"
             :status-id="statusId"
+            :custom-viewport-request="customViewportRequest"
+            :show-viewport-trigger="false"
             @address-error="addressError = $event"
             @set-viewport="emit('set-viewport', $event)"
             @layout-changed="emit('layout-changed')"
           />
-        </div>
-
-        <div class="pane-actions">
-          <button
-            v-if="freeform"
-            class="icon-button"
-            type="button"
-            title="Bring device to front"
-            aria-label="Bring device to front"
-            @click="emit('raise-pane')"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M8 13V3M4 7l4-4 4 4" />
-            </svg>
-          </button>
-          <button
-            v-if="freeform"
-            class="icon-button"
-            type="button"
-            title="Send device to back"
-            aria-label="Send device to back"
-            @click="emit('lower-pane')"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M8 3v10M4 9l4 4 4-4" />
-            </svg>
-          </button>
-          <button
-            class="icon-button"
-            type="button"
-            title="Back"
-            aria-label="Go back"
-            :disabled="!pane.canGoBack"
-            @click="goBack"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M9.5 3.5 5 8l4.5 4.5" />
-            </svg>
-          </button>
-          <button
-            class="icon-button"
-            type="button"
-            title="Forward"
-            aria-label="Go forward"
-            :disabled="!pane.canGoForward"
-            @click="goForward"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M6.5 3.5 11 8l-4.5 4.5" />
-            </svg>
-          </button>
-          <button
-            class="icon-button"
-            type="button"
-            title="Reload device"
-            aria-label="Reload device"
-            @click="reload"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M12.6 6.3A5 5 0 1 0 13 8" />
-              <path d="M12.8 3.3v3.2H9.6" />
-            </svg>
-          </button>
-          <button
-            class="icon-button"
-            type="button"
-            title="Device actions"
-            aria-label="Device actions"
-            @click="openMenu"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="3" cy="8" r="1.2" fill="currentColor" />
-              <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-              <circle cx="13" cy="8" r="1.2" fill="currentColor" />
-            </svg>
-          </button>
-          <button
-            class="icon-button"
-            type="button"
-            title="Close device (Delete)"
-            aria-label="Close device"
-            @click="requestClose"
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-          </button>
         </div>
       </header>
     </div>
@@ -416,7 +470,7 @@ function requestClose(): void {
 .pane-header-shell {
   position: relative;
   flex: none;
-  height: calc(32px * var(--pane-zoom, 1));
+  height: calc(64px * var(--pane-zoom, 1));
   overflow: visible;
 }
 
@@ -425,13 +479,11 @@ function requestClose(): void {
   top: 0;
   left: 0;
   display: flex;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 0 4px;
+  flex-direction: column;
   width: var(--pane-world-width, 100%);
-  height: 32px;
-  min-height: 32px;
-  padding: 0 6px;
+  height: 64px;
+  min-height: 64px;
+  padding: 0;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   transform: scale(var(--pane-zoom, 1));
@@ -439,8 +491,50 @@ function requestClose(): void {
   container-type: inline-size;
 }
 
+.pane-header-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0 4px;
+  width: 100%;
+  height: 32px;
+  padding: 0 6px;
+}
+
+.pane-address-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  width: 100%;
+  height: 32px;
+  padding: 0 6px 2px;
+}
+
 .pane-card-c .pane-header {
   border-bottom-color: transparent;
+}
+
+.pane-drag-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 24px;
+  color: var(--text-faint);
+  opacity: 0.45;
+  cursor: grab;
+}
+
+.pane-drag-grip svg {
+  width: 6px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.pane-card-active .pane-drag-grip,
+.pane-card-canvas .pane-drag-grip {
+  opacity: 0.7;
 }
 
 .pane-card-canvas {
@@ -448,9 +542,15 @@ function requestClose(): void {
 }
 
 .pane-card-canvas .pane-header {
-  padding: 0 2px;
+  padding: 0;
   background: transparent;
   cursor: grab;
+}
+
+.pane-card-canvas .pane-header-row,
+.pane-card-canvas .pane-address-row {
+  padding-right: 2px;
+  padding-left: 2px;
 }
 
 .pane-card-canvas .pane-title-row {
@@ -458,18 +558,12 @@ function requestClose(): void {
   cursor: grab;
 }
 
-.pane-card-canvas .pane-profile {
-  display: none;
-}
-
-.pane-card-canvas .pane-viewport-badge {
-  padding: 0;
+.pane-card-canvas .pane-viewport-trigger {
   background: transparent;
-  color: var(--text-muted);
 }
 
 .pane-card-canvas .pane-actions {
-  margin-top: 3px;
+  margin-top: 0;
 }
 
 .pane-card-canvas .pane-body {
@@ -572,33 +666,52 @@ function requestClose(): void {
   outline-color: var(--danger);
 }
 
-.pane-profile {
+.pane-viewport-trigger {
   flex: none;
-  max-width: 96px;
-  overflow: hidden;
-  color: var(--text-faint);
-  font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pane-card-active .pane-profile {
-  color: var(--text-muted);
-}
-
-.pane-profile::before {
-  content: '· ';
-}
-
-.pane-viewport-badge {
-  flex: none;
-  padding: 1px 4px;
-  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 210px;
+  height: 22px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
   background: var(--surface-inset);
   color: var(--text-muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.pane-viewport-trigger:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.pane-viewport-trigger:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.viewport-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-viewport-size {
+  color: var(--text-faint);
+}
+
+.pane-viewport-chevron {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .pane-status {
@@ -620,7 +733,7 @@ function requestClose(): void {
   display: inline-flex;
   align-items: center;
   gap: 0;
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .icon-button {
@@ -820,7 +933,7 @@ function requestClose(): void {
 }
 
 @container (max-width: 470px) {
-  .pane-profile {
+  .pane-viewport-size {
     display: none;
   }
 }
