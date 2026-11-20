@@ -731,9 +731,17 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       width: window.innerWidth,
       height: window.innerHeight
     }))
+    const aliceZoom = await shellPage
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+      .evaluate((element) => Number(getComputedStyle(element).getPropertyValue('--pane-zoom')))
     expect(aliceDomRect).toBeTruthy()
-    expect(Math.abs(aliceViewport.width - (aliceDomRect?.rect.width ?? 0))).toBeLessThanOrEqual(1)
-    expect(Math.abs(aliceViewport.height - (aliceDomRect?.rect.height ?? 0))).toBeLessThanOrEqual(1)
+    expect(aliceZoom).toBeGreaterThan(0)
+    expect(
+      Math.abs(aliceViewport.width * aliceZoom - (aliceDomRect?.rect.width ?? 0))
+    ).toBeLessThanOrEqual(1)
+    expect(
+      Math.abs(aliceViewport.height * aliceZoom - (aliceDomRect?.rect.height ?? 0))
+    ).toBeLessThanOrEqual(1)
 
     // Canvas is the only workspace layout now. There is no Grid/Freeform
     // switcher and no grid-column control.
@@ -1206,7 +1214,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const fittedCards = await shellPage.locator('.pane-card').evaluateAll((cards) =>
       cards.map((card) => card.getBoundingClientRect().toJSON())
     )
-    if (!fittedWorkspace || fittedCards.length !== 2) {
+    const zoomBar = await getZoomState(app as ElectronApplication)
+    if (!fittedWorkspace || fittedCards.length !== 2 || !zoomBar) {
       throw new Error('Canvas fit-all bounds are unavailable')
     }
     for (const card of fittedCards) {
@@ -1216,6 +1225,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       expect(card.y + card.height).toBeLessThanOrEqual(
         fittedWorkspace.y + fittedWorkspace.height + 1
       )
+      // Fit all keeps devices above the bottom canvas bar with clearance.
+      expect(card.y + card.height).toBeLessThanOrEqual(zoomBar.bounds.y - 8)
     }
 
     // The overview collapses to a compact header while remaining available,
@@ -1492,6 +1503,22 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         paneId,
         '({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio })'
       )
+    const paneInputMedia = (paneId: string) =>
+      evaluateInPane<{
+        scrollbarWidth: number
+        maxTouchPoints: number
+        hover: boolean
+        pointerCoarse: boolean
+      }>(
+        app as ElectronApplication,
+        paneId,
+        `({
+          scrollbarWidth: window.innerWidth - document.documentElement.clientWidth,
+          maxTouchPoints: navigator.maxTouchPoints,
+          hover: matchMedia('(hover: hover)').matches,
+          pointerCoarse: matchMedia('(pointer: coarse)').matches
+        })`
+      )
     const aliceMetrics = () => paneMetrics(alicePaneId as string)
     const bobMetrics = () => paneMetrics(bobPaneId as string)
 
@@ -1556,6 +1583,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'data-preset',
       'mobile'
     )
+    await expect(mobileHeader.locator('.pane-device-type')).toHaveText('Phone')
+    await expect(mobileHeader.locator('.pane-resolution')).toHaveText('390 × 844')
+    await expect.poll(() => paneInputMedia(alicePaneId as string)).toMatchObject({
+      scrollbarWidth: 0,
+      maxTouchPoints: 5,
+      hover: false,
+      pointerCoarse: true
+    })
     await expect
       .poll(() =>
         mobileHeader.evaluate((header) => {
@@ -1608,8 +1643,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(pixelEmulation?.enabled).toBe(true)
     expect(pixelEmulation?.scale).toBeGreaterThan(0)
     expect(pixelEmulation?.scale).toBeLessThanOrEqual(1)
-    // The per-pane viewport trigger carries the preset name and dimensions
-    // without reflowing the pane header as presets change.
+    // The per-pane viewport trigger carries the preset name; the full
+    // dimensions stay in the tooltip and second-row resolution.
     const aliceViewportTrigger = shellPage.locator(
       `.pane-card[data-pane-id="${alicePaneId}"] .pane-viewport-trigger`
     )
@@ -1648,6 +1683,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'custom viewport state'
     )
     await expect.poll(aliceMetrics).toMatchObject({ width: 500, height: 1000, dpr: 2 })
+    await expect.poll(() => paneInputMedia(alicePaneId as string)).toMatchObject({
+      maxTouchPoints: 0,
+      hover: true,
+      pointerCoarse: false
+    })
     const customFitEmulation = await getEmulationState(app, alicePaneId as string)
     expect(customFitEmulation?.enabled).toBe(true)
     expect(customFitEmulation?.scale).toBeGreaterThan(0)
@@ -1705,6 +1745,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         evaluateInPane<string>(app as ElectronApplication, alicePaneId as string, 'navigator.userAgent')
       )
       .not.toContain('iPhone')
+    await expect.poll(() => paneInputMedia(alicePaneId as string)).toMatchObject({
+      maxTouchPoints: 0,
+      hover: true,
+      pointerCoarse: false
+    })
 
     // The other pane keeps its emulated viewport until changed.
     await expect.poll(bobMetrics).toMatchObject({ width: 820, height: 1180, dpr: 2 })
@@ -2338,21 +2383,23 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[0]?.viewport.preset === 'iphone-se',
       'iPhone SE viewport before restart'
     )
+    await waitForAlignedBounds(app)
 
     const canvasBeforeDrag = (await getSnapshot(app as ElectronApplication)).layout.canvas?.[
       alicePaneId as string
     ]
-    const canvasHeader = await remainingAliceCard.locator('.pane-title-row').boundingBox()
+    const canvasHeader = await remainingAliceCard.locator('.pane-title').boundingBox()
     if (!canvasHeader || !canvasBeforeDrag) {
       throw new Error('Canvas pane header is unavailable before restart')
     }
+    const dragStartX = canvasHeader.x + Math.min(10, canvasHeader.width / 2)
     await shellPage.mouse.move(
-      canvasHeader.x + 30,
+      dragStartX,
       canvasHeader.y + canvasHeader.height / 2
     )
     await shellPage.mouse.down()
     await shellPage.mouse.move(
-      canvasHeader.x + 130,
+      dragStartX + 100,
       canvasHeader.y + canvasHeader.height / 2,
       { steps: 10 }
     )
@@ -2898,7 +2945,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await clickAppMenuCommand(restartApp, 'workspace-manage')
     await expect(workspacesDialog).toBeVisible()
     const renamedWorkspaceRow = workspaceRowById(secondWorkspaceId)
-    await renamedWorkspaceRow.getByRole('button', { name: /^Rename/ }).click()
+    await renamedWorkspaceRow
+      .getByRole('button', { name: /^Workspace actions for/ })
+      .click()
+    await restartShell.getByRole('menuitem', { name: 'Rename', exact: true }).click()
     await renamedWorkspaceRow.getByLabel('Workspace name').fill('Responsive QA')
     await renamedWorkspaceRow.getByRole('button', { name: 'Save' }).click()
     await expect(renamedWorkspaceRow.locator('.workspace-label-text')).toHaveText('Responsive QA')
@@ -2910,8 +2960,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await clickAppMenuCommand(restartApp, 'workspace-manage')
     await expect(workspacesDialog).toBeVisible()
     await workspaceRowById(secondWorkspaceId)
-      .getByRole('button', { name: /^Duplicate/ })
+      .getByRole('button', { name: /^Workspace actions for/ })
       .click()
+    await restartShell.getByRole('menuitem', { name: 'Duplicate', exact: true }).click()
     const copyWorkspaceId = await waitFor(
       () => workspaceIdByName('Responsive QA copy').catch(() => ''),
       (id) => id.length > 0,
@@ -3038,7 +3089,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(workspacesDialog).toBeVisible()
     for (const id of [copyWorkspaceId, secondWorkspaceId]) {
       const row = workspaceRowById(id)
-      await row.getByRole('button', { name: /^Delete workspace/ }).click()
+      await row.getByRole('button', { name: /^Workspace actions for/ }).click()
+      await restartShell.getByRole('menuitem', { name: 'Delete', exact: true }).click()
       await row.getByRole('button', { name: 'Delete workspace', exact: true }).click()
       await expect(row).toHaveCount(0)
     }

@@ -12,6 +12,7 @@ import {
   CANVAS_SNAP_THRESHOLD,
   arrangeCanvasFrames,
   canvasPaneIdsInRect,
+  clampCanvasPaneTop,
   defaultCanvasPositions,
   canvasFrameSize,
   duplicateCanvasPosition,
@@ -86,6 +87,37 @@ import {
 type LayoutMode = 'grid' | 'freeform' | 'canvas'
 
 const CANVAS_FIT_PADDING = 24
+const CANVAS_BOTTOM_BAR_GAP = 12
+const CANVAS_BOTTOM_BAR_INSET =
+  CANVAS_ZOOM_MARGIN + CANVAS_ZOOM_BAR_HEIGHT + CANVAS_BOTTOM_BAR_GAP
+
+interface CanvasViewportRect {
+  left: number
+  top: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+  centerX: number
+  centerY: number
+}
+
+function canvasViewportRect(): CanvasViewportRect {
+  const left = CANVAS_FIT_PADDING
+  const top = CANVAS_FIT_PADDING
+  const right = Math.max(left + 1, workspaceSize.value.width - CANVAS_FIT_PADDING)
+  const bottom = Math.max(top + 1, workspaceSize.value.height - CANVAS_BOTTOM_BAR_INSET)
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+    centerX: (left + right) / 2,
+    centerY: (top + bottom) / 2
+  }
+}
 
 interface CanvasDragState {
   startX: number
@@ -175,6 +207,7 @@ const appMenuMode = ref<
   | 'pane'
   | 'viewport'
   | 'clear-site-data'
+  | 'workspace'
   | null
 >(null)
 const paneMenuPaneId = ref<string | null>(null)
@@ -208,6 +241,7 @@ const workspaceDeleteId = ref<string | null>(null)
 const renamingWorkspaceId = ref<string | null>(null)
 const workspaceRenameDraft = ref('')
 const newWorkspaceName = ref('')
+const workspaceMenuId = ref<string | null>(null)
 const workspacesDialogEl = ref<HTMLElement | null>(null)
 const currentWorkspaceId = ref<string | null>(null)
 const themePreference = ref<ThemePreference>('system')
@@ -810,6 +844,49 @@ const clearSiteDataMenuModel = computed<AppMenuModel>(() => {
             id: 'clear-site-data:cancel',
             label: 'Cancel',
             separatorBefore: true
+          }
+        ]
+      }
+    ]
+  }
+})
+
+const workspaceMenuModel = computed<AppMenuModel>(() => {
+  const workspace = workspaces.value.find((entry) => entry.id === workspaceMenuId.value)
+  const unavailable = !workspace || workspaceBusy.value
+  return {
+    label: workspace ? `Workspace actions for ${workspace.name}` : 'Workspace actions',
+    sections: [
+      {
+        label: workspace?.name,
+        items: [
+          {
+            id: 'workspace-menu:switch',
+            label: 'Switch',
+            icon: 'workspaces',
+            disabled: unavailable || workspace?.active === true
+          },
+          {
+            id: 'workspace-menu:rename',
+            label: 'Rename',
+            icon: 'rename',
+            disabled: unavailable
+          },
+          {
+            id: 'workspace-menu:duplicate',
+            label: 'Duplicate',
+            icon: 'duplicate',
+            disabled: unavailable
+          },
+          {
+            id: 'workspace-menu:delete',
+            label: 'Delete',
+            icon: 'close',
+            separatorBefore: true,
+            disabled:
+              unavailable ||
+              workspace?.active === true ||
+              workspaces.value.length <= 1
           }
         ]
       }
@@ -1428,29 +1505,40 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
       proximityThreshold: CANVAS_PROXIMITY_THRESHOLD / canvasZoom.value
     }
   )
+  // Keep the pane header below the top workspace edge while dragging. Canvas
+  // panning can still move content off-screen intentionally; Fit all and pane
+  // selection remain the recovery paths.
+  const clamped = clampCanvasPaneTop(
+    { x: snapped.x, y: snapped.y },
+    canvasPan.value,
+    canvasZoom.value,
+    CANVAS_FIT_PADDING
+  )
+  const topClamped = clamped.y !== snapped.y
 
   canvasPositions.value = {
     ...canvasPositions.value,
-    [drag.paneId]: {
-      x: snapped.x,
-      y: snapped.y
-    }
+    [drag.paneId]: clamped
   }
   guides.value = {
     vertical: snapped.guides.vertical.map(
       (guide) => canvasPan.value.x + guide * canvasZoom.value
     ),
-    horizontal: snapped.guides.horizontal.map(
-      (guide) => canvasPan.value.y + guide * canvasZoom.value
-    )
+    horizontal: topClamped
+      ? []
+      : snapped.guides.horizontal.map(
+          (guide) => canvasPan.value.y + guide * canvasZoom.value
+        )
   }
   proximityGuides.value = {
     vertical: snapped.proximity.vertical.map(
       (guide) => canvasPan.value.x + guide * canvasZoom.value
     ),
-    horizontal: snapped.proximity.horizontal.map(
-      (guide) => canvasPan.value.y + guide * canvasZoom.value
-    )
+    horizontal: topClamped
+      ? []
+      : snapped.proximity.horizontal.map(
+          (guide) => canvasPan.value.y + guide * canvasZoom.value
+        )
   }
 }
 
@@ -1894,19 +1982,18 @@ function fitCanvasToPanes(): void {
   }
   const worldWidth = Math.max(1, maxX - minX)
   const worldHeight = Math.max(1, maxY - minY)
-  const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
-  const availableHeight = Math.max(1, workspaceSize.value.height - CANVAS_FIT_PADDING * 2)
+  const viewport = canvasViewportRect()
   const zoom = Math.min(
     CANVAS_MAX_ZOOM,
     Math.max(
       CANVAS_MIN_ZOOM,
-      Math.min(availableWidth / worldWidth, availableHeight / worldHeight, 1)
+      Math.min(viewport.width / worldWidth, viewport.height / worldHeight, 1)
     )
   )
   canvasZoom.value = zoom
   canvasPan.value = {
-    x: Math.round(workspaceSize.value.width / 2 - (minX + worldWidth / 2) * zoom),
-    y: Math.round(workspaceSize.value.height / 2 - (minY + worldHeight / 2) * zoom)
+    x: Math.round(viewport.centerX - (minX + worldWidth / 2) * zoom),
+    y: Math.round(viewport.centerY - (minY + worldHeight / 2) * zoom)
   }
   syncCanvasZoomToMain(zoom)
   saveCanvasViewNow()
@@ -1919,25 +2006,19 @@ function focusCanvasPane(paneId: string): void {
   if (!frame) {
     return
   }
-  const availableWidth = Math.max(1, workspaceSize.value.width - CANVAS_FIT_PADDING * 2)
-  const availableHeight = Math.max(
-    1,
-    workspaceSize.value.height - CANVAS_FIT_PADDING * 2
-  )
+  const viewport = canvasViewportRect()
   const fitZoom = Math.min(
     CANVAS_MAX_ZOOM,
     Math.max(
       CANVAS_MIN_ZOOM,
-      Math.min(availableWidth / frame.width, availableHeight / frame.height, 1)
+      Math.min(viewport.width / frame.width, viewport.height / frame.height, 1)
     )
   )
   const zoom = Math.min(canvasZoom.value, fitZoom)
-  const screenWidth = frame.width * zoom
-  const screenHeight = frame.height * zoom
   canvasZoom.value = zoom
   canvasPan.value = {
-    x: Math.round((workspaceSize.value.width - screenWidth) / 2 - frame.x * zoom),
-    y: Math.round((workspaceSize.value.height - screenHeight) / 2 - frame.y * zoom)
+    x: Math.round(viewport.centerX - (frame.x + frame.width / 2) * zoom),
+    y: Math.round(viewport.centerY - (frame.y + frame.height / 2) * zoom)
   }
   selectPane(paneId)
   syncCanvasZoomToMain(zoom)
@@ -1955,25 +2036,23 @@ function revealCanvasPane(paneId: string): void {
   const screenHeight = frame.height * zoom
   const left = canvasPan.value.x + frame.x * zoom
   const top = canvasPan.value.y + frame.y * zoom
-  const viewportWidth = workspaceSize.value.width
-  const viewportHeight = workspaceSize.value.height
-  const margin = Math.min(CANVAS_FIT_PADDING, Math.max(16, Math.min(viewportWidth, viewportHeight) / 10))
+  const viewport = canvasViewportRect()
 
   let dx = 0
   let dy = 0
-  if (screenWidth > viewportWidth - margin * 2) {
-    dx = Math.round((viewportWidth - screenWidth) / 2 - left)
-  } else if (left < margin) {
-    dx = Math.round(margin - left)
-  } else if (left + screenWidth > viewportWidth - margin) {
-    dx = Math.round(viewportWidth - margin - (left + screenWidth))
+  if (screenWidth > viewport.width) {
+    dx = Math.round(viewport.centerX - screenWidth / 2 - left)
+  } else if (left < viewport.left) {
+    dx = Math.round(viewport.left - left)
+  } else if (left + screenWidth > viewport.right) {
+    dx = Math.round(viewport.right - (left + screenWidth))
   }
-  if (screenHeight > viewportHeight - margin * 2) {
-    dy = Math.round((viewportHeight - screenHeight) / 2 - top)
-  } else if (top < margin) {
-    dy = Math.round(margin - top)
-  } else if (top + screenHeight > viewportHeight - margin) {
-    dy = Math.round(viewportHeight - margin - (top + screenHeight))
+  if (screenHeight > viewport.height) {
+    dy = Math.round(viewport.centerY - screenHeight / 2 - top)
+  } else if (top < viewport.top) {
+    dy = Math.round(viewport.top - top)
+  } else if (top + screenHeight > viewport.bottom) {
+    dy = Math.round(viewport.bottom - (top + screenHeight))
   }
 
   selectPane(paneId)
@@ -2085,11 +2164,12 @@ function centerCanvasPane(paneId: string): void {
   if (!frame) {
     return
   }
+  const viewport = canvasViewportRect()
   const screenWidth = frame.width * canvasZoom.value
   const screenHeight = frame.height * canvasZoom.value
   canvasPan.value = {
-    x: Math.round((workspaceSize.value.width - screenWidth) / 2) - frame.x * canvasZoom.value,
-    y: Math.round((workspaceSize.value.height - screenHeight) / 2) - frame.y * canvasZoom.value
+    x: Math.round(viewport.centerX - screenWidth / 2) - frame.x * canvasZoom.value,
+    y: Math.round(viewport.centerY - screenHeight / 2) - frame.y * canvasZoom.value
   }
   selectPane(paneId)
   void nextTick(scheduleMeasure)
@@ -2485,11 +2565,12 @@ async function openAppMenu(
     | 'arrange'
     | 'pane'
     | 'viewport'
-    | 'clear-site-data',
+    | 'clear-site-data'
+    | 'workspace',
   anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
-  if (workspacesOpen.value) {
+  if (workspacesOpen.value && mode !== 'workspace') {
     return
   }
   if (mode !== 'pane' && mode !== 'viewport' && mode !== 'clear-site-data') {
@@ -2571,6 +2652,23 @@ async function openViewportMenu(paneId: string, trigger: HTMLElement): Promise<v
   )
 }
 
+async function openWorkspaceMenu(workspace: WorkspaceSummary, trigger: HTMLElement): Promise<void> {
+  workspaceMenuId.value = workspace.id
+  const rect = trigger.getBoundingClientRect()
+  await openAppMenu(
+    'workspace',
+    { x: rect.right, y: rect.bottom + 4, align: 'end' },
+    trigger
+  )
+}
+
+function onWorkspaceMenuClick(workspace: WorkspaceSummary, event: MouseEvent): void {
+  const trigger = event.currentTarget
+  if (trigger instanceof HTMLElement) {
+    void openWorkspaceMenu(workspace, trigger)
+  }
+}
+
 function closeAppMenu(restoreFocus = true): void {
   if (!appMenuMode.value) {
     return
@@ -2578,6 +2676,7 @@ function closeAppMenu(restoreFocus = true): void {
   appMenuMode.value = null
   appMenuBounds.value = null
   paneMenuPaneId.value = null
+  workspaceMenuId.value = null
   const target = appMenuReturnFocus
   appMenuReturnFocus = null
   syncCanvasMinimapVisibility()
@@ -2730,6 +2829,25 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
 }
 
 function onAppMenuSelect(id: string): void {
+  if (id.startsWith('workspace-menu:')) {
+    const workspace = workspaces.value.find((entry) => entry.id === workspaceMenuId.value)
+    const action = id.slice('workspace-menu:'.length)
+    closeAppMenu()
+    if (!workspace) {
+      return
+    }
+    if (action === 'switch') {
+      void switchToWorkspace(workspace)
+    } else if (action === 'rename') {
+      startWorkspaceRename(workspace)
+    } else if (action === 'duplicate') {
+      void duplicateWorkspace(workspace)
+    } else if (action === 'delete') {
+      requestWorkspaceDelete(workspace)
+    }
+    return
+  }
+
   if (id.startsWith('pane:')) {
     const paneId = paneMenuPaneId.value
     closeAppMenu(false)
@@ -3039,6 +3157,10 @@ function openWorkspaces(): void {
 }
 
 function closeWorkspaces(): void {
+  if (appMenuMode.value === 'workspace') {
+    closeAppMenu(false)
+  }
+  workspaceMenuId.value = null
   workspacesOpen.value = false
   workspaces.value = []
   workspacesLoading.value = false
@@ -3269,6 +3391,9 @@ async function switchToWorkspace(workspace: WorkspaceSummary): Promise<void> {
 function onWorkspacesKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
     event.preventDefault()
+    if (appMenuMode.value === 'workspace') {
+      return
+    }
     if (renamingWorkspaceId.value) {
       cancelWorkspaceRename()
     } else if (workspaceDeleteId.value) {
@@ -4245,7 +4370,11 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
-    <div v-if="workspacesOpen" class="modal-backdrop" @click.self="closeWorkspaces">
+    <div
+      v-if="workspacesOpen"
+      class="modal-backdrop workspace-dialog-backdrop"
+      @click.self="closeWorkspaces"
+    >
       <section
         ref="workspacesDialogEl"
         class="profiles-dialog workspace-dialog"
@@ -4257,12 +4386,10 @@ onBeforeUnmount(() => {
         @keydown="onWorkspacesKeydown"
       >
         <div class="profiles-header">
-          <div>
-            <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
-            <p id="workspaces-description" class="profiles-description">
-              Each workspace keeps its own devices, layout, URLs, and viewport settings.
-            </p>
-          </div>
+          <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
+          <p id="workspaces-description" class="sr-only">
+            Each workspace keeps its own devices, layout, URLs, and viewport settings.
+          </p>
           <button
             class="icon-button"
             type="button"
@@ -4311,35 +4438,47 @@ onBeforeUnmount(() => {
             class="profile-row workspace-row"
             :data-workspace-id="workspace.id"
           >
-            <div class="profile-info">
-              <div v-if="renamingWorkspaceId === workspace.id" class="profile-rename-form">
-                <input
-                  v-model="workspaceRenameDraft"
-                  class="profile-rename-input workspace-rename-input"
-                  type="text"
-                  maxlength="80"
-                  autocomplete="off"
-                  aria-label="Workspace name"
-                  @input="workspaceError = null"
-                />
-                <button
-                  class="text-button"
-                  type="button"
-                  :disabled="workspaceBusy"
-                  @click="submitWorkspaceRename(workspace)"
-                >
-                  Save
-                </button>
-                <button
-                  class="text-button"
-                  type="button"
-                  :disabled="workspaceBusy"
-                  @click="cancelWorkspaceRename"
-                >
-                  Cancel
-                </button>
-              </div>
-              <span v-else class="profile-label">
+            <div v-if="renamingWorkspaceId === workspace.id" class="profile-rename-form">
+              <input
+                v-model="workspaceRenameDraft"
+                class="profile-rename-input workspace-rename-input"
+                type="text"
+                maxlength="80"
+                autocomplete="off"
+                aria-label="Workspace name"
+                @input="workspaceError = null"
+              />
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy"
+                @click="submitWorkspaceRename(workspace)"
+              >
+                Save
+              </button>
+              <button
+                class="text-button"
+                type="button"
+                :disabled="workspaceBusy"
+                @click="cancelWorkspaceRename"
+              >
+                Cancel
+              </button>
+            </div>
+            <button
+              v-else
+              class="workspace-select"
+              type="button"
+              :class="{ 'workspace-select-active': workspace.active }"
+              :aria-label="
+                workspace.active
+                  ? `Workspace ${workspace.name} is active`
+                  : `Switch to workspace ${workspace.name}`
+              "
+              :aria-disabled="workspaceBusy || workspace.active ? 'true' : undefined"
+              @click="switchToWorkspace(workspace)"
+            >
+              <span class="profile-label">
                 <span class="workspace-label-text">{{ workspace.name }}</span>
                 <span v-if="workspace.active" class="workspace-badge">Active</span>
               </span>
@@ -4347,46 +4486,25 @@ onBeforeUnmount(() => {
                 {{ workspace.paneCount }} {{ workspace.paneCount === 1 ? 'device' : 'devices' }} ·
                 Updated {{ formatProfileDate(workspace.updatedAt) }}
               </span>
-            </div>
+            </button>
 
-            <div v-if="renamingWorkspaceId !== workspace.id" class="profile-controls">
-              <button
-                class="text-button"
-                type="button"
-                :disabled="workspaceBusy || workspace.active"
-                :aria-label="`Switch to workspace ${workspace.name}`"
-                @click="switchToWorkspace(workspace)"
-              >
-                Switch
-              </button>
-              <button
-                class="text-button"
-                type="button"
-                :disabled="workspaceBusy"
-                :aria-label="`Rename workspace ${workspace.name}`"
-                @click="startWorkspaceRename(workspace)"
-              >
-                Rename
-              </button>
-              <button
-                class="text-button"
-                type="button"
-                :disabled="workspaceBusy"
-                :aria-label="`Duplicate workspace ${workspace.name}`"
-                @click="duplicateWorkspace(workspace)"
-              >
-                Duplicate
-              </button>
-              <button
-                class="text-button text-button-danger"
-                type="button"
-                :disabled="workspaceBusy || workspace.active || workspaces.length <= 1"
-                :aria-label="`Delete workspace ${workspace.name}`"
-                @click="requestWorkspaceDelete(workspace)"
-              >
-                Delete
-              </button>
-            </div>
+            <button
+              v-if="renamingWorkspaceId !== workspace.id"
+              class="icon-button workspace-more"
+              type="button"
+              title="Workspace actions"
+              :aria-label="`Workspace actions for ${workspace.name}`"
+              aria-haspopup="menu"
+              :aria-expanded="workspaceMenuId === workspace.id"
+              :disabled="workspaceBusy"
+              @click="onWorkspaceMenuClick(workspace, $event)"
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="3" cy="8" r="1.1" />
+                <circle cx="8" cy="8" r="1.1" />
+                <circle cx="13" cy="8" r="1.1" />
+              </svg>
+            </button>
 
             <div
               v-if="workspaceDeleteId === workspace.id"
@@ -4436,7 +4554,6 @@ onBeforeUnmount(() => {
             >
               Export active
             </button>
-            <button class="text-button" type="button" @click="closeWorkspaces">Close</button>
           </div>
         </footer>
       </section>
@@ -4572,11 +4689,19 @@ onBeforeUnmount(() => {
                     ? paneMenuModel
                     : appMenuMode === 'clear-site-data'
                       ? clearSiteDataMenuModel
-                      : canvasMenuModel
+                      : appMenuMode === 'workspace'
+                        ? workspaceMenuModel
+                        : canvasMenuModel
       "
       :anchor="appMenuAnchor"
       :placement="isBottomBarMenu() ? 'above' : 'below'"
-      :width="isBottomBarMenu() ? CANVAS_ZOOM_MENU_WIDTH : undefined"
+      :width="
+        isBottomBarMenu()
+          ? CANVAS_ZOOM_MENU_WIDTH
+          : appMenuMode === 'workspace'
+            ? 176
+            : undefined
+      "
       @select="onAppMenuSelect"
       @close="closeAppMenu()"
       @bounds="onAppMenuBounds"
@@ -5067,17 +5192,31 @@ onBeforeUnmount(() => {
   font-size: 10.5px;
 }
 
+.workspace-dialog-backdrop {
+  background: rgba(18, 18, 17, 0.2);
+}
+
 .profiles-dialog {
   display: flex;
   flex-direction: column;
-  width: min(660px, 100%);
-  max-height: min(740px, calc(100vh - 48px));
+  width: min(460px, 100%);
+  max-height: min(70vh, 620px);
   overflow: hidden;
+  padding: 6px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   background: var(--surface);
   color: var(--text);
   outline: none;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme='dark'] .profiles-dialog {
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.46),
+    0 2px 10px rgba(0, 0, 0, 0.36);
 }
 
 .profiles-dialog:focus-visible {
@@ -5087,32 +5226,42 @@ onBeforeUnmount(() => {
 
 .profiles-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  padding: 3px 4px 6px 8px;
+}
+
+.profiles-header .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.profiles-header .icon-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
 }
 
 .profiles-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
 .profiles-description {
-  max-width: 62ch;
-  margin: 4px 0 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.45;
+  margin: 0;
 }
 
 .profiles-message {
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  margin: 0 2px 6px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -5127,9 +5276,9 @@ onBeforeUnmount(() => {
 }
 
 .profiles-empty {
-  padding: 26px 16px;
+  padding: 18px 8px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
   text-align: center;
 }
 
@@ -5145,21 +5294,46 @@ onBeforeUnmount(() => {
 .profile-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 14px;
-  align-items: start;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  gap: 2px;
+  align-items: center;
+  padding: 1px 2px;
+  border-radius: 6px;
 }
 
-.profile-row:first-child {
-  border-top: none;
+.profile-row:hover {
+  background: var(--surface-inset);
 }
 
-.profile-info {
+.profile-row:has(.workspace-select-active):hover {
+  background: transparent;
+}
+
+.workspace-select {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
+  padding: 6px 7px;
+  border-radius: 5px;
+  text-align: left;
+}
+
+.workspace-select-active {
+  cursor: default;
+}
+
+.workspace-more {
+  width: 24px;
+  height: 24px;
+  margin-right: 2px;
+  color: var(--text-faint);
+}
+
+.workspace-more svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  stroke: none;
 }
 
 .profile-label {
@@ -5173,7 +5347,7 @@ onBeforeUnmount(() => {
 .profile-meta,
 .profile-usage {
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 10.5px;
   line-height: 1.4;
 }
 
@@ -5185,35 +5359,20 @@ onBeforeUnmount(() => {
   color: var(--accent-strong);
 }
 
-.profile-controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.profile-controls .text-button,
-.profile-confirm .text-button,
-.profile-rename-form .text-button {
-  margin-top: 0;
-  padding: 3px 8px;
-  font-size: 11.5px;
-}
-
-.text-button-danger {
-  color: var(--danger);
-}
-
-.text-button-danger:hover:not(:disabled) {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
 .profile-rename-form {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
+  padding: 4px 6px;
+}
+
+.profile-rename-form .text-button,
+.profile-confirm .text-button {
+  margin-top: 0;
+  padding: 2px 7px;
+  font-size: 11px;
 }
 
 .profile-rename-input {
@@ -5238,13 +5397,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 6px 7px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-inset);
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -5252,33 +5411,34 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 8px;
+  padding: 6px 4px 2px;
   border-top: 1px solid var(--border);
 }
 
 .profiles-count {
   color: var(--text-faint);
-  font-size: 11.5px;
+  font-size: 10.5px;
 }
 
 .workspace-create {
   display: flex;
   gap: 6px;
-  padding: 10px 16px;
+  margin-bottom: 2px;
+  padding: 4px 2px 6px;
   border-bottom: 1px solid var(--border);
 }
 
 .workspace-name-input {
   flex: 1;
   min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid transparent;
   border-radius: 5px;
   background: var(--surface-inset);
   color: var(--text);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .workspace-name-input:focus {
@@ -5289,8 +5449,8 @@ onBeforeUnmount(() => {
 
 .workspace-create .text-button {
   margin-top: 0;
-  padding: 3px 10px;
-  font-size: 11.5px;
+  padding: 2px 8px;
+  font-size: 11px;
 }
 
 .workspace-badge {
@@ -5320,8 +5480,8 @@ onBeforeUnmount(() => {
 
 .workspace-footer-actions .text-button {
   margin-top: 0;
-  padding: 3px 8px;
-  font-size: 11.5px;
+  padding: 2px 6px;
+  font-size: 11px;
 }
 
 @media (max-width: 820px) {

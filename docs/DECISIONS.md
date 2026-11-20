@@ -285,7 +285,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-010 — Viewport emulation uses desktop positioning and a display-only scale
 
-- **Status:** Accepted; the fit/actual mode choice is superseded by ADR-028
+- **Status:** Accepted; the fit/actual mode choice is superseded by ADR-028, and the desktop-only emulation mechanism by ADR-064
 - **Date:** 2026-11-18
 - **Context:** `SPEC.md` §10 requires per-pane viewport presets, custom dimensions, a device scale factor, and fit/actual display scale modes. The emulated CSS viewport must match the configured values even when visual fit changes the rendered size. Electron 45 exposes `webContents.enableDeviceEmulation` with `screenPosition`, `screenSize`, `viewPosition`, `deviceScaleFactor`, `viewSize`, and `scale`.
 
@@ -1931,6 +1931,199 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e and accessibility tests verify per-pane address inputs, the Add-only toolbar, two-row containment at 390 × 844, focus order, and `Cmd/Ctrl+L` target.
   - The full workspace/session restart test still restores URLs and viewport state.
+
+## ADR-064 — Phone and tablet presets use mobile metrics and touch input
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** A pane set to a phone preset still showed desktop behavior: a classic 15 px scrollbar, `hover: hover`, `pointer: fine`, and `maxTouchPoints: 0`. The viewport dimensions were correct, but sites and media queries could tell the pane was a desktop browser. Electron's `enableDeviceEmulation` uses a desktop screen position by default and did not expose touch behavior.
+
+- **Decision:**
+  1. Classify phone and tablet presets in `src/shared/viewports.ts` as mobile-behavior viewports; desktop, responsive, and custom viewports stay desktop.
+  2. Apply fixed viewports with Chromium's `Emulation.setDeviceMetricsOverride` over the attached debugger, using `mobile: true` for phone/tablet and `mobile: false` for desktop presets.
+  3. Enable `Emulation.setTouchEmulationEnabled` with five touch points for phone/tablet presets and disable it otherwise.
+  4. Use the same CDP path for fixed and Canvas-zoomed responsive emulation, and `Emulation.clearDeviceMetricsOverride` when a responsive pane returns to 100% Canvas zoom. Mixing Electron's `enableDeviceEmulation` with CDP metrics left stale overrides when switching presets.
+  5. Keep the exact CSS viewport and fit scale. Mobile metrics must not reintroduce Chromium's 980 px fallback layout.
+
+- **Alternatives considered:**
+  - **`screenPosition: 'mobile'` through Electron's API.** Rejected; it reported a 981 px layout for the fixture despite a 375 px preset.
+  - **Keep desktop behavior and only swap the user agent.** Rejected; the scrollbar and media-query signal still identify a desktop browser.
+  - **Apply touch emulation to every preset.** Rejected; desktop and responsive panes should keep normal pointer behavior.
+
+- **Consequences:**
+  - Phone/tablet panes render mobile scrollbars, honor viewport meta tags, and report `hover: none` and `pointer: coarse`.
+  - Desktop/responsive panes keep classic scrollbars and fine-pointer behavior.
+  - Pane teardown must detach or release the debugger session with the owned `webContents`; the existing close lifecycle already destroys the view.
+  - Debugger attach failures are logged once per pane and do not block navigation.
+
+- **Evidence / verification:**
+  - A running-app probe at iPhone SE reports 375 × 667, `scrollbarWidth: 0`, `maxTouchPoints: 5`, `hover: false`, `pointerFine: false`, and `pointerCoarse: true`.
+  - The same probe confirms switching back to Responsive restores 0 touch points and fine-pointer media.
+  - Unit tests cover the mobile-behavior classification; the full e2e suite covers preset switching, responsive clearing, and pane teardown.
+
+## ADR-065 — Show viewport class and resolution in the pane header
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The viewport trigger carried the preset name and dimensions, which crowded the first header row at narrow widths. The active preset did not state whether it was a phone, tablet, or desktop surface, and the dimensions disappeared below 470 px.
+
+- **Decision:**
+  1. Keep the preset name in the first row's viewport trigger.
+  2. Use the second row for a compact viewport class label on the left (`Phone`, `Tablet`, `Desktop`, `Responsive`, or `Custom`) and the CSS resolution on the right (`390 × 844`).
+  3. Center the address input between those labels at rest.
+  4. Hide both side labels while the inline custom viewport editor is open so the editor keeps the full row.
+  5. Hide both side labels below a 360 px pane width so the address stays centered; the full preset and resolution remain in the viewport trigger's tooltip and menu.
+
+- **Alternatives considered:**
+  - **Put both labels in the first row.** Rejected; title, viewport, navigation, and actions already compete for that row.
+  - **Append the class to the preset name.** Rejected; it lengthens the trigger and still leaves the dimensions cramped.
+  - **Use icons for the device class.** Rejected; icons add ambiguity without saving meaningful space.
+
+- **Consequences:**
+  - The pane communicates both what kind of device it imitates and its exact CSS size.
+  - The second row has a stable left/right structure around the centered address.
+  - The words describe emulation, not physical hardware; they do not claim sensors, GPS, or device APIs.
+
+- **Evidence / verification:**
+  - E2e asserts `Phone` and `390 × 844` in a mobile pane's second row.
+  - The WebContentsView probe confirms the displayed resolution matches the page's `window.innerWidth`/`innerHeight`.
+
+## ADR-066 — Workspaces panel follows the compact menu language
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The Workspaces dialog used a wide document-style layout with a large header, descriptive paragraph, and footer Close button. It felt heavier than the app's custom context menus and duplicated the header X.
+
+- **Decision:**
+  1. Narrow the panel to 460 px and constrain its height to 70 vh.
+  2. Use a compact header with the title and close control only; move the description to an `sr-only` element so the accessible name and description remain.
+  3. Use menu-like row spacing, rounded hover surfaces, and 10–12 px type. Each row selects its workspace directly and exposes a per-row actions trigger for Rename, Duplicate, and Delete in the shared custom menu component.
+  4. Remove the footer Close button; the header X, Escape, and backdrop click close the panel.
+  5. Keep the focus trap, initial dialog focus, focus return, and full keyboard operation. Escape closes an open row menu before the panel.
+
+- **Alternatives considered:**
+  - **Keep the footer Close button.** Rejected; it duplicates the header X and adds visual weight.
+  - **Keep four inline text actions per row.** Rejected; they crowded the row, forced metadata to wrap, and felt like a settings form rather than a menu.
+  - **Convert the panel into a popover anchored to the toolbar.** Rejected; the panel manages persistent workspaces and is not a transient action list.
+  - **Remove the description entirely.** Rejected; `aria-describedby` still explains the panel to assistive technology.
+
+- **Consequences:**
+  - Workspaces feels like the rest of PaneFlow's menus and takes less visual attention.
+  - The dialog remains modal and keyboard accessible.
+  - Focus order now ends at **Export active** instead of a footer Close button.
+  - Switching is one click; less frequent rename, duplicate, and delete actions take one more click through the row menu.
+
+- **Evidence / verification:**
+  - The accessibility e2e test verifies dialog name, description, initial focus, Tab/Shift+Tab trap, row-menu disabled states, Escape ordering, and focus return after removing the footer button.
+  - Workspace creation, rename, delete, switch, duplicate, and export e2e coverage passes through the row actions menu.
+  - A running-app screenshot confirms the 460 px panel, single-line row metadata, visible header close control, and menu-styled actions popover.
+
+## ADR-067 — The Canvas backdrop extends behind the top toolbar
+
+- **Status:** Superseded by ADR-070; the transparent look implied panes could live behind the bar, which the native view stack cannot support.
+- **Date:** 2026-11-20
+- **Context:** The top toolbar now contains only Add, occasional marquee-selection feedback, and draggable macOS titlebar space. Its opaque surface and bottom border created a separate chrome strip above the Canvas dotted backdrop, making an almost empty row look heavier than its contents.
+
+- **Decision:**
+  1. Keep the 42 px toolbar geometry, macOS traffic-light padding, drag region, and Add control.
+  2. Move the Canvas dot field from the workspace element to the app shell so one continuous backdrop runs from the top edge through the workspace.
+  3. Make the toolbar transparent and remove its bottom divider in Canvas mode. Add and selection feedback float above the backdrop.
+  4. Keep pan-driven background positioning through shell-owned CSS variables, offset by the toolbar height so the dot grid remains aligned with the workspace world.
+  5. Keep the opaque surface treatment for non-Canvas layout modes.
+
+- **Alternatives considered:**
+  - **Remove the toolbar from the layout.** Rejected; the window still needs a macOS drag region, traffic-light clearance, and the Add control without letting native pane views cover them.
+  - **Let pane content extend under the toolbar.** Rejected; native `WebContentsView`s stack above shell DOM and would cover the Add control.
+  - **Keep the surface but remove only the border.** Rejected; the empty strip would still read as a separate band.
+
+- **Consequences:**
+  - The Canvas looks like it starts at the top edge of the window.
+  - Add remains discoverable as a quiet floating control.
+  - The toolbar remains stable at 42 px, so Canvas geometry and native bounds do not move.
+  - Dialogs, the error banner, and menus keep their own opaque surfaces above the backdrop.
+
+- **Evidence / verification:**
+  - E2e asserts the Canvas toolbar has a transparent background and transparent bottom border, and that the app shell owns the radial-gradient backdrop.
+  - Running-app screenshots in light and dark appearance confirm a continuous dot field behind the toolbar and aligned with the workspace.
+
+## ADR-068 — Fit all keeps panes clear of the bottom Canvas bar
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Fit all centered panes inside the whole workspace rectangle. The native bottom Canvas bar overlays the bottom 52 DIP of that rectangle, so tall or newly added panes could be centered partly behind the bar's buttons.
+
+- **Decision:**
+  1. Define one safe Canvas viewport: 24 px top and side padding, and a bottom inset of 12 px bar margin + 40 px bar height + 12 px clearance.
+  2. Use that safe viewport for Fit all, single-pane focus, partially visible pane centering, and reveal clamping.
+  3. Scale panes down when the safe height is smaller than their world frame instead of letting their bottoms slide under the bar.
+  4. Leave minimap recentering as a direct world-point action; the minimap's own corner overlap behavior is unchanged.
+
+- **Alternatives considered:**
+  - **Reserve bottom space only under the centered 422 px bar.** Rejected for this slice; per-frame horizontal checks add complexity and produce uneven bottom edges.
+  - **Hide the bottom bar during Fit all.** Rejected; the command usually originates from that bar, and hiding it would make the result harder to inspect.
+  - **Allow a small overlap to preserve 100% zoom.** Rejected; the user explicitly asked that devices not sit behind the bottom controls.
+
+- **Consequences:**
+  - Initial and explicit Fit all may choose a zoom below 100% when tall panes would otherwise reach the bar.
+  - Fitted panes keep at least 12 px between their bottom edge and the bar.
+  - Pane focus and recovery centering use the same safe area, so selecting a pane does not tuck it under the bar.
+  - The minimap can still cover a pane corner by design.
+
+- **Evidence / verification:**
+  - E2e applies Fit all and asserts every pane card bottom stays above the native zoom bar top with clearance.
+  - Running-app measurements show the bar at `y = 808` in an 860 px content area and fitted pane bottoms at `y = 796`.
+
+## ADR-069 — Pane dragging keeps the header below the top workspace edge
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Canvas panes can be positioned freely. Dragging a pane upward could put its entire header above the workspace top, leaving only the page body visible under the top toolbar and making the device look clipped or lost.
+
+- **Decision:**
+  1. Clamp dragged pane positions so the pane's top edge remains at least 24 px below the workspace top.
+  2. Apply the clamp in world coordinates using the current Canvas pan and zoom, preserving the same inset at every zoom.
+  3. Suppress horizontal snap guides when the top clamp overrides a vertical snap.
+  4. Leave canvas panning unrestricted so users can still navigate the infinite world; Fit all, pane selection, and reveal centering remain the recovery paths for intentionally off-screen panes.
+
+- **Alternatives considered:**
+  - **Clamp canvas panning as well.** Rejected; it would prevent panning to panes below the visible area.
+  - **Let headers go above the toolbar.** Rejected; the device becomes easy to lose and the top bar makes the clipping look like hidden chrome.
+  - **Keep the old opaque toolbar as a cover.** Rejected; it would hide content without restoring access to the header.
+
+- **Consequences:**
+  - Dragging a pane upward stops once its header has 24 px of clearance below the top edge.
+  - Users can still pan the Canvas so panes move off-screen deliberately; selecting such a pane or using Fit all restores it.
+  - The pure `clampCanvasPaneTop` helper keeps the math testable outside Vue.
+
+- **Evidence / verification:**
+  - Unit tests cover clamping with canvas pan/zoom, an already-visible pane, and the top inset.
+  - A running-app drag 220 px upward stops at the 24 px inset with the pane header fully visible.
+
+## ADR-070 — Restore the opaque top toolbar
+
+- **Status:** Accepted; supersedes ADR-067
+- **Date:** 2026-11-20
+- **Context:** Making the toolbar transparent and extending the Canvas dot field to the top edge implied that pane content could live behind the bar. In practice, pane `WebContentsView`s stack above the shell, so a pane cannot extend into that band without covering the Add control and drag region. The transparent look made the reserved 42 px feel like hidden or clipped content.
+
+- **Decision:**
+  1. Restore the opaque `--surface` toolbar background and its 1 px bottom divider.
+  2. Move the Canvas dot field back to the workspace, below the toolbar, and restore pan-driven `background-position` on that element.
+  3. Keep the 42 px toolbar height, traffic-light clearance, drag region, and Add-only content.
+  4. Keep the bottom-bar-aware Fit all and the 24 px top clamp for pane dragging.
+
+- **Alternatives considered:**
+  - **Keep the transparent bar with a scrim.** Rejected; it would still imply overlap without making pane headers live in that space.
+  - **Build a native top-bar overlay.** Deferred; it is a larger composition change, not a visual revert.
+  - **Let pane snapshots show behind the bar.** Rejected; the strip would look live but would not be interactive.
+
+- **Consequences:**
+  - The toolbar reads as reserved application chrome rather than empty canvas.
+  - The dotted workspace starts below the toolbar, matching the actual native-view boundary.
+  - Fit all and pane dragging still keep devices clear of the top and bottom chrome.
+
+- **Evidence / verification:**
+  - E2e and running-app screenshots verify the opaque toolbar, workspace-owned dot backdrop, and pan-driven background position.
+  - Fit all and pane drag-clamp coverage remain unchanged.
 
 ### ADR-NNN — Title
 

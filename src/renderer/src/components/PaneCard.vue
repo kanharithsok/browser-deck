@@ -84,6 +84,18 @@ const viewportLabel = computed(() =>
     : viewportPresetName.value
 )
 
+const deviceTypeLabel = computed(() => {
+  const preset = findViewportPreset(props.pane.viewport.preset)
+  if (preset) {
+    return preset.category === 'phone'
+      ? 'Phone'
+      : preset.category === 'tablet'
+        ? 'Tablet'
+        : 'Desktop'
+  }
+  return props.pane.viewport.preset === 'custom' ? 'Custom' : 'Responsive'
+})
+
 const showViewportBadge = computed(
   () => props.chromeStyle === 'c' || props.chromeStyle === 'b'
 )
@@ -233,7 +245,6 @@ function requestClose(): void {
           <div class="pane-main">
             <div class="pane-title-row">
               <span v-if="pane.isLoading" class="spinner" aria-hidden="true"></span>
-              <span v-else class="status-dot" :class="{ 'status-dot-error': pane.error }" aria-hidden="true"></span>
 
               <span v-if="!renaming" class="pane-title" :title="titleTooltip" @dblclick="startRename">
                 {{ pane.title }}
@@ -269,9 +280,6 @@ function requestClose(): void {
                 @click="openViewportMenu"
               >
                 <span class="viewport-trigger-label">{{ viewportPresetName }}</span>
-                <span v-if="viewportSizeLabel" class="pane-viewport-size">
-                  {{ viewportSizeLabel }}
-                </span>
                 <svg class="pane-viewport-chevron" viewBox="0 0 12 12" aria-hidden="true">
                   <path d="m3 4.5 3 3 3-3" />
                 </svg>
@@ -280,6 +288,7 @@ function requestClose(): void {
               <span
                 :id="statusId"
                 class="pane-status"
+                :class="{ 'pane-status-address-error': Boolean(addressError) }"
                 role="status"
                 aria-live="polite"
                 :title="titleError ?? addressError ?? pane.error ?? notice ?? undefined"
@@ -394,6 +403,7 @@ function requestClose(): void {
           </div>
         </div>
         <div class="pane-address-row">
+          <span class="pane-device-type">{{ deviceTypeLabel }}</span>
           <PaneNavigation
             :pane="pane"
             :status-id="statusId"
@@ -403,6 +413,9 @@ function requestClose(): void {
             @set-viewport="emit('set-viewport', $event)"
             @layout-changed="emit('layout-changed')"
           />
+          <span v-if="viewportSizeLabel" class="pane-resolution">
+            {{ viewportSizeLabel }}
+          </span>
         </div>
       </header>
     </div>
@@ -505,9 +518,33 @@ function requestClose(): void {
   display: flex;
   flex: none;
   align-items: center;
+  gap: 5px;
   width: 100%;
   height: 32px;
   padding: 0 6px 2px;
+}
+
+.pane-device-type {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pane-resolution {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pane-address-row:has(.viewport-custom) .pane-device-type,
+.pane-address-row:has(.viewport-custom) .pane-resolution {
+  display: none;
 }
 
 .pane-card-c .pane-header {
@@ -608,21 +645,6 @@ function requestClose(): void {
   }
 }
 
-.status-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  margin: 0 1.5px;
-  border-radius: 50%;
-  background: var(--text-faint);
-  opacity: 0.75;
-}
-
-.status-dot-error {
-  background: var(--danger);
-  opacity: 1;
-}
-
 .pane-title {
   flex: 0 1 auto;
   min-width: 0;
@@ -699,10 +721,6 @@ function requestClose(): void {
   text-overflow: ellipsis;
 }
 
-.pane-viewport-size {
-  color: var(--text-faint);
-}
-
 .pane-viewport-chevron {
   flex: none;
   width: 10px;
@@ -728,6 +746,15 @@ function requestClose(): void {
   display: none;
 }
 
+.pane-status-address-error {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .pane-actions {
   flex: none;
   display: inline-flex;
@@ -741,8 +768,8 @@ function requestClose(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border-radius: 4px;
   color: var(--text-muted);
@@ -932,8 +959,9 @@ function requestClose(): void {
   color: var(--accent-strong);
 }
 
-@container (max-width: 470px) {
-  .pane-viewport-size {
+@container (max-width: 360px) {
+  .pane-device-type,
+  .pane-resolution {
     display: none;
   }
 }

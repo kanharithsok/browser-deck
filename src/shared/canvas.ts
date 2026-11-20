@@ -427,6 +427,20 @@ export function duplicateCanvasPosition(
   return { x: Math.round(source.x), y: Math.round(y) }
 }
 
+/** Keep a dragged pane's top edge below a viewport inset. */
+export function clampCanvasPaneTop(
+  position: CanvasPosition,
+  pan: CanvasPosition,
+  zoom: number,
+  inset: number
+): CanvasPosition {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  const safeInset = Number.isFinite(inset) ? inset : 0
+  const safePanY = Number.isFinite(pan.y) ? pan.y : 0
+  const minY = (safeInset - safePanY) / safeZoom
+  return position.y < minY ? { x: position.x, y: Math.ceil(minY) } : position
+}
+
 function arrangeableFrames(
   frames: ReadonlyArray<CanvasArrangeFrame>
 ): CanvasArrangeFrame[] {

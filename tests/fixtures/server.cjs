@@ -183,7 +183,7 @@ function loginPage(currentAccount, error) {
 
   return pageShell('Fixture sign in', `
   <h1>Fixture sign in</h1>
-  <p class="sub">Local accounts for independent per-profile session checks.</p>
+  <p class="sub">Local accounts for independent per-pane session checks.</p>
   ${signedIn ? `<p class="sub">This profile is currently signed in as <strong>${escapeHtml(signedIn.displayName)}</strong>.</p>` : ''}
   ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ''}
   <h2>Sign in</h2>
