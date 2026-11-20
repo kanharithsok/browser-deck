@@ -243,7 +243,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
 - Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
-- Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.
+- Partially visible panes remain snapshots until an explicit camera action brings them fully into view. Clicking a partially visible pane selects it without moving or zooming the camera; Fit all, overview focus, device-palette focus, and regular panning remain the explicit paths to bring it fully into view.
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.

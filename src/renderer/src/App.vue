@@ -2293,22 +2293,6 @@ function onCanvasMinimapAction(action: CanvasMinimapAction): void {
   fitCanvasToPanes()
 }
 
-function centerCanvasPane(paneId: string): void {
-  const frame = canvasFrames.value.get(paneId)
-  if (!frame) {
-    return
-  }
-  const viewport = canvasViewportRect()
-  const screenWidth = frame.width * canvasZoom.value
-  const screenHeight = frame.height * canvasZoom.value
-  canvasPan.value = {
-    x: Math.round(viewport.centerX - screenWidth / 2) - frame.x * canvasZoom.value,
-    y: Math.round(viewport.centerY - screenHeight / 2) - frame.y * canvasZoom.value
-  }
-  selectPane(paneId)
-  void nextTick(scheduleMeasure)
-}
-
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
@@ -4132,10 +4116,6 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     selectPane(canvasPaneId)
     if (target.closest('.pane-header') && !interactive) {
       beginCanvasPaneDrag(event, canvasPaneId)
-      return
-    }
-    if (suspendedPaneIds.value.has(canvasPaneId)) {
-      centerCanvasPane(canvasPaneId)
     }
     return
   }

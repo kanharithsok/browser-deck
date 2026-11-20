@@ -1240,6 +1240,52 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const resetEmulation = await getEmulationState(app, alicePaneId as string)
     expect(resetEmulation?.enabled).toBe(false)
 
+    // Clicking a partially visible pane must only select it. It must not move
+    // or zoom the camera; the snapshot stays until an explicit camera action
+    // brings the pane fully into view.
+    await fitAllDevices(app as ElectronApplication)
+    await waitForVisibleAlignedBounds(app)
+    const pinnedCard = await firstCanvasCard.boundingBox()
+    const pinnedWorkspace = await shellPage.locator('.workspace').boundingBox()
+    if (!pinnedCard || !pinnedWorkspace) {
+      throw new Error('Partially visible pane bounds are unavailable')
+    }
+    const panAway =
+      pinnedCard.x - (pinnedWorkspace.x - pinnedCard.width + 64)
+    await shellPage.mouse.move(pinnedWorkspace.x + 6, pinnedWorkspace.y + 6)
+    await shellPage.mouse.wheel(panAway, 0)
+    await waitForVisibleAlignedBounds(app)
+    await expect
+      .poll(async () =>
+        (await getViewStates(app as ElectronApplication)).some(
+          (state) => state.paneId === alicePaneId && !state.visible
+        )
+      )
+      .toBe(true)
+    const partiallyVisibleCard = await firstCanvasCard.boundingBox()
+    const partiallyVisibleWorkspace = await shellPage.locator('.workspace').boundingBox()
+    const zoomBeforePaneClick = await zoomPage.locator('#value').textContent()
+    if (!partiallyVisibleCard || !partiallyVisibleWorkspace) {
+      throw new Error('Partially visible pane click bounds are unavailable')
+    }
+    await shellPage.mouse.click(
+      partiallyVisibleWorkspace.x + 32,
+      Math.min(
+        partiallyVisibleCard.y + 140,
+        partiallyVisibleWorkspace.y + partiallyVisibleWorkspace.height - 120
+      )
+    )
+    await expect(shellPage.locator('.pane-card-active')).toHaveAttribute(
+      'data-pane-id',
+      alicePaneId as string
+    )
+    const unpinnedCard = await firstCanvasCard.boundingBox()
+    expect(unpinnedCard?.x).toBeCloseTo(partiallyVisibleCard.x, 0)
+    expect(unpinnedCard?.y).toBeCloseTo(partiallyVisibleCard.y, 0)
+    expect(await zoomPage.locator('#value').textContent()).toBe(zoomBeforePaneClick)
+    await fitAllDevices(app as ElectronApplication)
+    await waitForVisibleAlignedBounds(app)
+
     // Wheel panning must hide native views for the gesture and restore them at
     // the new screen positions; otherwise a moved pane's live content drifts.
     const beforeWheelPan = await firstCanvasCard.boundingBox()

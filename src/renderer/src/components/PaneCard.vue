@@ -431,7 +431,7 @@ function requestClose(): void {
         <div v-else-if="suspended && !pane.isLoading && !snapshot" class="pane-message">
           <p class="message-title">Browser hidden while off-screen</p>
           <p v-if="canvas" class="message-detail">
-            Select this browser to bring it fully into view.
+            Pan the canvas or use Fit all to bring it fully into view.
           </p>
           <p v-else class="message-detail">
             Scroll this browser fully into view to interact with the site.

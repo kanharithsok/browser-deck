@@ -1252,3 +1252,21 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run package:dir` | Passed: BrowserDeck 1.2.0 arm64 app with the final selection and viewport changes; fuses applied and signing skipped as expected. |
 
 **Known behavior / limitations:** Bulk creation is sequential and can take a moment for large batches. The temporary Cmd/Ctrl Select tool is active only while shell chrome has focus; native page content keeps native browser behavior. Phone/tablet mouse-to-touch scrolling is enabled only for mobile viewport behavior, so desktop panes keep native text selection and click-drag interactions. A hidden `WebContentsView` reports a 0×0 viewport, so panes stay visible while a non-emulated page loads; only emulated reloads hide the old surface until emulation is reapplied. Homebrew still installs the published 1.1.0 until a 1.2.0 release and cask update are published. The selected-browser viewport menu normalizes all selected browsers to one preset; it does not preserve mixed viewports.
+
+## Canvas interaction fix — Selecting partially visible panes keeps the camera in place
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** A primary click on a partially visible Canvas pane now selects it in place instead of centering the camera. The pane keeps its snapshot and hidden-browser message until an explicit camera action brings it fully into view. The message now directs the user to pan the canvas or use Fit all. Selecting a pane, its header, or a minimap frame still restores selection; minimap frame focus, device-palette focus, Fit all, and regular panning remain explicit navigation paths. Camera and selection persistence are unchanged. Native views still cannot be clipped to the visible workspace, so a partially visible pane remains non-interactive until it is fully visible.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-032/068 status notes, ADR-076 added), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 179 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 21.8 s. New coverage pans a pane partly off-screen, clicks its visible area, verifies it becomes active with unchanged position and zoom, and restores the camera with Fit all. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.33 kB, preload 9.32 kB, renderer JS 380.85 kB, shell CSS 35.66 kB. |
+
+**Known behavior / limitations:** Clicking a partially visible pane does not make its page interactive; the user must bring the pane fully into view with Fit all, the overview, Cmd/Ctrl+K, or canvas panning. Panes that are panned mostly off-screen continue to show a snapshot and a hidden-browser message until then.

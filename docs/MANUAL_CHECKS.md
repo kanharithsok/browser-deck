@@ -101,7 +101,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Canvas overview frame selection and focus return. (E2e clicks a minimap frame, verifies the pane centers and becomes active, and checks the shell regains keyboard focus; the panel was also exercised visually at desktop and minimum-window widths.)
 - [ ] Canvas zoom at levels where frames no longer fit. (Implemented as snapshot preview; visual review of very high zoom and partially visible frames remains manual.)
 - [ ] Spacebar while a website page has focus. (Intentionally not intercepted to preserve typing/scrolling; expected to work only when shell chrome has focus.)
-- [ ] Partially visible canvas pane centers and restores live view when clicked. (Implemented; manual visual pass outstanding.)
+- [x] Clicking a partially visible canvas pane selects it without moving the camera; its native view stays hidden until an explicit camera action brings it fully into view. (E2e pans a pane partly off-screen, clicks its visible area, and verifies the pane activates while its position and zoom stay unchanged; Fit all restores the camera.)
 - [ ] Device bezels. (Not implemented.)
 - [ ] Fill/crop display mode for panes whose aspect ratio differs from the viewport preset. (Not implemented; fixed viewports letterbox to keep the full viewport visible.)
 - [ ] Optional per-pane user-agent override. (Not implemented.)

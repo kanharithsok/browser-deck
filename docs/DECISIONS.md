@@ -948,7 +948,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-032 — Canvas layout uses snapshot-assisted native panning
 
-- **Status:** Accepted for first Canvas slice
+- **Status:** Accepted for first Canvas slice; partially visible click behavior superseded by ADR-076
 - **Date:** 2026-11-19
 - **Context:** Responsively and Figma present a clean infinite canvas with a dotted backdrop and world-space pan/zoom. Figma renders the editor scene itself in WebGL; Responsively transforms DOM `<webview>` elements inside a CSS-transformed world. BrowserDeck uses native `WebContentsView`s for remote pages, which cannot be CSS-transformed or clipped by the shell, and cannot be overlaid with DOM chrome. A direct copy would either break the native security/session architecture or let pane content slide under the toolbar.
 
@@ -2048,7 +2048,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-068 — Fit all keeps panes clear of the bottom Canvas bar
 
-- **Status:** Accepted
+- **Status:** Accepted; partially visible pane centering superseded by ADR-076
 - **Date:** 2026-11-20
 - **Context:** Fit all centered panes inside the whole workspace rectangle. The native bottom Canvas bar overlays the bottom 52 DIP of that rectangle, so tall or newly added panes could be centered partly behind the bar's buttons.
 
@@ -2267,6 +2267,34 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2E exercises the persistent and temporary Select tools, verifies the crosshair state, checks that empty canvas clears both the selection and active browser, confirms the selection toolbar has no X close control, applies iPhone SE to two selected browsers through the topbar menu, and closes the selected set with Delete.
   - Accessibility coverage continues to exercise the persistent Select button in the native bottom bar.
+
+## ADR-076 — Clicking a partially visible pane does not move the camera
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** ADR-032 made a primary click on a partially visible Canvas frame center it so its native view could be restored. That helped recover panes that had been panned far away, but it also meant a routine click on a pane near the workspace edge unexpectedly jumped the whole camera. The jump discarded the user's spatial context and was triggered by a plain selection click. Native views still cannot be clipped to the visible workspace, so partially visible panes must remain hidden until the camera makes them fully visible.
+
+- **Decision:**
+  1. A primary click on a partially visible or suspended pane selects it in place. The camera pan and zoom do not change.
+  2. The pane keeps its snapshot and hidden-browser message; its native view is restored only after an explicit camera action makes the pane fully visible.
+  3. Fit all, overview frame focus, device-palette focus, and regular Canvas panning remain the explicit navigation paths that can bring a pane fully into view.
+  4. The suspended-pane message points to panning or Fit all instead of telling the user that selecting will bring it into view.
+  5. Keep the selection and camera persistence behavior unchanged.
+
+- **Alternatives considered:**
+  - **Keep centering on click.** Rejected after user feedback; a selection click must not relocate the workspace.
+  - **Reveal-pan the minimum amount on click.** Rejected; it still moves the camera during selection and would make every edge click feel like a navigation action.
+  - **Keep partially visible native views live.** Rejected; native views cannot be clipped to the workspace, so they would cover chrome or Canvas overlays.
+  - **Disable selection for partially visible panes.** Rejected; header controls, keyboard actions, and explicit navigation should still work after selecting.
+
+- **Consequences:**
+  - Clicking a partially visible pane activates it and its header controls, but page content remains non-interactive until the pane is fully visible.
+  - Camera movement happens only through explicit navigation actions.
+  - A pane that was panned mostly off-screen keeps showing its snapshot and message; Fit all remains the one-click recovery path.
+
+- **Evidence / verification:**
+  - E2e pans a pane partly off-screen, clicks its visible area, and verifies the pane becomes active while its position and the zoom level stay unchanged; the native view remains hidden. Fit all restores the camera afterward.
+  - Unit, typecheck, lint, build, and the full e2e suite pass.
 
 ### ADR-NNN — Title
 
