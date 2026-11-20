@@ -380,19 +380,20 @@ async function submitAddress(): Promise<void> {
 
 .address-input {
   width: 100%;
-  height: 28px;
-  padding: 0 8px;
+  height: 24px;
+  padding: 0 6px;
   border: 1px solid transparent;
-  border-radius: 5px;
-  background: var(--surface-inset);
+  border-radius: 4px;
+  background: transparent;
   color: var(--text-muted);
   font-size: 11.5px;
+  text-align: center;
   text-overflow: ellipsis;
 }
 
 .address-input:hover {
-  border-color: var(--border);
-  background: var(--surface-raised);
+  background: var(--surface-inset);
+  color: var(--text);
 }
 
 .address-input::placeholder {
@@ -400,16 +401,18 @@ async function submitAddress(): Promise<void> {
 }
 
 .address-input:focus {
-  border-color: var(--border);
-  background: var(--surface-raised);
+  border-color: transparent;
+  background: var(--surface-inset);
   color: var(--text);
   outline: 2px solid var(--focus);
-  outline-offset: 0;
+  outline-offset: -1px;
+  text-align: left;
 }
 
 .address-input-invalid,
 .address-input-invalid:focus {
-  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
   outline-color: var(--danger);
 }
 

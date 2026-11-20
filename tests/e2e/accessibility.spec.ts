@@ -525,7 +525,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await shellPage.keyboard.press('Shift+Tab')
       const lastFocus = await readFocus(shellPage)
       expect(lastFocus.tagName).toBe('BUTTON')
-      expect(lastFocus.text).toBe('Close')
+      expect(lastFocus.text).toBe('Export active')
 
       await shellPage.keyboard.press('Tab')
       const firstFocus = await readFocus(shellPage)
@@ -535,17 +535,26 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(activeRow).toHaveCount(1)
       const activeName = (await activeRow.locator('.workspace-label-text').innerText()).trim()
       await expect(
-        activeRow.getByRole('button', { name: `Switch to workspace ${activeName}` })
-      ).toBeDisabled()
+        activeRow.getByRole('button', { name: `Workspace ${activeName} is active` })
+      ).toHaveAttribute('aria-disabled', 'true')
+      const activeActions = activeRow.getByRole('button', {
+        name: `Workspace actions for ${activeName}`
+      })
+      await expect(activeActions).toBeEnabled()
+      await activeActions.click()
+      const activeMenu = shellPage.getByRole('menu', {
+        name: `Workspace actions for ${activeName}`
+      })
+      await expect(activeMenu).toBeVisible()
+      await expect(activeMenu.getByRole('menuitem', { name: 'Switch', exact: true })).toBeDisabled()
+      await expect(activeMenu.getByRole('menuitem', { name: 'Rename', exact: true })).toBeEnabled()
       await expect(
-        activeRow.getByRole('button', { name: `Rename workspace ${activeName}` })
+        activeMenu.getByRole('menuitem', { name: 'Duplicate', exact: true })
       ).toBeEnabled()
-      await expect(
-        activeRow.getByRole('button', { name: `Duplicate workspace ${activeName}` })
-      ).toBeEnabled()
-      await expect(
-        activeRow.getByRole('button', { name: `Delete workspace ${activeName}` })
-      ).toBeDisabled()
+      await expect(activeMenu.getByRole('menuitem', { name: 'Delete', exact: true })).toBeDisabled()
+      await shellPage.keyboard.press('Escape')
+      await expect(activeMenu).toHaveCount(0)
+      await expect(dialog).toBeVisible()
 
       const nameInput = dialog.getByRole('textbox', { name: 'New workspace name' })
       await nameInput.fill('Accessible QA')
@@ -556,15 +565,22 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(
         createdRow.getByRole('button', { name: 'Switch to workspace Accessible QA' })
       ).toBeEnabled()
+      const createdActions = createdRow.getByRole('button', {
+        name: 'Workspace actions for Accessible QA'
+      })
+      await expect(createdActions).toBeEnabled()
+      await createdActions.click()
+      const createdMenu = shellPage.getByRole('menu', {
+        name: 'Workspace actions for Accessible QA'
+      })
+      await expect(createdMenu).toBeVisible()
+      await expect(createdMenu.getByRole('menuitem', { name: 'Rename', exact: true })).toBeEnabled()
       await expect(
-        createdRow.getByRole('button', { name: 'Rename workspace Accessible QA' })
+        createdMenu.getByRole('menuitem', { name: 'Duplicate', exact: true })
       ).toBeEnabled()
-      await expect(
-        createdRow.getByRole('button', { name: 'Duplicate workspace Accessible QA' })
-      ).toBeEnabled()
-      await expect(
-        createdRow.getByRole('button', { name: 'Delete workspace Accessible QA' })
-      ).toBeEnabled()
+      await expect(createdMenu.getByRole('menuitem', { name: 'Delete', exact: true })).toBeEnabled()
+      await shellPage.keyboard.press('Escape')
+      await expect(createdMenu).toHaveCount(0)
 
       const buttonNames = await dialog
         .getByRole('button')
@@ -582,7 +598,7 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       expect(axPairs).toContain('dialog:Workspaces')
       expect(axPairs).toContain('textbox:New workspace name')
       expect(axPairs).toContain('button:Switch to workspace Accessible QA')
-      expect(axPairs).toContain('button:Delete workspace Accessible QA')
+      expect(axPairs).toContain('button:Workspace actions for Accessible QA')
 
       await shellPage.keyboard.press('Escape')
       await expect(dialog).toHaveCount(0)

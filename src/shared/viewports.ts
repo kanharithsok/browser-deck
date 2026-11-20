@@ -186,6 +186,12 @@ export function findViewportPreset(id: string): ViewportPreset | undefined {
   return VIEWPORT_PRESETS.find((preset) => preset.id === id)
 }
 
+/** Phone/tablet presets use mobile viewport behavior and touch input. */
+export function usesMobileViewportBehavior(viewport: PaneViewport): boolean {
+  const preset = findViewportPreset(viewport.preset)
+  return preset !== undefined && preset.category !== 'desktop'
+}
+
 export function viewportPresetsInCategory(
   category: ViewportPresetCategory
 ): readonly ViewportPreset[] {

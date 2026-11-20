@@ -8,6 +8,7 @@ import {
   canvasContentSize,
   canvasFrameSize,
   canvasPaneIdsInRect,
+  clampCanvasPaneTop,
   defaultCanvasPositions,
   duplicateCanvasPosition,
   isValidCanvasPosition,
@@ -296,5 +297,26 @@ describe('canvas layout helpers', () => {
     expect(layout.mode).toBe('canvas')
     expect(layout.canvas).toEqual({ [PANE_A]: { x: 120, y: 80 } })
     expect(layout.gridOrder).toEqual([PANE_A, PANE_B])
+  })
+})
+
+describe('clampCanvasPaneTop', () => {
+  it('keeps a dragged pane below the workspace top inset', () => {
+    expect(clampCanvasPaneTop({ x: 10, y: -100 }, { x: 0, y: 20 }, 1, 24)).toEqual({
+      x: 10,
+      y: 4
+    })
+  })
+
+  it('accounts for canvas pan and zoom', () => {
+    expect(clampCanvasPaneTop({ x: -5, y: 10 }, { x: 100, y: -40 }, 2, 24)).toEqual({
+      x: -5,
+      y: 32
+    })
+  })
+
+  it('leaves panes that are already visible unchanged', () => {
+    const position = { x: 40, y: 100 }
+    expect(clampCanvasPaneTop(position, { x: 0, y: 0 }, 1, 24)).toBe(position)
   })
 })

@@ -147,10 +147,10 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** a minimal stable row with the compact **+** add-pane control and empty draggable space. The active pane's address and viewport controls belong to its device header.
+1. **Top toolbar:** a minimal stable row with the compact **+** add-pane control and empty draggable space. The Canvas backdrop begins below it. The active pane's address and viewport controls belong to its device header.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
 3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, find-device, reload-all, and appearance.
-4. **Pane chrome:** a compact two-row header. The top row carries the drag grip, title, viewport preset, navigation, contextual actions, and close; the second row carries that pane's address bar. Lower-priority actions such as rotate, screenshot, and clear site data live in the contextual menu.
+4. **Pane chrome:** a compact two-row header. The top row carries the drag grip, title, viewport preset, navigation, contextual actions, and close; the second row shows the viewport class and CSS resolution around that pane's centered address bar. Lower-priority actions such as rotate, screenshot, and clear site data live in the contextual menu.
 5. **Empty state:** one clear action to add the first browser device. Never show fake sample websites as if they were live pages.
 6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
@@ -158,7 +158,7 @@ Workspace management lives in the native menu bar, not the top toolbar. Browser 
 
 ### 6.3 Pane controls
 
-Each device exposes its own compact title, loading/error status, address bar, viewport preset, back, forward, reload, contextual menu, and close action. No pane's address or viewport control lives in the main top toolbar.
+Each device exposes its own compact title, loading/error status, address bar, viewport preset, viewport class and resolution, back, forward, reload, contextual menu, and close action. No pane's address or viewport control lives in the main top toolbar.
 
 When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep the address, viewport, back, forward, reload, contextual-menu, and close controls available at every zoom level.
 
@@ -237,7 +237,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
 - Clicking empty canvas with the primary button and without dragging clears the active pane. Interacting with a pane, its header, or the minimap restores selection.
 - Keep the minimal top toolbar mounted at a stable height in Canvas. The workspace keeps a quiet empty state when no pane is selected, so selecting or clearing a pane never moves or resizes the Canvas.
-- Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas.
+- Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas. Do not allow a drag to place the pane header above the top workspace inset.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
 - Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
@@ -245,8 +245,8 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
-- Provide a Fit all panes action in the overview and in the zoom menu. It must bring every pane back inside the workspace.
-- Keep the top toolbar limited to Add and draggable space. Each device header owns its address bar, viewport preset trigger, preset name plus dimensions, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
+- Provide a Fit all panes action in the overview and in the zoom menu. It must bring every pane back inside the workspace and keep pane bottoms clear of the bottom Canvas bar.
+- Keep the top toolbar limited to Add and draggable space. Each device header owns its address bar, viewport preset trigger with the short preset name, viewport class and resolution, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
 - Give pane headers a visible drag grip. Keep the one-row header compact and hide non-essential metadata at narrow frame widths.
 - Provide the + device menu and right-click canvas context menu described in §7.3.
 - Provide a Select tool in the bottom canvas bar. While active, dragging a marquee across the Canvas selects every pane whose frame intersects it. Give selected panes a visible ring and show the selected count with a close action. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
@@ -412,19 +412,20 @@ Each pane can have independent:
 
 Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
-New devices can be created directly with a fixed viewport preset from the **+** menu. The new pane receives that preset and a fresh browser profile.
+New devices can be created directly with a fixed viewport preset from the **+** menu. The new pane receives that preset and an independent browser session. Phone/tablet presets use mobile device metrics and five-point touch emulation so viewport meta tags, mobile scrollbars, `hover: none`, and `pointer: coarse` behave like a mobile browser.
 
 ### 10.3 Implementation and validation
 
-- Use a supported public Electron device-emulation API for the pinned Electron version.
-- Verify all parameters against current official Electron documentation during implementation.
+- Use a supported Electron/Chromium device-emulation path for the pinned Electron version. Electron's `webContents.debugger` exposes Chromium's `Emulation` commands.
+- Verify all parameters against current official Electron and Chromium DevTools Protocol documentation during implementation.
 - Confirm actual page values using a local fixture page that displays `window.innerWidth`, `window.innerHeight`, and `window.devicePixelRatio`.
 - Confirm that different panes can use different viewport configurations simultaneously.
 - Confirm that creating a pane from the **+** device menu applies the selected preset without changing other panes.
 - Confirm that the visual fit scale is recalculated after pane and window resizing without changing the intended emulated CSS viewport.
 - Confirm that fixed presets send the documented category user agent and that responsive/custom panes return to the runtime default UA.
+- Confirm that phone/tablet presets report mobile scrollbars, touch points, `hover: none`, and `pointer: coarse`, and that switching back to responsive clears those overrides.
 
-Do not claim a preset reproduces physical hardware, touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Category user agents exist for layout fidelity, not to bypass identity-provider restrictions, paywalls, or bot protection. Do not present a preset UA as a security or identity-evasion feature.
+Do not claim a preset reproduces physical hardware, physical touch sensors, GPS, device-specific APIs, browser-engine differences, or a real device. Touch-input and media-query emulation are for layout fidelity only. Category user agents exist for layout fidelity, not to bypass identity-provider restrictions, paywalls, or bot protection. Do not present a preset UA as a security or identity-evasion feature.
 
 ---
 

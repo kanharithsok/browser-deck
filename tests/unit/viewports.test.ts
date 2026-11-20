@@ -8,6 +8,7 @@ import {
   VIEWPORT_PRESETS,
   parsePaneViewport,
   toggleViewportRotation,
+  usesMobileViewportBehavior,
   viewportContentSize,
   viewportDisplayScale,
   viewportFromPreset
@@ -254,6 +255,22 @@ describe('viewport rotation', () => {
 
     expect(landscape).toBeGreaterThan(upright)
     expect(landscape).toBeCloseTo(0.924, 3)
+  })
+})
+
+describe('mobile viewport behavior', () => {
+  it('uses mobile positioning and touch for phone and tablet presets', () => {
+    for (const preset of ['mobile', 'iphone-se', 'pixel-8', 'tablet', 'ipad-air', 'galaxy-tab-s9'] as const) {
+      expect(usesMobileViewportBehavior(viewportFromPreset(preset))).toBe(true)
+    }
+  })
+
+  it('keeps desktop behavior for desktop, responsive, and custom viewports', () => {
+    for (const preset of ['laptop', 'macbook-air', 'desktop'] as const) {
+      expect(usesMobileViewportBehavior(viewportFromPreset(preset))).toBe(false)
+    }
+    expect(usesMobileViewportBehavior(RESPONSIVE_VIEWPORT)).toBe(false)
+    expect(usesMobileViewportBehavior(viewportFromPreset('custom'))).toBe(false)
   })
 })
 

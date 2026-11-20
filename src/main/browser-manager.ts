@@ -31,6 +31,7 @@ import {
   RESPONSIVE_VIEWPORT,
   parsePaneViewport,
   toggleViewportRotation,
+  usesMobileViewportBehavior,
   viewportContentSize,
   viewportDisplayScale,
   type PaneViewport
@@ -63,6 +64,7 @@ interface PaneRecord {
   lastEmulationSignature: string
   emulationEnabled: boolean
   appliedScale: number
+  touchEmulationEnabled: boolean | null
   pageReady: boolean
   lastColorScheme: PaneColorScheme | null
   colorSchemeErrorLogged: boolean
@@ -767,6 +769,7 @@ export class BrowserManager {
       lastEmulationSignature: '',
       emulationEnabled: false,
       appliedScale: 0,
+      touchEmulationEnabled: null,
       pageReady: false,
       lastColorScheme: null,
       colorSchemeErrorLogged: false,
@@ -810,6 +813,7 @@ export class BrowserManager {
       // reapply the current viewport and Canvas scale even if the signature is
       // unchanged from before the reload.
       record.lastEmulationSignature = ''
+      record.touchEmulationEnabled = null
       this.emitState()
     })
 
@@ -994,13 +998,15 @@ export class BrowserManager {
       return
     }
 
+    const mobile = usesMobileViewportBehavior(record.viewport)
+    this.applyTouchEmulation(record, mobile)
+
     if (record.viewport.preset === 'responsive') {
       if (this.canvasZoom === 1) {
-        if (!record.emulationEnabled) {
-          record.lastEmulationSignature = 'responsive'
+        if (record.lastEmulationSignature === 'responsive') {
           return
         }
-        webContents.disableDeviceEmulation()
+        this.clearFixedEmulation(record)
         record.emulationEnabled = false
         record.appliedScale = 0
         record.lastEmulationSignature = 'responsive'
@@ -1011,20 +1017,14 @@ export class BrowserManager {
       if (record.lastEmulationSignature === canvasSignature) {
         return
       }
-      webContents.enableDeviceEmulation({
-        screenPosition: 'desktop',
-        screenSize: {
-          width: CANVAS_RESPONSIVE_WIDTH,
-          height: CANVAS_RESPONSIVE_HEIGHT
-        },
-        viewPosition: { x: 0, y: 0 },
-        deviceScaleFactor: 1,
-        viewSize: {
-          width: CANVAS_RESPONSIVE_WIDTH,
-          height: CANVAS_RESPONSIVE_HEIGHT
-        },
-        scale: this.canvasZoom
-      })
+      this.applyFixedEmulation(
+        record,
+        { width: CANVAS_RESPONSIVE_WIDTH, height: CANVAS_RESPONSIVE_HEIGHT },
+        this.canvasZoom,
+        false,
+        1,
+        false
+      )
       record.emulationEnabled = true
       record.appliedScale = this.canvasZoom
       record.lastEmulationSignature = canvasSignature
@@ -1040,26 +1040,125 @@ export class BrowserManager {
       record.viewport.height,
       record.viewport.deviceScaleFactor,
       record.viewport.rotated === true ? 'rotated' : 'upright',
+      mobile ? 'mobile' : 'desktop',
       scale
     ].join(':')
     if (record.lastEmulationSignature === signature) {
       return
     }
 
-    // Desktop screen positioning keeps the requested CSS viewport exact.
-    // Mobile positioning makes Chromium apply a 980px fallback layout to pages
-    // without a viewport meta tag, which would make the preset dimensions a lie.
-    webContents.enableDeviceEmulation({
-      screenPosition: 'desktop',
-      screenSize: { width: size.width, height: size.height },
-      viewPosition: { x: 0, y: 0 },
-      deviceScaleFactor: record.viewport.deviceScaleFactor,
-      viewSize: { width: size.width, height: size.height },
-      scale
-    })
+    // Chromium's mobile metrics path applies the viewport meta tag, touch
+    // scrollbars, and coarse/no-hover media for phone/tablet presets while
+    // keeping the exact CSS viewport and fit scale.
+    this.applyFixedEmulation(
+      record,
+      size,
+      scale,
+      mobile,
+      record.viewport.deviceScaleFactor,
+      record.viewport.rotated === true
+    )
     record.emulationEnabled = true
     record.appliedScale = scale
     record.lastEmulationSignature = signature
+  }
+
+  private applyFixedEmulation(
+    record: PaneRecord,
+    size: { width: number; height: number },
+    scale: number,
+    mobile: boolean,
+    deviceScaleFactor: number,
+    rotated: boolean
+  ): void {
+    const webContents = this.liveWebContents(record)
+    if (!webContents) {
+      return
+    }
+    const apply = async (): Promise<void> => {
+      try {
+        this.ensureDebugger(record, webContents)
+        await webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+          width: size.width,
+          height: size.height,
+          deviceScaleFactor,
+          mobile,
+          scale,
+          screenWidth: size.width,
+          screenHeight: size.height,
+          screenOrientation: {
+            type: rotated ? 'landscapePrimary' : 'portraitPrimary',
+            angle: rotated ? 90 : 0
+          }
+        })
+      } catch (error) {
+        record.lastEmulationSignature = ''
+        if (!record.colorSchemeErrorLogged) {
+          record.colorSchemeErrorLogged = true
+          console.warn(`Could not apply the viewport to pane ${record.id}.`, error)
+        }
+      }
+    }
+    void apply()
+  }
+
+  private clearFixedEmulation(record: PaneRecord): void {
+    const webContents = this.liveWebContents(record)
+    if (!webContents) {
+      return
+    }
+    const apply = async (): Promise<void> => {
+      try {
+        this.ensureDebugger(record, webContents)
+        await webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride')
+      } catch (error) {
+        record.lastEmulationSignature = ''
+        if (!record.colorSchemeErrorLogged) {
+          record.colorSchemeErrorLogged = true
+          console.warn(`Could not clear the viewport emulation for pane ${record.id}.`, error)
+        }
+      }
+    }
+    void apply()
+  }
+
+  private ensureDebugger(record: PaneRecord, webContents: WebContents): void {
+    if (webContents.debugger.isAttached()) {
+      return
+    }
+    webContents.debugger.attach('1.3')
+    webContents.debugger.once('detach', () => {
+      record.touchEmulationEnabled = null
+      record.lastColorScheme = null
+      record.lastEmulationSignature = ''
+    })
+  }
+
+  private applyTouchEmulation(record: PaneRecord, enabled: boolean): void {
+    if (record.touchEmulationEnabled === enabled) {
+      return
+    }
+    const webContents = this.liveWebContents(record)
+    if (!webContents) {
+      return
+    }
+    record.touchEmulationEnabled = enabled
+    const apply = async (): Promise<void> => {
+      try {
+        this.ensureDebugger(record, webContents)
+        await webContents.debugger.sendCommand('Emulation.setTouchEmulationEnabled', {
+          enabled,
+          maxTouchPoints: enabled ? 5 : 1
+        })
+      } catch (error) {
+        record.touchEmulationEnabled = null
+        if (!record.colorSchemeErrorLogged) {
+          record.colorSchemeErrorLogged = true
+          console.warn(`Could not apply touch emulation to pane ${record.id}.`, error)
+        }
+      }
+    }
+    void apply()
   }
 
   private load(record: PaneRecord, url: string): void {

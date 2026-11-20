@@ -1164,3 +1164,60 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed: main 154.18 kB, preload 9.15 kB, renderer JS 357.01 kB, shell CSS 30.73 kB. |
 
 **Known behavior / limitations:** Closing a pane permanently discards its session. Clear Site Data signs out and loses unsaved page state. The main toolbar is intentionally almost empty. Canvas frames are 32 px taller. Panes are isolated browser sessions inside one Chromium runtime, not separate browser installations.
+
+## Post-MVP — Mobile fidelity, quiet pane header, and menu-style Workspaces panel
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Phone and tablet presets now use Chromium mobile metrics and five-point touch emulation, so fixed viewports honor viewport meta tags, use mobile scrollbars, and report `hover: none`/`pointer: coarse`. Responsive edits use a single CDP emulation path, and returning to Responsive clears the fixed override. The pane address field is transparent and centered at rest, left-aligns on focus, and the decorative status dot was removed. The second header row now shows the viewport class (`Phone`, `Tablet`, `Desktop`, `Responsive`, or `Custom`) on the left and the CSS resolution on the right; both hide while the custom viewport editor is open. Invalid-address text stays in the address row instead of crowding the title. The Workspaces panel is now a compact 460 px menu-style surface with single-click workspace selection, a per-row actions menu for rename/duplicate/delete, and no redundant footer Close button.
+
+**Files changed:** `src/main/browser-manager.ts`, `src/shared/viewports.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `tests/unit/viewports.test.ts`, `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/fixtures/server.cjs`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-064, ADR-065, ADR-066), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 174 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.7 s. Covers mobile scrollbars/touch/pointer media and responsive clearing, header class/resolution labels, per-pane sessions, workspace row menus, dialog focus/Escape ordering, and axe accessibility. |
+| `npm run build` | Passed: main 156.59 kB, preload 9.15 kB, renderer JS 359.36 kB, shell CSS 31.80 kB. |
+| Running-app probes | iPhone SE reports 375 × 667, `scrollbarWidth: 0`, `maxTouchPoints: 5`, `hover: false`, and `pointer: coarse`; switching back to Responsive restores fine-pointer behavior. Header screenshots verify centered/left-aligned address states, hidden side labels during custom editing, and the compact Workspaces panel with its row actions popover. |
+
+**Known behavior / limitations:** Mobile behavior is Chromium emulation, not physical hardware; sensors, GPS, and device-specific APIs are not simulated. Fixed viewports remain fit-scaled inside the pane. Workspace rows switch in one click, while rename, duplicate, and delete take one additional click through the row menu. The row actions menu closes before Escape closes the Workspaces panel.
+
+## Post-MVP — Continuous Canvas backdrop and bottom-bar-safe Fit all
+
+**Date:** 2026-11-20
+
+**Status:** Reverted by the next entry; the Fit all and drag-clamp parts remain.
+
+**Change:** Moved the Canvas dot field to the app shell and made the top toolbar transparent with no divider, so the workspace backdrop now reaches the top window edge while the toolbar keeps its 42 px drag region, traffic-light clearance, and Add control. Pan offsets still drive the grid, now offset by the toolbar height so dots stay aligned with the workspace world. Fit all, single-pane focus, reveal centering, and partially visible pane centering now use one safe Canvas viewport: 24 px top/side padding and a 64 px bottom inset covering the bar's 12 px margin, 40 px height, and 12 px clearance. Pane header icon targets increased from 24 to 26 px so the two-pane startup fit at roughly 95.5% still meets the 24 px accessibility target. Pane dragging now stops 24 px below the workspace top so a header cannot disappear under the transparent toolbar; Canvas panning remains free for intentional off-screen navigation. The e2e drag setup now starts from the title element rather than a fixed offset that could land on the viewport trigger, and the native-view geometry check accounts for Canvas zoom.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/canvas.ts`, `tests/unit/canvas.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-067, ADR-068, ADR-069), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 177 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.6 s. Verifies the transparent toolbar and shell-owned dot backdrop, Fit all with every pane bottom above the native bottom bar, pane drag persistence, zoom-aware native bounds, sessions, workspace actions, and axe accessibility. |
+| `npm run build` | Passed: main 156.59 kB, preload 9.15 kB, renderer JS 359.97 kB, shell CSS 32.17 kB. |
+| Running-app probes | Light and dark screenshots show a continuous dot field behind the toolbar. At 1280 × 860, the native bar sits at `y = 808`; fitted pane bottoms land at `y = 796`, leaving 12 px clearance. Dragging a header 220 px upward stops at the 24 px top inset with the header still visible. |
+
+**Known behavior / limitations:** Fit all may choose a zoom below 100% when tall panes would otherwise reach the bottom bar. Dragging cannot hide a header under the top edge, but manual Canvas panning can still move panes partly off-screen; selecting one or using Fit all restores it. The minimap can still cover a pane corner by design. The toolbar remains 42 px and draggable even though it is visually transparent.
+
+## Post-MVP — Restore the opaque top toolbar
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Reverted the transparent top-toolbar treatment. The toolbar is again an opaque `--surface` 42 px band with a 1 px bottom divider, and the dotted Canvas backdrop is owned by the workspace below it, with pan-driven `background-position` restored on the workspace. This removes the misleading implication that pane content can live behind the bar; native pane `WebContentsView`s stack above the shell and cannot sit under live toolbar controls. The bottom-bar-aware Fit all, 24 px pane-drag top clamp, zoom-aware geometry checks, and all other recent pane/workspace behavior remain.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-067 superseded, ADR-070 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 177 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.4 s. Verifies the opaque toolbar, workspace-owned dot backdrop and pan position, Fit all above the bottom bar, pane drag clamping, sessions, workspace actions, and axe accessibility. |
+| `npm run build` | Passed: main 156.59 kB, preload 9.15 kB, renderer JS 359.94 kB, shell CSS 31.80 kB. |
+| Running-app screenshot | Confirms the toolbar surface and divider above a dotted workspace, with fitted panes clear of the bottom bar. |
+
+**Known behavior / limitations:** Panes cannot be displayed interactively behind the top toolbar with the current single-shell composition. A native top-bar overlay would be required to support that visual overlap. Manual Canvas panning can still move a pane partly off-screen; selecting it or using Fit all restores it.
