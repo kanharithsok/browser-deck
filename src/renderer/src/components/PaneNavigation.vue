@@ -14,10 +14,12 @@ const props = withDefaults(
     statusId: string
     viewportMenuOpen?: boolean
     customViewportRequest?: number
+    showViewportTrigger?: boolean
   }>(),
   {
     viewportMenuOpen: false,
-    customViewportRequest: 0
+    customViewportRequest: 0,
+    showViewportTrigger: true
   }
 )
 
@@ -241,21 +243,23 @@ async function submitAddress(): Promise<void> {
         {{ addressError }}
       </span>
 
-      <button
-        class="viewport-select viewport-trigger"
-        type="button"
-        :data-preset="selectedPreset"
-        :title="`Viewport preset: ${selectedPresetLabel}`"
-        :aria-label="`Viewport preset for device ${pane.title}: ${selectedPresetLabel}`"
-        aria-haspopup="menu"
-        :aria-expanded="viewportMenuOpen"
-        @click="openViewportMenu"
-      >
-        <span class="viewport-trigger-label">{{ selectedPresetDisplay }}</span>
-        <svg class="viewport-trigger-chevron" viewBox="0 0 12 12" aria-hidden="true">
-          <path d="m3 4.5 3 3 3-3" />
-        </svg>
-      </button>
+      <template v-if="showViewportTrigger">
+        <button
+          class="viewport-select viewport-trigger"
+          type="button"
+          :data-preset="selectedPreset"
+          :title="`Viewport preset: ${selectedPresetLabel}`"
+          :aria-label="`Viewport preset for device ${pane.title}: ${selectedPresetLabel}`"
+          aria-haspopup="menu"
+          :aria-expanded="viewportMenuOpen"
+          @click="openViewportMenu"
+        >
+          <span class="viewport-trigger-label">{{ selectedPresetDisplay }}</span>
+          <svg class="viewport-trigger-chevron" viewBox="0 0 12 12" aria-hidden="true">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
+        </button>
+      </template>
 
       <button
         v-if="selectedPreset === 'custom'"

@@ -37,10 +37,6 @@ defineProps<{
       <rect x="2.2" y="3" width="11.6" height="8" rx="1.2" />
       <path d="M5.5 13h5M8 11v2" />
     </template>
-    <template v-else-if="icon === 'profiles'">
-      <circle cx="8" cy="5.5" r="2.5" />
-      <path d="M3.5 13c.4-2.2 2.2-3.5 4.5-3.5s4.1 1.3 4.5 3.5" />
-    </template>
     <template v-else-if="icon === 'workspaces'">
       <rect x="3" y="3" width="7" height="7" rx="1" />
       <path d="M6 6h7v7H6z" />
@@ -65,6 +61,10 @@ defineProps<{
       <rect x="5" y="5" width="8" height="8" rx="1" />
       <path d="M11 5V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1" />
     </template>
+    <template v-else-if="icon === 'external'">
+      <path d="M9 3h4v4M13 3 7.5 8.5" />
+      <path d="M11.5 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1h2.5" />
+    </template>
     <template v-else-if="icon === 'rotate'">
       <rect x="5.5" y="2.5" width="5" height="11" rx="1" />
       <path d="M2.5 6.5a6 6 0 0 1 10.2-2.2M13.5 9.5a6 6 0 0 1-10.2 2.2" />
@@ -86,6 +86,27 @@ defineProps<{
       d="m5 4-3 4 3 4M11 4l3 4-3 4M9 2 7 14"
     />
     <path v-else-if="icon === 'close'" d="M4 4l8 8M12 4l-8 8" />
+    <template v-else-if="icon === 'showcase'">
+      <rect x="2.2" y="4.8" width="3" height="8.2" rx="0.7" />
+      <rect x="6.5" y="2.4" width="3" height="11" rx="0.7" />
+      <rect x="10.8" y="4.2" width="3" height="8.8" rx="0.7" />
+    </template>
+    <template v-else-if="icon === 'row'">
+      <rect x="2.2" y="4" width="3" height="8" rx="0.7" />
+      <rect x="6.5" y="4" width="3" height="8" rx="0.7" />
+      <rect x="10.8" y="4" width="3" height="8" rx="0.7" />
+    </template>
+    <template v-else-if="icon === 'grid'">
+      <rect x="2.2" y="2.8" width="4.6" height="4.4" rx="0.7" />
+      <rect x="9.2" y="2.8" width="4.6" height="4.4" rx="0.7" />
+      <rect x="2.2" y="9" width="4.6" height="4.4" rx="0.7" />
+      <rect x="9.2" y="9" width="4.6" height="4.4" rx="0.7" />
+    </template>
+    <template v-else-if="icon === 'stack'">
+      <rect x="4" y="2.2" width="8" height="3" rx="0.7" />
+      <rect x="4" y="6.5" width="8" height="3" rx="0.7" />
+      <rect x="4" y="10.8" width="8" height="3" rx="0.7" />
+    </template>
   </svg>
 </template>
 

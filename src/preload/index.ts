@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IPC_CHANNELS,
+  type CanvasOverlayVisibility,
   type PaneBoundsUpdate,
   type PaneCommand,
   type PaneFlowApi,
@@ -20,8 +21,6 @@ const api: PaneFlowApi = {
   addPane: (url) => ipcRenderer.invoke(IPC_CHANNELS.addPane, url),
   addPaneWithViewport: (viewport: PaneViewport) =>
     ipcRenderer.invoke(IPC_CHANNELS.addPaneWithViewport, viewport),
-  addPaneWithProfile: (profileId: string, url?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.addPaneWithProfile, profileId, url),
   duplicatePane: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.duplicatePane, paneId),
   closePane: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.closePane, paneId),
   renamePane: (paneId: string, title: string) =>
@@ -40,17 +39,14 @@ const api: PaneFlowApi = {
   capturePaneScreenshot: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.capturePaneScreenshot, paneId),
   copyPaneUrl: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.copyPaneUrl, paneId),
+  clearPaneSiteData: (paneId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.clearPaneSiteData, paneId),
+  openPaneExternal: (paneId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openPaneExternal, paneId),
   openPaneDevTools: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.openPaneDevTools, paneId),
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
     ipcRenderer.invoke(IPC_CHANNELS.saveWorkspaceLayout, layout),
-  listProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.listProfiles),
-  renameProfile: (profileId: string, label: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.renameProfile, profileId, label),
-  clearProfile: (profileId: string, closePanes = false) =>
-    ipcRenderer.invoke(IPC_CHANNELS.clearProfile, profileId, closePanes),
-  deleteProfile: (profileId: string, closePanes = false) =>
-    ipcRenderer.invoke(IPC_CHANNELS.deleteProfile, profileId, closePanes),
   listWorkspaces: () => ipcRenderer.invoke(IPC_CHANNELS.listWorkspaces),
   exportWorkspace: (workspaceId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.exportWorkspace, workspaceId),
@@ -75,6 +71,8 @@ const api: PaneFlowApi = {
     ipcRenderer.invoke(IPC_CHANNELS.updateCanvasMinimap, state),
   setCanvasMinimapVisible: (visible: boolean) =>
     ipcRenderer.invoke(IPC_CHANNELS.setCanvasMinimapVisible, visible),
+  setCanvasOverlayVisibility: (visibility: CanvasOverlayVisibility) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setCanvasOverlayVisibility, visibility),
   sendCanvasMinimapAction: (action) =>
     ipcRenderer.invoke(IPC_CHANNELS.canvasMinimapAction, action),
   onCanvasMinimapState: (listener) => {
@@ -117,6 +115,8 @@ const api: PaneFlowApi = {
   },
   setCanvasHandMode: (active) =>
     ipcRenderer.invoke(IPC_CHANNELS.setCanvasHandMode, active),
+  setCanvasSelectMode: (active) =>
+    ipcRenderer.invoke(IPC_CHANNELS.setCanvasSelectMode, active),
   onStateChanged: (listener) => {
     const wrapped = (_event: IpcRendererEvent, state: ShellState): void => {
       listener(state)

@@ -13,8 +13,8 @@ describe('canvas minimap layout', () => {
   it('projects panes and the current viewport into the map', () => {
     const layout = layoutMinimap(
       [
-        { id: 'a', x: 40, y: 40, width: 560, height: 732, active: true },
-        { id: 'b', x: 660, y: 40, width: 560, height: 732 }
+        { id: 'a', x: 40, y: 40, width: 560, height: 764, active: true },
+        { id: 'b', x: 660, y: 40, width: 560, height: 764 }
       ],
       { x: -100, y: -50, width: 800, height: 600 },
       { width: 520, height: 300 }
@@ -90,7 +90,7 @@ describe('canvas minimap state validation', () => {
         x: 10,
         y: 20,
         width: 560,
-        height: 732
+        height: 764
       }
     ],
     viewport: { x: -100, y: -50, width: 800, height: 600 }

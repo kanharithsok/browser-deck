@@ -25,20 +25,23 @@ describe('canvas zoom', () => {
         theme: 'dark',
         themePreference: 'system',
         zoom: 0.5,
-        handMode: false
+        handMode: false,
+        selectMode: false
       })
     ).toEqual({
       theme: 'dark',
       themePreference: 'system',
       zoom: 0.5,
-      handMode: false
+      handMode: false,
+      selectMode: false
     })
     expect(
       parseCanvasZoomState({
         theme: 'sepia',
         themePreference: 'system',
         zoom: 1,
-        handMode: false
+        handMode: false,
+        selectMode: false
       })
     ).toBeNull()
     expect(
@@ -46,13 +49,23 @@ describe('canvas zoom', () => {
         theme: 'light',
         themePreference: 'system',
         zoom: 0.1,
-        handMode: false
+        handMode: false,
+        selectMode: false
       })
     ).toBeNull()
     expect(
       parseCanvasZoomState({
         theme: 'light',
         themePreference: 'sepia',
+        zoom: 1,
+        handMode: false,
+        selectMode: false
+      })
+    ).toBeNull()
+    expect(
+      parseCanvasZoomState({
+        theme: 'light',
+        themePreference: 'system',
         zoom: 1,
         handMode: false
       })
@@ -74,8 +87,14 @@ describe('canvas zoom', () => {
     expect(parseCanvasZoomAction({ type: 'toggle-hand' })).toEqual({
       type: 'toggle-hand'
     })
+    expect(parseCanvasZoomAction({ type: 'toggle-select' })).toEqual({
+      type: 'toggle-select'
+    })
     expect(parseCanvasZoomAction({ type: 'appearance' })).toEqual({
       type: 'appearance'
+    })
+    expect(parseCanvasZoomAction({ type: 'arrange' })).toEqual({
+      type: 'arrange'
     })
     expect(parseCanvasZoomAction({ type: 'find-device' })).toEqual({
       type: 'find-device'
