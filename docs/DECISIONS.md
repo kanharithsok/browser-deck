@@ -59,7 +59,7 @@ Record material technical decisions here. Keep entries short but include context
   - **Use query-string cookies as the final proof.** Rejected as insufficient for the exit criterion; Phase 0 used query cookies only as a basic isolation check.
 
 - **Consequences:**
-  - Login compatibility depends on the website and its treatment of Electron; PaneFlow does not spoof user agents or promise universal compatibility.
+  - Login compatibility depends on the website. Responsive and custom panes keep Electron's UA; fixed presets use category UAs from ADR-057. Universal compatibility is not promised.
   - Session-only cookies and `sessionStorage` remain outside restart guarantees. Persistent cookies, localStorage, IndexedDB, and persistent HttpOnly session cookies are covered.
   - Future profile clear/delete actions must use Electron's session APIs rather than editing cookie jars manually.
   - The fixture server holds sessions in memory for the lifetime of the test run; this is test infrastructure, not production storage.
@@ -293,7 +293,7 @@ Record material technical decisions here. Keep entries short but include context
   1. Keep preset definitions, validation, custom parsing, and fit-scale math in the pure TypeScript `src/shared/viewports.ts` module.
   2. Apply emulation with `screenPosition: 'desktop'` and `viewSize` equal to the requested CSS width and height. Desktop positioning keeps `window.innerWidth`, `window.innerHeight`, and media queries at the configured dimensions. Mobile positioning produced Chromium's 980 px fallback layout for fixture pages without a viewport meta tag.
   3. Set `deviceScaleFactor` to the preset or custom value. Set `scale` to the fit ratio in fit mode and `1` in actual mode. Disable emulation for responsive panes.
-  4. Keep the native view inside its validated pane bounds. Only the CSS layout and render scale are emulated; no user agent, touch, GPS, or device API behavior is spoofed.
+  4. Keep the native view inside its validated pane bounds. Only the CSS layout and render scale are emulated; touch, GPS, and device API behavior are not spoofed. User-agent handling is defined later in ADR-057.
   5. Store viewport state in the main-process pane record and expose it in `PaneState`; the renderer owns the controls and sends validated settings through typed IPC.
   6. Reject invalid custom values in both the renderer and main process. Do not silently clamp input.
 
@@ -301,7 +301,7 @@ Record material technical decisions here. Keep entries short but include context
   - **`screenPosition: 'mobile'`.** Rejected for this slice because pages without a viewport meta tag fall back to a 980 px layout, so the fixture cannot prove that presets set the intended CSS viewport.
   - **Resize the native view to the emulated dimensions.** Rejected because native views cannot extend or clip within the pane safely, and changing the view size changes the CSS viewport.
   - **Renderer CSS transforms or iframes.** Rejected; native `WebContentsView` is the required pane renderer and cannot be transformed or clipped by DOM.
-  - **User-agent strings named after devices.** Rejected as dishonest and outside the viewport-only scope; optional UA overrides remain deferred.
+  - **User-agent strings named after devices.** Rejected at the time as beyond the viewport-only scope. ADR-057 later added category-level UAs for fixed presets; exact model identities remain out of scope.
   - **Persist viewport state immediately.** Deferred to the workspace persistence slice so all pane state is restored through one versioned store.
 
 - **Consequences:**
@@ -355,7 +355,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-012 — Profile lifecycle lives in the trusted shell with main-enforced usage rules
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-062 (Profiles manager and sharing removed)
 - **Date:** 2026-11-19
 - **Context:** `SPEC.md` §9.4 requires a profile manager listing labels/creation data and pane usage, renaming, clearing data, and deleting unused profiles with protection against deleting active profiles. Remote pane content must never receive profile metadata or session controls. Shell DOM overlays are covered by native pane views.
 
@@ -451,7 +451,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-015 — Profile sharing is an explicit profile-manager action
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-062 (Profile sharing removed)
 - **Date:** 2026-11-19
 - **Context:** `SPEC.md` §9.1 requires fresh profiles by default and permits sharing only when the user explicitly selects an existing profile. Shared status must be visible so it cannot happen accidentally. Profile metadata and pane creation are trusted-shell operations.
 
@@ -573,7 +573,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-019 — Clearing/deleting an in-use profile requires closing its panes
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-062 (Profile manager removed)
 - **Date:** 2026-11-19
 - **Context:** `SPEC.md` allows deleting an active profile only through a confirmed flow that closes panes using it. Disabling Clear/Delete forced users to find and close every pane manually and did not satisfy the lifecycle requirement.
 
@@ -1624,6 +1624,313 @@ Record material technical decisions here. Keep entries short but include context
   - E2e selects fixed presets and Custom through the menu, and verifies the trigger's `data-preset`, short label, tooltip, and `aria-expanded` state.
   - Accessibility e2e verifies the button/menu semantics, focus, and the updated AX tree entry.
   - Visual check at 1280 × 860 confirmed 304 px wide menus with left-aligned names, right-aligned dimensions, no horizontal clipping, and the complete catalog visible without scrolling.
+
+## ADR-054 — Anchor duplicates to their source and add explicit Canvas arrangements
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** `Cmd+D` created a duplicate at the end of the default row, often far from the pane the user was comparing. Users also asked for `Cmd+N` as the conventional add-device shortcut and for Responsively-style arrangements that can tidy a Canvas full of frames without dragging each one.
+
+- **Decision:**
+  1. Compute duplicate placement in the renderer before invoking `paneflow:duplicate-pane`. Use the source frame's right slot when it has a clean gap; otherwise place the duplicate at the source's left edge below it and scan down past occupied frames.
+  2. Keep the computed placement pending until the new pane appears in the state snapshot, then apply it before `ensureCanvasPositions` runs so the camera reveal and the saved layout both use the final position.
+  3. Use `Cmd/Ctrl+N` for Add Device in the native Device menu, replacing `Cmd/Ctrl+T`. ADR-058 later changes this shortcut to open the device picker instead of creating a responsive pane immediately.
+  4. Add an Arrange menu to the bottom canvas bar with Showcase layout, Horizontal row, 2 × 2 grid, and Vertical stack. Arrange rebuilds every pane position from pane order, persists the result, and fits the camera.
+  5. Put the pure `duplicateCanvasPosition` and `arrangeCanvasFrames` helpers in `src/shared/canvas.ts`. Showcase packs rows with a 24 px gap, wraps at the existing 2400 px row width, and centers shorter rows against the widest row.
+  6. Keep existing native-view hiding and menu behavior; Arrange is a normal in-shell menu rendered above the bottom bar and keeps the bar and minimap visible.
+
+- **Alternatives considered:**
+  - **Insert the duplicate directly beside the source and shift existing panes right.** Rejected; silently moving unrelated panes makes an existing layout harder to trust.
+  - **Always place duplicates at the far-right end of the row.** Rejected; that was the reported problem.
+  - **Always place duplicates below the source.** Rejected; the right slot is the clearest first choice when it is free.
+  - **Keep both `Cmd+N` and `Cmd+T`.** Rejected; one visible accelerator per action avoids duplicate menu entries and documentation drift.
+  - **Add a persistent arrangement mode.** Rejected; these are one-shot layout commands, not another workspace mode.
+  - **Reuse the default row-flow for Showcase.** Rejected; the default uses the wider 60 px gap and does not center rows.
+
+- **Consequences:**
+  - A duplicate stays visually attached to the pane it came from, even when the neighboring row slot is occupied.
+  - Repeated duplicates below the same source form a clean vertical stack at the source's left edge.
+  - Arrange discards manual position tweaks for every pane in exchange for a predictable tidy layout; Fit all remains the recovery path.
+  - Showcase may wrap earlier than the default row because its 24 px gap is tighter and its rows are centered rather than left-aligned.
+
+- **Evidence / verification:**
+  - Unit tests cover right-slot placement, below-source fallback, vertical scanning, non-overlapping targets, row, stack, grid, Showcase wrapping/centering, and empty input.
+  - E2e verifies `CmdOrCtrl+N` accelerator metadata, duplicate placement beside/below the source in persisted Canvas coordinates, the four Arrange menu items, and the resulting horizontal-row positions.
+
+## ADR-055 — Each device header owns its viewport and browser handoff
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Responsively's device header exposes the device preset, dimensions, reload, fullscreen, external open, screenshot, and close. PaneFlow's Canvas header had a title, a static size badge, and navigation/actions, while the active-pane viewport selector lived in the main top toolbar. Users asked for a clearer per-pane header, a visible drag affordance, an open-in-browser action, and a cleaner main toolbar.
+
+- **Decision:**
+  1. Add a six-dot drag grip at the left of every Canvas pane header. The grip is decorative; the existing header drag surface remains unchanged.
+  2. Replace the static viewport badge with a per-device trigger that shows the short preset name and CSS dimensions, opens the existing viewport menu for that pane, and exposes `data-preset`, `aria-haspopup`, and `aria-expanded`. Open the menu below the trigger from its left edge and let the shared window-edge clamp shift it only when it would overflow.
+  3. Hide the dimensions below a 470 px header width so narrow device frames keep the preset name and all actions usable.
+  4. Remove the full viewport selector from the top toolbar. Selecting Custom… from a header selects that device and opens the existing inline width/height/DPR editor in the top toolbar; a compact edit button remains while the active device has a custom viewport.
+  5. Add an Open in Browser button to the header and an Open in Browser item to the device actions menu. Route it through a validated `paneflow:open-pane-external` channel that only accepts the pane's current HTTP(S) URL, rejects `about:blank`, and calls `shell.openExternal` in main.
+  6. Keep the header on one row. Do not add synced/mirroring status because PaneFlow has no synchronized interaction feature, and do not duplicate global zoom controls or screenshot actions in the header.
+
+- **Alternatives considered:**
+  - **Two-row header.** Kept as a fallback, but not needed after moving the preset selector into the header and hiding dimensions at narrow widths.
+  - **Keep the top-toolbar preset selector as well.** Rejected; two selectors for the same state make the main toolbar heavier and create two sources of truth.
+  - **Keep Custom only in the toolbar.** Rejected as the primary control; the header menu lists the same complete catalog, and the toolbar editor remains only as the compact form.
+  - **Open external from the renderer or preload.** Rejected; external process launching stays in main with sender and URL validation.
+  - **Add a Synced badge or toggle.** Rejected; it would claim a feature that does not exist.
+  - **Add fullscreen/maximize back to the header.** Deferred; it reverses the earlier ADR-043 decision and deserves a separate product decision.
+
+- **Consequences:**
+  - Every pane can change its own viewport without first making it active in a separate toolbar control.
+  - The top toolbar contains only the active device address, Add, and an optional custom-viewport edit button.
+  - Header chrome is denser but remains one row; dimensions and the profile drop out first on narrow frames.
+  - Open in Browser is disabled for blank devices and for any non-HTTP(S) state.
+  - Header controls remain above native bounds, so this does not change the native-view composition model.
+
+- **Evidence / verification:**
+  - E2e verifies the per-device viewport trigger, complete preset menu, `aria-expanded`, custom-editor handoff, mobile-width header containment, open-in-browser URL handoff through a stubbed `shell.openExternal`, and the 11-item device actions menu.
+  - Accessibility e2e verifies the updated tab order: address, Add, viewport trigger, reload, open in browser, device actions, close, then the next device.
+  - `make check` passes typecheck, lint, 163 unit tests, and all light/dark contrast pairs.
+
+## ADR-056 — Marquee Select tool for bulk pane cleanup
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Workspaces with many panes require repeated close actions. Users asked for a marquee-selection tool in the bottom Canvas bar so they can drag around several panes and delete them together. Canvas panes are native views, so the shell cannot draw a selection rectangle over live page content, and normal Canvas dragging already owns empty-canvas panning and pane-header moves.
+
+- **Decision:**
+  1. Add a persistent Select toggle to the bottom canvas bar, mutually exclusive with Hand. Activating either tool turns the other off; Space-held Hand still temporarily overrides Select.
+  2. While Select is active, a primary drag from empty canvas or pane chrome starts a marquee instead of panning or moving a pane. Interactive controls keep normal behavior.
+  3. Hide native pane views for the duration of the marquee and draw the rectangle as shell DOM. Capture snapshots when none are available so covered panes do not flash.
+  4. Convert pane frames to screen space and use the pure `canvasPaneIdsInRect` helper to select every intersecting frame. Selection replaces the previous set on each drag.
+  5. Ring selected pane slots outside native bounds and show a toolbar count chip with a close action. A click without movement selects only the pane under the cursor, or clears the selection on empty canvas.
+  6. Delete/Backspace closes the selected set when focus is in shell chrome; Escape clears the selection, then exits the tool. Update the bar through a validated `paneflow:set-canvas-select-mode` channel so `aria-pressed` reflects the real state.
+  7. Keep selection ephemeral. It is not persisted, does not change the active pane, and clears on workspace switch or when the last selected pane closes.
+
+- **Alternatives considered:**
+  - **Shift-click to build a selection.** Deferred; marquee is the requested path, and click/Shift semantics can be added later without changing the model.
+  - **Keep native views live during marquee.** Rejected; the native views would cover the rectangle and make the selection area invisible.
+  - **Start the marquee only from empty canvas.** Rejected; draggable pane headers are useful starting points, and Select mode already suspends header dragging.
+  - **Close panes from main in one bulk IPC.** Deferred; sequential validated close calls are simple and keep the existing destroy/state path.
+  - **Add a persistent selection mode.** Rejected; this is a temporary tool, not another layout mode.
+
+- **Consequences:**
+  - Bulk deletion is fast but has no undo; the selected count and ring make the target set visible before Delete.
+  - Native views are briefly replaced by snapshots or empty states during the drag, then restored by the normal bounds path.
+  - About-blank panes, whose native views are intentionally hidden, can still be selected and closed.
+  - The bottom bar grows to 422 DIP and now carries an additional pressed-state control.
+
+- **Evidence / verification:**
+  - Unit tests cover marquee overlap, zero-size input, and edge-touching behavior.
+  - E2e creates four stress panes, fits the camera, drags around two panes, verifies two selected rings and the count chip, presses Delete, and confirms only those two panes close. Accessibility e2e verifies the Select button name, tooltip, and `aria-pressed` state.
+
+## ADR-057 — Fixed presets send category-appropriate user agents
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Viewport emulation changed only CSS dimensions and DPR. On a 1× Dell display, Google at iPhone SE size reported `innerWidth: 375` but `scrollWidth: 400`, producing a horizontal scrollbar and clipped content. A Retina MacBook hid the bar with overlay scrollbars, so the overflow was less visible. Testing with an iPhone UA reduced the same page to `scrollWidth: 360` and removed the horizontal overflow. The overflow is caused by sites serving desktop markup to the Electron UA, not by display scaling or native bounds.
+
+- **Decision:**
+  1. Add `src/shared/user-agent.ts` with a pure mapping from fixed preset category to UA: iPhone Safari for Apple and generic phones, Android Chrome for Galaxy/Pixel phones, iPad Safari for iPad and generic tablets, Android Chrome for the Galaxy Tab, and desktop Chrome for laptop/desktop presets.
+  2. Keep the pane's original Electron UA for responsive and custom viewports.
+  3. Set the mapped UA before the first load. When a viewport change alters the UA category, update the UA and reload the pane's current URL so the site can serve the matching document.
+  4. Use the running Chromium version in desktop and Android UA strings, with a safe fallback when the version is malformed.
+  5. Keep the emulated CSS viewport and DPR exactly as configured. The UA is for layout fidelity only and must not be presented as a way to bypass paywalls, bot protection, or identity checks.
+  6. Expose the preset UA in `docs/ARCHITECTURE.md`, `SPEC.md`, and known limitations; arbitrary per-pane UA overrides remain unsupported.
+
+- **Alternatives considered:**
+  - **Leave viewport-only emulation.** Rejected; common mobile sites then serve desktop markup and overflow fixed viewports.
+  - **Add an optional per-pane UA toggle first.** Rejected for this slice; preset-derived UAs fix the default path without another control. An explicit override can still be added later.
+  - **Set the UA without reloading.** Rejected; `setUserAgent` affects future navigations, so the current desktop document would remain until a manual reload.
+  - **Use exact model UAs for every preset.** Rejected; category-level strings are sufficient for layout selection and avoid implying hardware-accurate emulation.
+  - **Spoof Client Hints and touch APIs as well.** Rejected; that expands the accuracy claim and bypass surface beyond layout fidelity.
+
+- **Consequences:**
+  - Fixed phone/tablet panes generally receive mobile markup and fit their preset width; desktop presets receive a clean desktop Chrome UA instead of Electron's UA.
+  - Changing between categories reloads the page, which can discard unsaved page state. Changing between presets in the same category does not reload.
+  - Sites that rely on User-Agent Client Hints rather than the UA string may still choose a different layout.
+  - Responsive and custom panes keep the previous behavior and may still see Electron-specific handling.
+
+- **Evidence / verification:**
+  - Unit tests cover responsive/custom fallback, iPhone, Android phone, iPad, Android tablet, desktop, and malformed Chrome-version fallback.
+  - E2e verifies the UA inside live panes after switching to generic phone (`iPhone`), tablet (`iPad`), Pixel 8 (`Android 14`), and back to responsive (no longer iPhone).
+  - Manual Google check on the Dell 1× display: at iPhone SE the page changed from `scrollWidth: 400` with a horizontal scrollbar to `scrollWidth: 360` without horizontal overflow, while the emulated viewport remained `375 × 667 @ DPR 2`.
+
+## ADR-058 — Cmd+N opens the Add Device picker
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** `Cmd/Ctrl+N` created a responsive pane immediately, while the toolbar + button opened the viewport picker. Users expect the shortcut and the button to offer the same choice, especially when they want a preset other than Responsive.
+
+- **Decision:**
+  1. Route the native **Add Device** command to the existing in-shell Add Device menu instead of calling `paneflow:add-pane`.
+  2. Anchor the menu to the toolbar + button, using its normal above/below placement and focus-return behavior.
+  3. Do not create a pane until the user selects Responsive or a fixed preset.
+  4. Keep the direct `paneflow:add-pane` IPC and `window.paneflow.addPane()` API for tests and internal creation paths; only the user-facing command changes.
+  5. Keep `Cmd/Ctrl+N` as the menu accelerator.
+
+- **Alternatives considered:**
+  - **Create Responsive immediately and offer a separate “Add preset…” command.** Rejected; two add paths with different defaults are harder to explain.
+  - **Open the menu at the pointer.** Rejected; the custom menu is anchored to trusted shell chrome, and the toolbar + is the stable entry point.
+  - **Remove the direct add API.** Rejected; tests and internal stress checks use it, and it remains the simplest programmatic path.
+
+- **Consequences:**
+  - `Cmd/Ctrl+N` now requires a second choice before a pane exists.
+  - The shortcut, toolbar +, and native Device menu share one Add path and one preset catalog.
+  - The command closes any open Add menu? Opening it again replaces the current menu through the existing `AppMenu` mode.
+  - Focus returns to the Add button after Escape or selection.
+
+- **Evidence / verification:**
+  - E2e invokes the native `pane-add` menu command, verifies the Add Device menu appears without changing pane count, selects Responsive, and then verifies a fresh pane is created.
+  - The existing accelerator metadata check still asserts `CmdOrCtrl+N`.
+
+## ADR-059 — Two-stage snapping with a near gap and proximity preview
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Alignment guides appeared only after the dragged pane entered the eight-pixel flush-snap window, and users asked for a first soft stop with visible space before the pane locks flush. They also wanted to keep the existing next-to-neighbor snap.
+
+- **Decision:**
+  1. Keep the existing 8-screen-pixel flush snap.
+  2. Add a first magnetic stop at a 16-screen-pixel gap when the nearest opposite edges are within 24 screen pixels. This is the “close” snap.
+  3. Show a lighter dashed preview at 24–64 screen pixels, where the pane is near but not yet snapped.
+  4. Only opposite edges participate in gap snapping, so panes never gap-snap into an overlap. Centers still flush-snap.
+  5. Prefer a flush snap when both stages are available. When an axis is snapped at either stage, suppress its dashed preview and show one solid guide.
+  6. Clear solid and dashed guides on drag start, release, cancel, workspace switch, and mode change.
+  7. The bottom-bar Hand and Select controls use palm and pointer-cursor icons; names, tooltips, pressed state, and behavior are unchanged.
+
+- **Alternatives considered:**
+  - **Only proximity guides, no gap snap.** Rejected; users asked for an actual first snap.
+  - **Snap to a fixed world gap at every zoom.** Rejected; the stops should feel consistent in screen pixels like the flush snap.
+  - **Replace the flush snap with a gap snap.** Rejected; the existing next-to-neighbor behavior must remain.
+  - **Show all nearby edge guides.** Rejected; one nearest guide per axis is calmer and matches the snap model.
+  - **Use a literal grid overlay.** Rejected for this slice; a per-axis guide reuses the established alignment model.
+
+- **Consequences:**
+  - Dragging toward a neighbor first lands at a 16px gap, then jumps flush when the pointer continues into the 8px window.
+  - Dragging away from flush returns to the gap stop before releasing completely.
+  - At 25% zoom, the 24/64px screen thresholds cover larger world distances by design.
+  - Solid and dashed guides can appear together on different axes.
+
+- **Evidence / verification:**
+  - Unit tests cover dashed preview, the 16px gap stop, the flush stop, and suppression of the preview when snapped.
+  - E2e drags to a 50px gap for the dashed preview, then to a 30px pointer gap and verifies the resulting 16px snap, then into flush range; all guides clear on release.
+
+## ADR-060 — Closing the last pane releases its exclusive profile
+
+- **Status:** Accepted; sharing and the manager were later removed by ADR-062
+- **Date:** 2026-11-20
+- **Context:** Profiles were intentionally persistent after close, which left unused profiles and session data behind. Users asked for the profile to live with its pane and be cleared on close.
+
+- **Decision:**
+  1. When a pane is removed through an explicit close or an unexpected webContents destruction, check whether its profile still has a live pane.
+  2. If no pane uses the profile, clear storage/cache/auth data, remove the profile metadata, and delete its partition directory. No extra confirmation is shown.
+  3. If the profile is shared, keep it until the last pane using it closes.
+  4. Do not release profiles during workspace switches, app shutdown, or the profile manager’s close-and-delete flow, because those paths either retain the workspace or already own profile cleanup.
+  5. Keep unused profiles that come from other sources, such as duplicated workspaces or imports, available in the profile manager for explicit clear/delete.
+
+- **Alternatives considered:**
+  - **Keep profiles after close.** Rejected; it caused stale profiles and sessions to accumulate.
+  - **Clear data but keep metadata.** Rejected; the profile record would remain without a pane to own it.
+  - **Prompt before deleting.** Rejected; closing already has a one-step model, and multi-select Delete should stay fast.
+  - **Delete profiles on workspace switch.** Rejected; workspace panes must be able to restore their authenticated sessions.
+
+- **Consequences:**
+  - Reopening a closed device starts with a fresh profile and signed out.
+  - Shared profiles survive until their final pane closes.
+  - Closing a pane can trigger asynchronous session cleanup; the pane disappears immediately while profile deletion completes.
+  - Profiles from duplicated/imported workspaces can still appear unused and be cleaned from the manager.
+
+- **Evidence / verification:**
+  - E2e verifies Bob’s exclusive profile disappears after close, self-closed panes release their profiles, and shared Alice-profile panes keep the profile until only Alice remains.
+  - An unused profile created by a duplicated workspace still supports rename, clear, and delete in the profile manager.
+
+## ADR-061 — Keep Canvas overlays visible unless a menu covers them
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Opening any custom menu hid both the bottom canvas bar and the minimap until the menu closed. Most menus do not cover those overlays, so the hiding was unnecessarily disruptive.
+
+- **Decision:**
+  1. Keep the bottom bar and minimap visible while a menu is open unless the menu rectangle intersects that specific overlay.
+  2. Keep both visible for the zoom, Arrange, and appearance menus, which are anchored to the bottom bar.
+  3. Keep the current overlay visibility until the menu reports its final bounds. The menu is hidden during positioning, so hiding the overlays first only caused a visible flicker.
+  4. Hide both while profile/workspace dialogs or the device palette are open, and while a marquee drag is active, matching the existing modal behavior.
+  5. Use a separate validated overlay-visibility IPC so the minimap and bar can hide independently.
+
+- **Alternatives considered:**
+  - **Hide both for every menu.** Rejected; it removes useful context when the menu is nowhere near the overlays.
+  - **Never hide them.** Rejected; native overlays sit above shell DOM and would cover a menu that reaches the bottom edge.
+  - **Reposition menus away from overlays.** Rejected for this slice; it would complicate menu placement and make anchors less predictable.
+  - **One shared visibility flag.** Rejected; a menu that covers only the minimap should not also remove the bottom bar.
+
+- **Consequences:**
+  - Most toolbar, pane, and upper-canvas menus leave both overlays visible.
+  - Menus near the bottom edge hide only the overlay they actually cover.
+  - Overlay placement is estimated in the shell from the same shared size constants used by main, using the uncollapsed minimap height as a conservative bound.
+
+- **Evidence / verification:**
+  - E2e opens the canvas menu at the upper-left and verifies both the minimap and bottom bar remain visible; Escape restores native panes normally.
+  - The overlay-visibility channel validates trusted sender and both boolean fields in main.
+
+## ADR-062 — Remove the Profiles manager and sharing; clear data per pane
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Profiles now live and die with their pane. The separate Profiles manager mostly managed leftover sessions, while explicit sharing conflicted with the goal that every pane behaves as an independent browser. Clearing data is still useful for a live pane that needs to sign out or reset.
+
+- **Decision:**
+  1. Remove the native **Profiles** menu, the Profiles dialog, profile labels/counts in the chrome, sharing, and the profile picker IPC.
+  2. Every pane owns one independent session. New and duplicated panes receive fresh profiles; sharing is not supported.
+  3. Add **Clear Site Data…** to the device actions menu. It opens a confirmation menu, clears cookies/storage/cache/auth for that pane's profile, and reloads the pane.
+  4. Keep `profiles.json` as an internal registry for restoring partitions across restarts. It is not a user-facing feature.
+  5. When an inactive workspace is deleted, release profiles referenced only by that workspace and not by another workspace or live pane.
+  6. Closing a pane continues to release its session immediately with no extra confirmation.
+
+- **Alternatives considered:**
+  - **Keep the manager for clearing live data.** Rejected; a per-pane action is closer to the thing being cleared and removes a large dialog.
+  - **Keep explicit sharing.** Rejected by the product decision that each pane is an independent browser; sharing created hidden cross-pane effects.
+  - **Use a native confirmation dialog for Clear Site Data.** Rejected; the existing custom menu can present a second confirmation step with consistent styling and keyboard behavior.
+  - **Delete inactive-workspace profiles eagerly on app start.** Deferred; workspace deletion is the clear lifecycle boundary.
+
+- **Consequences:**
+  - There is no way to reuse a signed-in session after closing its pane.
+  - Clearing data never affects another pane.
+  - `profiles.json` can still contain profiles for inactive workspaces until those workspaces are deleted or opened.
+  - Deleting an inactive workspace also releases its unreferenced sessions.
+
+- **Evidence / verification:**
+  - E2e asserts the native `profiles-manage` item is absent, cancels and confirms Clear Site Data on a temporary pane, verifies localStorage is cleared and the pane reloads, and confirms Alice's session is untouched.
+  - Existing e2e coverage verifies exclusive-profile release after close and self-close.
+
+## ADR-063 — Move the address bar into a two-row pane header
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** The main top toolbar carried the active pane's address and viewport controls, which made the toolbar busy and separated the URL from the page it belonged to. The product direction is a minimal main toolbar and each pane behaving as a separate browser.
+
+- **Decision:**
+  1. Move the address bar into a second row of each pane header. The first row keeps the grip, title, viewport trigger, navigation, actions, and close.
+  2. Reduce the main toolbar to Add and draggable space.
+  3. Increase the Canvas header allowance from 32 to 64 CSS pixels so both rows have room at every zoom.
+  4. Keep custom viewport editing in the pane's address row, replacing the address temporarily.
+  5. Update focus behavior so `Cmd/Ctrl+L`, dialog close, and palette selection target the active pane's own address input.
+  6. Keep the address row keyboard reachable; tab order runs through the pane actions and then its address input.
+
+- **Alternatives considered:**
+  - **Keep the address in the top toolbar.** Rejected; it separates the URL from its pane and keeps the main toolbar heavy.
+  - **Put both address and navigation in the second row.** Rejected for this slice; the existing navigation controls remain in the first row.
+  - **Use an overlay address bar above native content.** Rejected; native `WebContentsView` stacking makes the header row the safe place.
+  - **Keep the 32px header and squeeze the address inline.** Rejected; it would crowd the title and actions at mobile widths.
+
+- **Consequences:**
+  - Each pane is visually and functionally self-contained: URL, viewport, navigation, session, and actions.
+  - Canvas frames are 32px taller, and the header chrome scales with Canvas zoom like before.
+  - The top toolbar is mostly empty draggable space with Add on the right.
+  - Narrow frames keep the address full-width on its own row.
+
+- **Evidence / verification:**
+  - E2e and accessibility tests verify per-pane address inputs, the Add-only toolbar, two-row containment at 390 × 844, focus order, and `Cmd/Ctrl+L` target.
+  - The full workspace/session restart test still restores URLs and viewport state.
 
 ### ADR-NNN — Title
 
