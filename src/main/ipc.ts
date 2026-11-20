@@ -171,7 +171,7 @@ export function registerIpcHandlers(context: IpcContext): void {
 
   ipcMain.handle(
     IPC_CHANNELS.addPaneWithViewport,
-    async (event, payload: unknown): Promise<ScriptResult> => {
+    async (event, payload: unknown, address: unknown): Promise<ScriptResult> => {
       if (!isTrustedSender(event, context)) {
         return unauthorized
       }
@@ -182,7 +182,10 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
 
       try {
-        return await manager.addPaneWithViewport(payload)
+        return await manager.addPaneWithViewport(
+          payload,
+          typeof address === 'string' ? address : undefined
+        )
       } catch {
         return { ok: false, error: 'Could not create the browser.' }
       }

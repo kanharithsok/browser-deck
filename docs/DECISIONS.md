@@ -2150,7 +2150,7 @@ Record material technical decisions here. Keep entries short but include context
   - `make dev` and `make preview` remain fast development paths, with the BrowserDeck icon but the Electron runtime name.
 
 - **Evidence / verification:**
-  - Packaged `Info.plist` reports `CFBundleDisplayName=BrowserDeck`, `CFBundleName=BrowserDeck`, `CFBundleIdentifier=com.kanharithsok.browser-deck`, and version `1.1.0`.
+  - Packaged `Info.plist` reports `CFBundleDisplayName=BrowserDeck`, `CFBundleName=BrowserDeck`, `CFBundleIdentifier=com.kanharithsok.browser-deck`, and version `1.2.0`.
   - The packaged app uses the same `build/icon.icns` hash as the source.
   - `lsappinfo` reports the running packaged process as `BrowserDeck`, and `make start` launches that executable.
 
@@ -2204,9 +2204,67 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Evidence / verification:**
   - Unit, typecheck, lint, and e2e suites pass after the rename.
-  - Packaged metadata reports BrowserDeck 1.1.0 with app ID `com.kanharithsok.browser-deck`.
+  - Packaged metadata reports BrowserDeck 1.2.0 with app ID `com.kanharithsok.browser-deck`.
   - The empty-state Add Browser button opens the picker and creates a pane; covered by e2e.
   - `gh repo view` reports `kanharithsok/browser-deck`; local `origin` matches.
+
+## ADR-074 — Bulk URL entry opens multiple independent browsers
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Opening more than a handful of browsers required one Add browser action per URL. Users comparing many routes, accounts, or environments needed a batch path, and each new browser still needed an explicit viewport choice.
+
+- **Decision:**
+  1. Add **Open multiple browsers…** to the Add browser menu and the empty state.
+  2. Accept one URL per line, ignore blank lines, validate all URLs before creating anything, and cap a batch at 50.
+  3. Default the batch viewport to the selected browser's viewport; otherwise use the last batch viewport stored in shell localStorage, then Responsive. The dialog can override it with any fixed preset or a custom viewport inherited from the selected browser.
+  4. Create each browser through the existing validated `addPaneWithViewport(viewport, url)` path so each receives its own profile and native view.
+  5. On a partial failure, remove already-created lines from the textarea and keep the dialog open so retry does not duplicate browsers.
+  6. Hide native views while the dialog is open and fit the camera to all browsers after a successful batch.
+
+- **Alternatives considered:**
+  - **Paste multiple URLs into the address bar.** Rejected; an address input represents one navigation, and multiline behavior would be surprising.
+  - **Create browsers one by one from JavaScript with no dialog.** Rejected; no preview of the count, default viewport, or invalid lines.
+  - **Use a native sheet.** Rejected; the in-shell dialog matches the menu language and can validate immediately before IPC.
+
+- **Consequences:**
+  - Ten or more URLs can be opened in one action without repetitive address entry.
+  - The selected browser's viewport becomes the natural default for the batch.
+  - Bulk creation is sequential IPC; a large batch may take a moment and the button shows an opening state.
+  - The maximum batch is 50 to protect the Canvas and renderer responsiveness.
+
+- **Evidence / verification:**
+  - Unit tests cover line normalization, invalid-line reporting without echoing the URL, empty input, and the batch cap.
+  - E2E opens three URLs from the empty state, selects iPhone SE as the shared viewport, verifies three distinct profiles and viewports, and closes two browsers.
+
+## ADR-075 — Selected browsers expose common actions in the top toolbar
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Marquee selection showed only a count and a close action. Changing the viewport for several selected browsers required editing each one separately, and there was no visible way to reload the selected set.
+
+- **Decision:**
+  1. Keep the selected count in the top toolbar.
+  2. Add a viewport trigger that opens the full preset catalog for every selected browser, with the shared preset checked when all selected browsers match.
+  3. Add visible Reload selected and Close selected actions.
+  4. Show “Viewport” when the selection has mixed presets; applying a preset normalizes the set.
+  5. Add a temporary Select mode: hold Cmd on macOS or Ctrl on Windows/Linux while shell chrome has focus, mirroring the existing hold-Space Hand tool. Remote page content keeps native browser input behavior.
+  6. Keep the persistent bottom-bar Select tool as the non-modifier path.
+
+- **Alternatives considered:**
+  - **Put all actions behind a single overflow menu.** Rejected; the user asked for the common items to be visible in the top toolbar.
+  - **Apply viewport changes through a renderer-only mutation.** Rejected; main must validate every viewport.
+  - **Intercept modifier keys over native page content.** Rejected; native views receive those events, so the temporary Select tool is scoped to shell chrome.
+
+- **Consequences:**
+  - Multi-selection supports the most common batch changes without opening each browser.
+  - The top toolbar grows only while a marquee selection exists.
+  - A mixed viewport selection shows no checked preset until the user chooses one.
+  - Holding Cmd/Ctrl does not affect Cmd-click, text selection, or other native page behavior.
+
+- **Evidence / verification:**
+  - E2E uses the temporary Cmd/Ctrl Select mode, verifies the crosshair state, applies iPhone SE to two selected browsers through the topbar menu, and closes the selected set with Delete.
+  - Accessibility coverage continues to exercise the persistent Select button in the native bottom bar.
 
 ### ADR-NNN — Title
 

@@ -1,7 +1,7 @@
 {
   "name": "browser-deck",
   "productName": "BrowserDeck",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Multiple real browser sessions. One flexible workspace.",
   "author": "BrowserDeck contributors",

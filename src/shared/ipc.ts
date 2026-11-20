@@ -149,7 +149,7 @@ export type PaneScreenshotResult =
 export interface BrowserDeckApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
-  addPaneWithViewport(viewport: PaneViewport): Promise<ScriptResult>
+  addPaneWithViewport(viewport: PaneViewport, url?: string): Promise<ScriptResult>
   duplicatePane(paneId: string): Promise<ScriptResult>
   closePane(paneId: string): Promise<ScriptResult>
   renamePane(paneId: string, title: string): Promise<ScriptResult>

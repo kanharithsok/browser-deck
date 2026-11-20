@@ -671,6 +671,25 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Local storage isolation (same origin, different persistent partitions)
     // using a real click inside the native browser view.
+    // Native page pointer events must remain real browser interactions.
+    const selectableHeading = alicePage.locator('h1').first()
+    const selectionBox = await selectableHeading.boundingBox()
+    if (!selectionBox) {
+      throw new Error('Native selection heading is unavailable')
+    }
+    await alicePage.mouse.move(selectionBox.x + 2, selectionBox.y + selectionBox.height / 2)
+    await alicePage.mouse.down()
+    await alicePage.mouse.move(
+      selectionBox.x + selectionBox.width - 2,
+      selectionBox.y + selectionBox.height / 2,
+      { steps: 8 }
+    )
+    await alicePage.mouse.up()
+    expect(await alicePage.evaluate(() => window.getSelection()?.toString() ?? '')).toContain(
+      'Pane one'
+    )
+    await alicePage.evaluate(() => window.getSelection()?.removeAllRanges())
+
     await alicePage.locator('#storage-button').click()
     await expect
       .poll(() => alicePage.evaluate(() => localStorage.getItem('browserdeck_fixture')))
@@ -1260,13 +1279,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).some((state) => !state.visible))
       .toBe(true)
-    await expect(addMenu.getByRole('menuitem')).toHaveCount(16)
+    await expect(addMenu.getByRole('menuitem')).toHaveCount(17)
     await expect(addMenu.locator('.app-menu-section')).toHaveText([
       'Start with viewport',
       'Phone viewports',
       'Tablet viewports',
       'Desktop viewports'
     ])
+    await expect(
+      addMenu.getByRole('menuitem', { name: 'Open multiple browsers…' })
+    ).toBeVisible()
     for (const name of [
       'Generic phone',
       'iPhone 15 Pro Max',
@@ -2938,13 +2960,37 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .click()
     const emptyAddMenu = restartShell.getByRole('menu', { name: 'Add browser' })
     await expect(emptyAddMenu).toBeVisible()
-    await emptyAddMenu.getByRole('menuitem', { name: 'Responsive' }).click()
+    await restartShell.keyboard.press('Escape')
+    await expect(emptyAddMenu).toHaveCount(0)
+
+    await restartShell.getByRole('button', { name: 'Open multiple browsers…' }).click()
+    const bulkDialog = restartShell.getByRole('dialog', { name: 'Open multiple browsers' })
+    await expect(bulkDialog).toBeVisible()
+    await bulkDialog.getByLabel('URLs, one per line').fill(
+      [
+        `${fixture.url}/pane/one?user=alice`,
+        `${fixture.url}/pane/two?user=bob`,
+        `${fixture.url}/login`
+      ].join('\n')
+    )
+    await bulkDialog.getByLabel('Default viewport').selectOption('iphone-se')
+    await bulkDialog.getByRole('button', { name: 'Open 3 browsers' }).click()
     const populatedSecond = await waitFor(
       () => getSnapshot(restartApp),
-      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
-      'pane in the second workspace'
+      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 3,
+      'bulk browsers in the second workspace'
     )
-    const secondPane = populatedSecond.panes[0]
+    expect(new Set(populatedSecond.panes.map((pane) => pane.profileId)).size).toBe(3)
+    expect(populatedSecond.panes.every((pane) => pane.viewport.preset === 'iphone-se')).toBe(true)
+    for (const pane of populatedSecond.panes.slice(1)) {
+      await shellEvaluate(restartApp, `window.browserdeck.closePane(${JSON.stringify(pane.id)})`)
+    }
+    const populatedSecondOne = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
+      'single browser after bulk creation'
+    )
+    const secondPane = populatedSecondOne.panes[0]
     expect(secondPane).toBeTruthy()
 
     await clickAppMenuCommand(restartApp, 'workspace-manage')
@@ -3179,10 +3225,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!firstStressBox || !secondStressBox) {
       throw new Error('Stress pane bounds are unavailable')
     }
-    const selectTool = restartZoomPage.getByRole('button', { name: 'Select browsers' })
-    await expect(selectTool).toHaveAttribute('aria-pressed', 'false')
-    await selectTool.click()
-    await expect(selectTool).toHaveAttribute('aria-pressed', 'true')
+    const selectModifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+    const stressWorkspace = await restartShell.locator('.workspace').boundingBox()
+    if (!stressWorkspace) {
+      throw new Error('Stress workspace bounds are unavailable')
+    }
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await restartShell.keyboard.down(selectModifier)
     await expect(restartShell.locator('.workspace')).toHaveClass(/canvas-select/)
     await restartShell.mouse.move(firstStressBox.x - 8, firstStressBox.y + 12)
     await restartShell.mouse.down()
@@ -3192,8 +3241,25 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       { steps: 8 }
     )
     await restartShell.mouse.up()
+    await restartShell.keyboard.up(selectModifier)
+    await expect(restartShell.locator('.workspace')).not.toHaveClass(/canvas-select/)
     await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
     await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
+    await restartShell.locator('.selection-viewport').click()
+    const selectionViewportMenu = restartShell.getByRole('menu', {
+      name: 'Viewport for 2 selected browsers'
+    })
+    await expect(selectionViewportMenu).toBeVisible()
+    await selectionViewportMenu.locator('[data-menu-item-id="selection:viewport:iphone-se"]').click()
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        stressTargets.every(
+          (pane) => state.panes.find((entry) => entry.id === pane.id)?.viewport.preset === 'iphone-se'
+        ),
+      'selected browser viewport update'
+    )
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
     await restartShell.keyboard.press('Delete')
     await waitFor(
       () => getSnapshot(restartApp),
@@ -3203,8 +3269,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'marquee multi-delete'
     )
     await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
-    await selectTool.click()
-    await expect(selectTool).toHaveAttribute('aria-pressed', 'false')
+    await expect(
+      restartZoomPage.getByRole('button', { name: 'Select browsers' })
+    ).toHaveAttribute('aria-pressed', 'false')
 
     // Restore the four-pane stress workspace expected by the leak cycles.
     for (let count = 3; count <= 4; count += 1) {

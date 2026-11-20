@@ -19,8 +19,8 @@ import type { WorkspaceLayout } from '../shared/workspace'
 const api: BrowserDeckApi = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<ShellState>,
   addPane: (url) => ipcRenderer.invoke(IPC_CHANNELS.addPane, url),
-  addPaneWithViewport: (viewport: PaneViewport) =>
-    ipcRenderer.invoke(IPC_CHANNELS.addPaneWithViewport, viewport),
+  addPaneWithViewport: (viewport: PaneViewport, url?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.addPaneWithViewport, viewport, url),
   duplicatePane: (paneId: string) => ipcRenderer.invoke(IPC_CHANNELS.duplicatePane, paneId),
   closePane: (paneId) => ipcRenderer.invoke(IPC_CHANNELS.closePane, paneId),
   renamePane: (paneId: string, title: string) =>

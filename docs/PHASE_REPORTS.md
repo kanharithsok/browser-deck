@@ -1233,3 +1233,22 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Homebrew cask | Added `kanharithsok/tap/browser-deck`. `brew fetch` verified SHA-256 `a74b6eeb44f773d1019f898b0c5c22f9df6c46f5fffe96eeba7feb646d46a100`; `brew install --cask` installed version 1.1.0 into `/Applications/BrowserDeck.app` with quarantine removed. |
 
 **Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real BrowserDeck identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build. A small existing browser-workspace product also uses the BrowserDeck name, so a domain/trademark check is still required before public distribution.
+
+## BrowserDeck 1.2.0 — Bulk URL opening and selected-browser controls
+
+**Date:** 2026-11-20
+
+**Status:** Implemented in source; not yet published to Homebrew.
+
+**Change:** Added **Open multiple browsers…** to the Add browser menu and empty state. The dialog accepts one URL per line, validates the whole batch before creation, caps at 50 browsers, and uses the selected browser's viewport (or the last batch viewport) as the default. Each URL creates an independent profile through the existing validated viewport path. Added common selected-browser actions to the top toolbar: a shared viewport menu, Reload selected, and Close selected. Holding Cmd on macOS or Ctrl on Windows/Linux temporarily activates Select while shell chrome has focus, mirroring hold-Space Hand. Added a native text-selection regression check to ensure page pointer drags remain browser-native.
+
+**Files changed:** `src/shared/bulk.ts` (new), `src/shared/ipc.ts`, `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `tests/unit/bulk.test.ts` (new), `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-074/075), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 179 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.5 s, including native text selection, bulk creation, temporary Cmd/Ctrl selection, shared viewport changes, and cleanup. |
+| `npm run build` | Passed: main 158.19 kB, preload 9.32 kB, renderer JS 381.80 kB, shell CSS 35.79 kB. |
+| `npm run package:dir` | Passed: BrowserDeck 1.2.0 arm64 app. |
+
+**Known behavior / limitations:** Bulk creation is sequential and can take a moment for large batches. The temporary Cmd/Ctrl Select tool is active only while shell chrome has focus; native page content keeps native browser behavior. Homebrew still installs the published 1.1.0 until a 1.2.0 release and cask update are published. The selected-browser viewport menu normalizes all selected browsers to one preset; it does not preserve mixed viewports.

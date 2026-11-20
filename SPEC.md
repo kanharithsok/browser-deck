@@ -191,6 +191,8 @@ Closing a pane destroys its active native view and `webContents`. When a pane cl
 Use standard platform conventions and document the final shortcuts. At minimum, plan for:
 
 - Open the Add browser picker (`Cmd/Ctrl+N`); do not create a pane until the user chooses a viewport or preset.
+- Allow a multiline bulk URL entry from the Add menu or empty state, with a shared default viewport inherited from the selected browser.
+- Hold `Cmd` (macOS) or `Ctrl` (Windows/Linux) while shell chrome has focus to activate the Select tool temporarily; holding Space activates Hand.
 - Duplicate selected pane (`Cmd/Ctrl+D`); the duplicate is placed beside the source, or directly below it when the adjacent slot is occupied.
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
 - Find a browser by name, host, profile, or viewport (`Cmd/Ctrl+K`).
@@ -249,7 +251,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Keep the top toolbar limited to Add and draggable space. Each browser header owns its address bar, viewport preset trigger with the short preset name, viewport class and resolution, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
 - Give pane headers a visible drag grip. Keep the one-row header compact and hide non-essential metadata at narrow frame widths.
 - Provide the + browser menu and right-click canvas context menu described in §7.3.
-- Provide a Select tool in the bottom canvas bar. While active, dragging a marquee across the Canvas selects every pane whose frame intersects it. Give selected panes a visible ring and show the selected count with a close action. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
+- Provide a Select tool in the bottom canvas bar and a temporary hold-`Cmd`/`Ctrl` mode while shell chrome has focus. While active, dragging a marquee across the Canvas selects every pane whose frame intersects it. Give selected panes a visible ring and show the selected count in the top toolbar with common actions: a viewport menu applying one preset to every selected browser, Reload selected, and Close selected. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the persistent tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
 - Persist canvas positions and the last Canvas camera (pan and zoom) plus the active-browser selection per workspace. Restore that view when the workspace is reopened or switched; only fit when the workspace has no saved camera.
 - Viewport bezels and pane frame resizing are not required.
 

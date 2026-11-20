@@ -72,6 +72,9 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Phone/tablet presets use mobile browser behavior. (A running-app probe at iPhone SE reports 375 × 667, no classic scrollbar, 5 touch points, `hover: none`, and `pointer: coarse`; switching back to Responsive clears the override.)
 - [x] The pane header shows viewport class and resolution. (E2e verifies `Phone` and `390 × 844` in the second header row; the side labels hide when the custom viewport editor opens.)
 - [x] The **+** add menu creates a pane with the selected browser preset. (E2e opens the custom menu, selects iPhone 15 Pro, and verifies the new pane's viewport.)
+- [x] Multiple URLs can be opened at once with a shared viewport. (E2e opens the empty-state bulk dialog, enters three fixture URLs, selects iPhone SE, verifies three distinct profiles all using that viewport, and cleans up two browsers.)
+- [x] Selected browsers expose common topbar actions. (E2e holds Cmd/Ctrl to activate Select temporarily, marquees two browsers, applies iPhone SE through the selection viewport menu, and closes the selected set with Delete.)
+- [x] Native page pointer interactions remain browser-native. (E2e drag-selects heading text inside a live pane and verifies the DOM selection.)
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
 - [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame; the address bar uses the full second row.)
@@ -140,7 +143,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Packaging
 
 - [x] `npm run package:mac` builds an arm64 DMG, ZIP, and `.app`. (Artifacts produced under `dist/`.)
-- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.browser-deck`, `1.1.0`, `icon.icns`, developer tools.)
+- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.browser-deck`, `1.2.0`, `icon.icns`, developer tools.)
 - [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
 - [x] Packaged app exposes the BrowserDeck name and icon. (`CFBundleDisplayName`/`CFBundleName` are BrowserDeck, the packaged icon hash matches `build/icon.icns`, `lsappinfo` reports `BrowserDeck`, and `make start` launches the packaged executable.)
 - [x] Homebrew cask installs the published release. (`brew info --cask kanharithsok/tap/browser-deck` resolves 1.1.0; `brew fetch` verifies the pinned SHA-256; `brew install --cask` installed `/Applications/BrowserDeck.app`, and the quarantine attribute was removed.)

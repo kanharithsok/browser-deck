@@ -139,13 +139,13 @@ export class BrowserManager {
     return this.addPaneForProfile(profile, address)
   }
 
-  async addPaneWithViewport(input: unknown): Promise<ScriptResult> {
+  async addPaneWithViewport(input: unknown, address?: string): Promise<ScriptResult> {
     const parsed = parsePaneViewport(input)
     if (!parsed.ok) {
       return { ok: false, error: parsed.error }
     }
     const profile = await this.profileStore.create()
-    return this.addPaneForProfile(profile, undefined, parsed.viewport)
+    return this.addPaneForProfile(profile, address, parsed.viewport)
   }
 
   async duplicatePane(paneId: string): Promise<ScriptResult> {

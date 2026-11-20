@@ -6,9 +6,9 @@ BrowserDeck is a local-first macOS desktop application for developers, designers
 
 > **Terminology:** The application UI calls each browser frame a **browser**. The code and architecture notes retain **pane** for the underlying native `WebContentsView`; **device** is reserved for viewport/emulation details such as device pixel ratio.
 
-> **Name:** BrowserDeck 1.1.0 is the current name. The local 1.0.0 build was developed as PaneFlow; startup migrates the old app-data directory and browser partitions.
+> **Name:** BrowserDeck 1.2.0 is the current development version; 1.1.0 is the latest published Homebrew release. The local 1.0.0 build was developed as PaneFlow; startup migrates the old app-data directory and browser partitions.
 
-> **Project status:** BrowserDeck 1.1.0 is the first local macOS release. It is a working Electron/Vue browser workspace with isolated persistent sessions, a Canvas-only workspace with world-space snapping, a custom browser menu and canvas context menu, native-aware view hiding, native Browser-menu commands, per-browser viewport emulation, workspace persistence and management, safe window bounds, per-pane session release on close, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-1.0 hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
+> **Project status:** BrowserDeck 1.2.0 is the current source version. It is a working Electron/Vue browser workspace with isolated persistent sessions, a Canvas-only workspace with world-space snapping, a custom browser menu and canvas context menu, native-aware view hiding, native Browser-menu commands, per-browser viewport emulation, workspace persistence and management, safe window bounds, per-pane session release on close, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-1.0 hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
 
 ## Current capabilities
 
@@ -17,6 +17,8 @@ BrowserDeck is a local-first macOS desktop application for developers, designers
 - One internally generated persistent browser session per pane, owned by that pane and released when it closes.
 - Independent navigation, address bar, history, reload, loading, and load-error states. Each browser header has two rows: title, viewport, and actions on top, with the viewport class, centered address bar, and resolution beneath it. Rotate viewport and capture screenshot live in the actions menu.
 - Per-browser in-shell actions menu for back/forward/reload, copy URL, open in the system browser, rotate viewport, screenshot, duplicate, rename, clear site data, DevTools, and close, using the same menu component as the + browser menu.
+- **Open multiple browsers…** from the Add browser menu or the empty state: paste one URL per line, choose a default viewport, and create up to 50 independent browsers at once. The viewport defaults to the selected browser and is remembered for the next batch.
+- Marquee selection now exposes common actions in the top toolbar: change the viewport for every selected browser, reload selected browsers, and close the selected set. Hold `Cmd` (macOS) or `Ctrl` (Windows/Linux) while shell chrome has focus to activate the Select tool temporarily, like holding Space for Hand.
 - Retina-correct bounds synchronization verified at `devicePixelRatio: 2`.
 - Denied popups, permissions, downloads, display capture, and device access for remote content, with transient in-browser notices so blocked actions are visible. Sandboxed browser views have no app bridge or Node access.
 - Trusted shell served over a secure internal `browserdeck://shell/` protocol with a production CSP that has no development network allowance, plus IPC sender document validation.
@@ -106,7 +108,7 @@ The cask is arm64-only, requires macOS Sonoma or later, removes the download qua
 
 ## Packaging
 
-`npm run package:mac` produces `dist/BrowserDeck-1.1.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/BrowserDeck.app`. The bundle uses `com.kanharithsok.browser-deck`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
+`npm run package:mac` produces `dist/BrowserDeck-1.2.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/BrowserDeck.app`. The bundle uses `com.kanharithsok.browser-deck`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
 
 Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node options and inspector arguments, and `file://` extra privileges, while enabling ASAR integrity validation and load-only-from-ASAR. These controls reduce accidental local privilege paths; they do not replace code signing. See [`SECURITY.md`](./SECURITY.md) for the threat model and the full packaging checklist.
 
@@ -129,6 +131,8 @@ The published Homebrew cask is `kanharithsok/tap/browser-deck` and points at the
 | `Cmd/Ctrl+0` | Reset the Canvas zoom to 100% |
 | `Cmd/Ctrl+Shift+]` | Next workspace |
 | `Cmd/Ctrl+Shift+[` | Previous workspace |
+| Hold `Cmd` / `Ctrl` | Temporarily activate the Select tool while shell chrome has focus |
+| Hold `Space` | Temporarily activate the Hand tool while shell chrome has focus |
 
 Workspace cycling follows workspace name order, wraps at either end, and restores the target workspace's saved browsers and layout. Both items are disabled when only one workspace exists. The selected browser follows shell chrome focus and native pane focus. Shortcuts are registered through the native Browser, Workspace, and View menus, except `Delete`/`Backspace`, which is handled by the trusted shell and ignores text-entry focus.
 
