@@ -1,38 +1,38 @@
-# Quickstart — Fresh PaneFlow Repository
+# Quickstart — Fresh BrowserDeck Repository
 
-> Historical starter-kit guide. For PaneFlow 1.0 setup and usage, see [`README.md`](./README.md).
+> Historical starter-kit guide. For BrowserDeck 1.0 setup and usage, see [`README.md`](./README.md).
 
 ## 1. Create the GitHub repository
 
-Create a new **public** GitHub repository named `paneflow`. Do not select an auto-generated README, license, or `.gitignore` if you plan to upload this starter kit as-is.
+Create a new **public** GitHub repository named `browser-deck`. Do not select an auto-generated README, license, or `.gitignore` if you plan to upload this starter kit as-is.
 
 ## 2. Put the starter files in the repository
 
 Recommended approach:
 
 ```bash
-git clone https://github.com/<your-account>/paneflow.git
-cd paneflow
+git clone https://github.com/<your-account>/browser-deck.git
+cd browser-deck
 ```
 
 Extract/copy the contents of this starter kit into the repository root, including hidden files and directories such as `.opencode/` and `.github/`. From the repository root, one reliable macOS method is:
 
 ```bash
-unzip ~/Downloads/PaneFlow-Fresh-Project.zip -d /tmp
-cp -a /tmp/PaneFlow-Fresh-Project/. .
+unzip ~/Downloads/BrowserDeck-Fresh-Project.zip -d /tmp
+cp -a /tmp/BrowserDeck-Fresh-Project/. .
 ```
 
 If you prefer to start locally before creating the GitHub repository:
 
 ```bash
-mkdir paneflow
-cd paneflow
-unzip ~/Downloads/PaneFlow-Fresh-Project.zip -d /tmp
-cp -a /tmp/PaneFlow-Fresh-Project/. .
+mkdir browser-deck
+cd browser-deck
+unzip ~/Downloads/BrowserDeck-Fresh-Project.zip -d /tmp
+cp -a /tmp/BrowserDeck-Fresh-Project/. .
 git init -b main
 ```
 
-When you create the GitHub repository later, add it as `origin` before pushing: `git remote add origin https://github.com/<your-account>/paneflow.git`.
+When you create the GitHub repository later, add it as `origin` before pushing: `git remote add origin https://github.com/<your-account>/browser-deck.git`.
 
 Do not add a license until you have chosen one.
 
@@ -120,7 +120,7 @@ git diff --check
 git diff
 # Review all changed files before committing.
 git add .
-git commit -m "chore: bootstrap PaneFlow project"
+git commit -m "chore: bootstrap BrowserDeck project"
 git push -u origin main
 ```
 

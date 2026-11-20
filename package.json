@@ -1,10 +1,10 @@
 {
-  "name": "paneflow",
-  "productName": "PaneFlow",
-  "version": "1.0.0",
+  "name": "browser-deck",
+  "productName": "BrowserDeck",
+  "version": "1.1.0",
   "private": true,
   "description": "Multiple real browser sessions. One flexible workspace.",
-  "author": "PaneFlow contributors",
+  "author": "BrowserDeck contributors",
   "license": "MIT",
   "main": "./out/main/index.js",
   "engines": {

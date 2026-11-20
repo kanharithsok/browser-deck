@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveShellAssetPath, shellContentType } from '../../src/main/shell-assets'
 
-const ROOT = resolve('/tmp/paneflow-renderer')
+const ROOT = resolve('/tmp/browserdeck-renderer')
 
 describe('resolveShellAssetPath', () => {
   it('maps the root and normal assets inside the renderer directory', () => {

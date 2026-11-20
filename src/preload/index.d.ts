@@ -1,8 +1,8 @@
-import type { PaneFlowApi } from '../shared/ipc'
+import type { BrowserDeckApi } from '../shared/ipc'
 
 declare global {
   interface Window {
-    paneflow: PaneFlowApi
+    browserdeck: BrowserDeckApi
   }
 }
 

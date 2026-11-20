@@ -1,6 +1,6 @@
-# Contributing to PaneFlow
+# Contributing to BrowserDeck
 
-Thanks for your interest in PaneFlow. The project is at its 1.0.0 local macOS release.
+Thanks for your interest in BrowserDeck. The project is at its 1.1.0 local macOS release.
 
 ## Before making a change
 

@@ -64,9 +64,9 @@ function testEnv(userDataDir: string, startUrls: string): Record<string, string>
     }
   }
   delete env.ELECTRON_RENDERER_URL
-  env.PANEFLOW_TEST = '1'
-  env.PANEFLOW_USER_DATA_DIR = userDataDir
-  env.PANEFLOW_START_URLS = startUrls
+  env.BROWSERDECK_TEST = '1'
+  env.BROWSERDECK_USER_DATA_DIR = userDataDir
+  env.BROWSERDECK_START_URLS = startUrls
   return env
 }
 
@@ -132,7 +132,7 @@ async function readPersistedProfiles(
 
 async function getSnapshot(app: ElectronApplication): Promise<ShellState> {
   return app.evaluate(() => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -144,7 +144,7 @@ async function getViewStates(
   app: ElectronApplication
 ): Promise<Array<{ paneId: string; rect: PaneViewRect; visible: boolean }>> {
   return app.evaluate(() => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -157,7 +157,7 @@ async function getEmulationState(
   paneId: string
 ): Promise<{ enabled: boolean; scale: number; viewport: PaneViewport } | null> {
   return app.evaluate((_electron, id) => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -176,7 +176,7 @@ async function getWorkingSetMb(app: ElectronApplication): Promise<number> {
 
 async function getWebContentsCount(app: ElectronApplication): Promise<number> {
   return app.evaluate(() => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -190,7 +190,7 @@ async function getZoomState(app: ElectronApplication): Promise<{
   loaded: boolean
 } | null> {
   return app.evaluate(() => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -224,7 +224,7 @@ async function fitAllDevices(app: ElectronApplication): Promise<void> {
   if (!minimap) {
     throw new Error('Canvas overview is unavailable')
   }
-  await minimap.getByRole('button', { name: 'Fit all devices' }).click()
+  await minimap.getByRole('button', { name: 'Fit all browsers' }).click()
 }
 
 async function getMinimapState(app: ElectronApplication): Promise<{
@@ -234,7 +234,7 @@ async function getMinimapState(app: ElectronApplication): Promise<{
   collapsed: boolean
 } | null> {
   return app.evaluate(() => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -269,7 +269,7 @@ async function getWindowBounds(app: ElectronApplication): Promise<PaneViewRect> 
   return app.evaluate(({ BaseWindow }) => {
     const window = BaseWindow.getAllWindows()[0]
     if (!window) {
-      throw new Error('PaneFlow window is unavailable')
+      throw new Error('BrowserDeck window is unavailable')
     }
     return window.getNormalBounds()
   })
@@ -277,7 +277,7 @@ async function getWindowBounds(app: ElectronApplication): Promise<PaneViewRect> 
 
 async function getContentBounds(app: ElectronApplication): Promise<PaneViewRect> {
   return app.evaluate(() => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -291,7 +291,7 @@ async function getContentBounds(app: ElectronApplication): Promise<PaneViewRect>
 
 async function readCookie(app: ElectronApplication, paneId: string): Promise<string | null> {
   return app.evaluate(async (_electron, id) => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -309,7 +309,7 @@ async function evaluateInPane<T>(
   script: string
 ): Promise<T> {
   const webContentsId = await app.evaluate((_electron, id) => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     return hook ? hook.webContentsId(id) : null
   }, paneId)
 
@@ -325,7 +325,7 @@ async function evaluateInPane<T>(
 async function writeIndexedDbProbe(page: Page, value: string): Promise<void> {
   await page.evaluate(async (probe) => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open('paneflow-fixture', 1)
+      const request = indexedDB.open('browserdeck-fixture', 1)
       request.onupgradeneeded = () => {
         if (!request.result.objectStoreNames.contains('kv')) {
           request.result.createObjectStore('kv')
@@ -349,7 +349,7 @@ async function writeIndexedDbProbe(page: Page, value: string): Promise<void> {
 async function readIndexedDbProbe(page: Page): Promise<string | null> {
   return page.evaluate(async () => {
     return new Promise<string | null>((resolve, reject) => {
-      const request = indexedDB.open('paneflow-fixture', 1)
+      const request = indexedDB.open('browserdeck-fixture', 1)
       request.onerror = () => reject(request.error)
       request.onsuccess = () => {
         const database = request.result
@@ -394,7 +394,7 @@ async function readAppMenuItem(
 
 async function shellEvaluate<T>(app: ElectronApplication, script: string): Promise<T> {
   return app.evaluate(async ({ webContents }, source) => {
-    const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
     if (!hook) {
       throw new Error('Test hook is not installed')
     }
@@ -555,7 +555,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
   try {
     fixture = await startFixtureServer()
-    userDataDir = await mkdtemp(join(tmpdir(), 'paneflow-e2e-'))
+    userDataDir = await mkdtemp(join(tmpdir(), 'browserdeck-e2e-'))
     const firstUrls = `${fixture.url}/pane/one?user=alice,${fixture.url}/pane/two?user=bob`
 
     app = await launchApp(userDataDir, firstUrls)
@@ -599,7 +599,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // The shell's production CSP blocks inline script and cross-origin fetch.
     const cspProbe = await shellPage.evaluate(async (fixtureUrl) => {
       const script = document.createElement('script')
-      script.textContent = 'window.__paneflowCspInline = true'
+      script.textContent = 'window.__browserdeckCspInline = true'
       document.head.appendChild(script)
       script.remove()
 
@@ -613,7 +613,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
       return {
         inlineExecuted: Boolean(
-          (window as unknown as { __paneflowCspInline?: boolean }).__paneflowCspInline
+          (window as unknown as { __browserdeckCspInline?: boolean }).__browserdeckCspInline
         ),
         externalFetchSucceeded
       }
@@ -627,8 +627,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         bob: await readCookie(app as ElectronApplication, bobPaneId as string)
       }),
       ({ alice, bob }) =>
-        (alice ?? '').includes('paneflow_user=alice') &&
-        (bob ?? '').includes('paneflow_user=bob'),
+        (alice ?? '').includes('browserdeck_user=alice') &&
+        (bob ?? '').includes('browserdeck_user=bob'),
       'isolated profile cookies'
     )
 
@@ -641,7 +641,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // Remote pages have no application bridge, Node APIs, or process globals.
     expect(
       await alicePage.evaluate(() =>
-        [typeof (window as unknown as { paneflow?: unknown }).paneflow, typeof require, typeof process].join(',')
+        [typeof (window as unknown as { browserdeck?: unknown }).browserdeck, typeof require, typeof process].join(',')
       )
     ).toBe('undefined,undefined,undefined')
 
@@ -673,13 +673,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // using a real click inside the native browser view.
     await alicePage.locator('#storage-button').click()
     await expect
-      .poll(() => alicePage.evaluate(() => localStorage.getItem('paneflow_fixture')))
+      .poll(() => alicePage.evaluate(() => localStorage.getItem('browserdeck_fixture')))
       .not.toBeNull()
     const aliceStorageBeforeRestart = await alicePage.evaluate(() =>
-      localStorage.getItem('paneflow_fixture')
+      localStorage.getItem('browserdeck_fixture')
     )
     expect(aliceStorageBeforeRestart).not.toBeNull()
-    expect(await bobPage.evaluate(() => localStorage.getItem('paneflow_fixture'))).toBeNull()
+    expect(await bobPage.evaluate(() => localStorage.getItem('browserdeck_fixture'))).toBeNull()
 
     // IndexedDB isolation between the same-origin partitions.
     await writeIndexedDbProbe(alicePage, 'alice-idb')
@@ -705,7 +705,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const macWindowChrome = await app.evaluate(({ BaseWindow }) => {
       const window = BaseWindow.getAllWindows()[0]
       if (!window) {
-        throw new Error('PaneFlow window is unavailable')
+        throw new Error('BrowserDeck window is unavailable')
       }
       return {
         bounds: window.getBounds(),
@@ -817,15 +817,15 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       enabled: true
     })
     const findDeviceButton = zoomPage.getByRole('button', {
-      name: 'Find device',
+      name: 'Find browser',
       exact: true
     })
-    await expect(findDeviceButton).toHaveAttribute('title', 'Find device (Cmd/Ctrl+K)')
+    await expect(findDeviceButton).toHaveAttribute('title', 'Find browser (Cmd/Ctrl+K)')
     await clickAppMenuCommand(app, 'pane-find')
-    const devicePalette = shellPage.getByRole('dialog', { name: 'Find device' })
+    const devicePalette = shellPage.getByRole('dialog', { name: 'Find browser' })
     await expect(devicePalette).toBeVisible()
     const devicePaletteInput = devicePalette.getByRole('combobox', {
-      name: 'Find device'
+      name: 'Find browser'
     })
     await expect(devicePaletteInput).toBeFocused()
     await expect(devicePalette.getByRole('option')).toHaveCount(2)
@@ -863,7 +863,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(() =>
         shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')
       )
-      .toMatch(/^Address for device /)
+      .toMatch(/^Address for browser /)
     await waitForVisibleAlignedBounds(app)
     await expect
       .poll(async () =>
@@ -879,24 +879,24 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await findDeviceButton.click()
     await expect(devicePalette).toBeVisible()
     await devicePaletteInput.fill('no-such-device')
-    await expect(devicePalette.getByText('No matching devices.')).toBeVisible()
+    await expect(devicePalette.getByText('No matching browsers.')).toBeVisible()
     await devicePaletteInput.press('Escape')
     await expect(devicePalette).toHaveCount(0)
     await expect
       .poll(() =>
         shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')
       )
-      .toMatch(/^Address for device /)
+      .toMatch(/^Address for browser /)
     await waitForVisibleAlignedBounds(app)
 
     // Device actions use the same custom menu component as the + menu, not a
     // native popup. The menu hides the native views it covers.
     const customMenuCard = shellPage.locator(`.pane-card[data-pane-id="${bobPaneId}"]`)
     const deviceActionsTrigger = customMenuCard.getByRole('button', {
-      name: 'Device actions'
+      name: 'Browser actions'
     })
     await deviceActionsTrigger.click()
-    const paneActionsMenu = shellPage.getByRole('menu', { name: 'Device actions' })
+    const paneActionsMenu = shellPage.getByRole('menu', { name: 'Browser actions' })
     await expect(paneActionsMenu).toBeVisible()
     await expect(paneActionsMenu).toHaveClass(/app-menu/)
     await expect(paneActionsMenu.locator('.app-menu-section')).toHaveText([
@@ -913,11 +913,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'Open in Browser',
       'Rotate Viewport',
       'Capture Screenshot…',
-      'Duplicate Device',
-      'Rename Device…',
+      'Duplicate Browser',
+      'Rename Browser…',
       'Clear Site Data…',
       'Open DevTools',
-      'Close Device'
+      'Close Browser'
     ]) {
       await expect(paneActionsMenu.getByRole('menuitem', { name })).toBeVisible()
     }
@@ -946,7 +946,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Reload All preserves the selected device instead of letting incidental
     // native focus events select the first pane.
-    await zoomPage.getByRole('button', { name: 'Reload all devices' }).click()
+    await zoomPage.getByRole('button', { name: 'Reload all browsers' }).click()
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes.every((pane) => !pane.isLoading),
@@ -1106,7 +1106,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Website content remains interactive while the label is the drag handle.
     await alicePage.locator('#popup-button').click()
-    await expect(alicePage.locator('#output')).toContainText('Popup denied by PaneFlow.')
+    await expect(alicePage.locator('#output')).toContainText('Popup denied by BrowserDeck.')
     const aliceNoticeStatus = shellPage.locator(
       `.pane-card[data-pane-id="${alicePaneId}"] .pane-status`
     )
@@ -1255,7 +1255,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await resetCanvasZoomFromBar(shellPage, zoomPage)
     await expect.poll(() => zoomPage.locator('#value').textContent()).toBe('100%')
     await addButton.click()
-    const addMenu = shellPage.getByRole('menu', { name: 'Add device' })
+    const addMenu = shellPage.getByRole('menu', { name: 'Add browser' })
     await expect(addMenu).toBeVisible()
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).some((state) => !state.visible))
@@ -1300,7 +1300,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.closePane(${JSON.stringify(menuAddedPane?.id)})`
+      `window.browserdeck.closePane(${JSON.stringify(menuAddedPane?.id)})`
     )
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1335,8 +1335,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(canvasMenu.getByText('View', { exact: true })).toBeVisible()
     await expect(canvasMenu.getByText('Manage', { exact: true })).toBeVisible()
     await expect(canvasMenu.getByText('Appearance', { exact: true })).toBeVisible()
-    await canvasMenu.getByRole('menuitem', { name: /^Add device/ }).click()
-    await expect(shellPage.getByRole('menu', { name: 'Add device' })).toBeVisible()
+    await canvasMenu.getByRole('menuitem', { name: /^Add browser/ }).click()
+    await expect(shellPage.getByRole('menu', { name: 'Add browser' })).toBeVisible()
     await expect(
       shellPage.getByRole('menuitem', { name: /^iPad Pro 12\.9/ })
     ).toBeVisible()
@@ -1425,8 +1425,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // The bottom-bar Arrange menu lays out every device from scratch. The
     // horizontal row keeps pane order and top-aligns every frame.
-    await zoomPage.getByRole('button', { name: 'Arrange devices' }).click()
-    const arrangeMenu = shellPage.getByRole('menu', { name: 'Arrange devices' })
+    await zoomPage.getByRole('button', { name: 'Arrange browsers' }).click()
+    const arrangeMenu = shellPage.getByRole('menu', { name: 'Arrange browsers' })
     await expect(arrangeMenu).toBeVisible()
     await expect(arrangeMenu.getByRole('menuitem')).toHaveCount(4)
     for (const name of [
@@ -1704,7 +1704,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // frame until it is rotated back.
     const rotateResult = await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.rotatePaneViewport(${JSON.stringify(alicePaneId)})`
+      `window.browserdeck.rotatePaneViewport(${JSON.stringify(alicePaneId)})`
     )
     expect(rotateResult.ok).toBe(true)
     await waitFor(
@@ -1724,7 +1724,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .toBeGreaterThan((await rotatedCard.boundingBox())?.height ?? 0)
     await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.rotatePaneViewport(${JSON.stringify(alicePaneId)})`
+      `window.browserdeck.rotatePaneViewport(${JSON.stringify(alicePaneId)})`
     )
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1793,9 +1793,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       await expect(card.locator('.pane-actions')).toBeVisible()
       await expect(card.getByRole('button', { name: 'Go back' })).toBeVisible()
       await expect(card.getByRole('button', { name: 'Go forward' })).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Reload device' })).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Device actions' })).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Close device' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Reload browser' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Browser actions' })).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Close browser' })).toBeVisible()
     }
 
     // Restore responsive panes for the remaining zoom/emulation checks.
@@ -1829,7 +1829,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // reapplied after navigation without changing the declared viewport.
     await shellPage
       .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
-      .getByRole('button', { name: 'Reload device' })
+      .getByRole('button', { name: 'Reload browser' })
       .click()
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -1866,14 +1866,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Screen capture writes a real PNG through the validated IPC path. Patch
     // the native save dialog so the test does not need to drive OS chrome.
-    const screenshotPath = join(tmpdir(), `paneflow-screenshot-${Date.now()}.png`)
+    const screenshotPath = join(tmpdir(), `browserdeck-screenshot-${Date.now()}.png`)
     await app.evaluate(({ dialog }, targetPath) => {
       const original = dialog.showSaveDialog
       ;(
         globalThis as typeof globalThis & {
-          __paneflowOriginalSaveDialog?: typeof dialog.showSaveDialog
+          __browserdeckOriginalSaveDialog?: typeof dialog.showSaveDialog
         }
-      ).__paneflowOriginalSaveDialog = original
+      ).__browserdeckOriginalSaveDialog = original
       dialog.showSaveDialog = (async () => ({
         canceled: false,
         filePath: targetPath
@@ -1881,14 +1881,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }, screenshotPath)
     const screenshot = await shellEvaluate<{ ok: boolean; filePath?: string; error?: string }>(
       app,
-      `window.paneflow.capturePaneScreenshot(${JSON.stringify(alicePaneId)})`
+      `window.browserdeck.capturePaneScreenshot(${JSON.stringify(alicePaneId)})`
     )
     await app.evaluate(({ dialog }) => {
       const original = (
         globalThis as typeof globalThis & {
-          __paneflowOriginalSaveDialog?: typeof dialog.showSaveDialog
+          __browserdeckOriginalSaveDialog?: typeof dialog.showSaveDialog
         }
-      ).__paneflowOriginalSaveDialog
+      ).__browserdeckOriginalSaveDialog
       if (original) {
         dialog.showSaveDialog = original
       }
@@ -1961,11 +1961,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .getByRole('button', { name: 'Open in browser' })
     await expect(externalButton).toBeEnabled()
     await (app as ElectronApplication).evaluate(({ shell }) => {
-      ;(globalThis as typeof globalThis & { __paneflowOpenedExternal?: string | null })
-        .__paneflowOpenedExternal = null
+      ;(globalThis as typeof globalThis & { __browserdeckOpenedExternal?: string | null })
+        .__browserdeckOpenedExternal = null
       shell.openExternal = async (url: string) => {
-        ;(globalThis as typeof globalThis & { __paneflowOpenedExternal?: string | null })
-          .__paneflowOpenedExternal = url
+        ;(globalThis as typeof globalThis & { __browserdeckOpenedExternal?: string | null })
+          .__browserdeckOpenedExternal = url
       }
     })
     await externalButton.click()
@@ -1973,8 +1973,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(() =>
         (app as ElectronApplication).evaluate(
           () =>
-            (globalThis as typeof globalThis & { __paneflowOpenedExternal?: string | null })
-              .__paneflowOpenedExternal ?? null
+            (globalThis as typeof globalThis & { __browserdeckOpenedExternal?: string | null })
+              .__browserdeckOpenedExternal ?? null
         )
       )
       .toBe(duplicateSource.url)
@@ -2003,12 +2003,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // are rejected in main, and whitespace around a valid name is normalized.
     const rejectedTitle = await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.renamePane(${JSON.stringify(alicePaneId)}, ${JSON.stringify('x'.repeat(81))})`
+      `window.browserdeck.renamePane(${JSON.stringify(alicePaneId)}, ${JSON.stringify('x'.repeat(81))})`
     )
     expect(rejectedTitle.ok).toBe(false)
     const rejectedUnknownRename = await shellEvaluate<{ ok: boolean }>(
       app,
-      "window.paneflow.renamePane('unknown-pane', 'Nope')"
+      "window.browserdeck.renamePane('unknown-pane', 'Nope')"
     )
     expect(rejectedUnknownRename.ok).toBe(false)
 
@@ -2038,7 +2038,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     await clickAppMenuCommand(app, 'pane-add')
-    const commandAddMenu = shellPage.getByRole('menu', { name: 'Add device' })
+    const commandAddMenu = shellPage.getByRole('menu', { name: 'Add browser' })
     await expect(commandAddMenu).toBeVisible()
     expect((await getSnapshot(app as ElectronApplication)).panes).toHaveLength(2)
     await commandAddMenu.locator('[data-menu-item-id="preset:responsive"]').click()
@@ -2059,12 +2059,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     const rejectedDeviceAdd = await shellEvaluate<{ ok: boolean }>(
       app,
-      "window.paneflow.addPaneWithViewport({ preset: 'watch' })"
+      "window.browserdeck.addPaneWithViewport({ preset: 'watch' })"
     )
     expect(rejectedDeviceAdd.ok).toBe(false)
     const deviceAdd = await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.addPaneWithViewport(${JSON.stringify({
+      `window.browserdeck.addPaneWithViewport(${JSON.stringify({
         preset: 'pixel-8',
         width: 412,
         height: 915,
@@ -2103,7 +2103,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.closePane(${JSON.stringify(devicePane.id)})`
+      `window.browserdeck.closePane(${JSON.stringify(devicePane.id)})`
     )
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -2160,7 +2160,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (state) => state.panes[0]?.url.includes('/pane/one') ?? false,
       'pane header back navigation'
     )
-    await aliceHeader.getByRole('button', { name: 'Reload device' }).click()
+    await aliceHeader.getByRole('button', { name: 'Reload browser' }).click()
     await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes[0]?.isLoading === false,
@@ -2171,13 +2171,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // renderer-side validation alone is not the security boundary.
     const rejectedNavigation = await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.navigate(${JSON.stringify(alicePaneId)}, 'javascript:alert(1)')`
+      `window.browserdeck.navigate(${JSON.stringify(alicePaneId)}, 'javascript:alert(1)')`
     )
     expect(rejectedNavigation.ok).toBe(false)
 
     const rejectedBounds = await shellEvaluate<{ ok: boolean }>(
       app,
-      `window.paneflow.setPaneBounds([{ paneId: 'unknown-pane', rect: { x: 0, y: 0, width: 400, height: 300 }, visible: true }])`
+      `window.browserdeck.setPaneBounds([{ paneId: 'unknown-pane', rect: { x: 0, y: 0, width: 400, height: 300 }, visible: true }])`
     )
     expect(rejectedBounds.ok).toBe(false)
 
@@ -2211,14 +2211,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .poll(() =>
         shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')
       )
-      .toMatch(/^Address for device /)
+      .toMatch(/^Address for browser /)
     await shellPage.keyboard.press('Escape')
 
     // Resize the native window; shell and browser bounds must realign.
     await app.evaluate(({ BaseWindow }) => {
       const window = BaseWindow.getAllWindows()[0]
       if (!window) {
-        throw new Error('PaneFlow window not found')
+        throw new Error('BrowserDeck window not found')
       }
       window.setSize(1100, 780)
     })
@@ -2251,8 +2251,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(aliceAccountText).not.toContain('Signed in as Bob')
     expect(bobAccountText).toContain('Signed in as Bob')
     expect(bobAccountText).not.toContain('Signed in as Alice')
-    expect(await alicePage.evaluate(() => document.cookie)).not.toContain('paneflow_session')
-    expect(await bobPage.evaluate(() => document.cookie)).not.toContain('paneflow_session')
+    expect(await alicePage.evaluate(() => document.cookie)).not.toContain('browserdeck_session')
+    expect(await bobPage.evaluate(() => document.cookie)).not.toContain('browserdeck_session')
 
     // Signing out of one profile must not affect the other profile.
     await bobPage.getByRole('button', { name: 'Sign out' }).click()
@@ -2266,7 +2266,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const aliceProfileId = firstProfileIds[0] as string
     const bobProfileId = firstProfileIds[1] as string
     const bobWebContentsId = await app.evaluate((_electron, paneId) => {
-      const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+      const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
       return hook ? hook.webContentsId(paneId) : null
     }, bobPaneId as string)
     expect(bobWebContentsId).not.toBeNull()
@@ -2276,7 +2276,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await shellPage
       .locator('.pane-card')
       .nth(1)
-      .getByRole('button', { name: 'Close device' })
+      .getByRole('button', { name: 'Close browser' })
       .click()
     const afterClose = await waitFor(
       () => getSnapshot(app as ElectronApplication),
@@ -2318,7 +2318,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       accelerator: 'CmdOrCtrl+N',
       enabled: true
     })
-    await shellEvaluate<{ ok: boolean }>(app, 'window.paneflow.addPane()')
+    await shellEvaluate<{ ok: boolean }>(app, 'window.browserdeck.addPane()')
     const afterAdd = await waitFor(
       () => getSnapshot(app as ElectronApplication),
       (state) => state.panes.length === 2,
@@ -2344,7 +2344,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     // A page can destroy its own webContents. The manager must remove the pane
     // rather than leave a stale control surface whose commands throw.
     const newPaneWebContentsId = await app.evaluate((_electron, paneId) => {
-      const hook = (globalThis as typeof globalThis & { __paneflowTest?: TestHook }).__paneflowTest
+      const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
       return hook ? hook.webContentsId(paneId) : null
     }, newPane?.id as string)
     expect(newPaneWebContentsId).not.toBeNull()
@@ -2471,7 +2471,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await app.evaluate(({ BaseWindow }) => {
       const window = BaseWindow.getAllWindows()[0]
       if (!window) {
-        throw new Error('PaneFlow window not found')
+        throw new Error('BrowserDeck window not found')
       }
       window.setBounds({ x: 80, y: 70, width: 1120, height: 820 })
     })
@@ -2522,7 +2522,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await app.evaluate(({ BaseWindow }) => {
       const window = BaseWindow.getAllWindows()[0]
       if (!window) {
-        throw new Error('PaneFlow window not found')
+        throw new Error('BrowserDeck window not found')
       }
       window.maximize()
     })
@@ -2543,7 +2543,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await app.evaluate(async ({ session }, profileIds) => {
       for (const profileId of profileIds) {
-        await session.fromPartition(`persist:paneflow-profile-${profileId}`).cookies.flushStore()
+        await session.fromPartition(`persist:browserdeck-profile-${profileId}`).cookies.flushStore()
       }
     }, firstProfileIds)
 
@@ -2585,7 +2585,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await restartApp.evaluate(({ BaseWindow }) => {
       const window = BaseWindow.getAllWindows()[0]
       if (!window) {
-        throw new Error('PaneFlow window not found')
+        throw new Error('BrowserDeck window not found')
       }
       window.unmaximize()
     })
@@ -2658,12 +2658,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       await evaluateInPane<string | null>(
         restartApp,
         restarted.panes[0]?.id as string,
-        "localStorage.getItem('paneflow_fixture')"
+        "localStorage.getItem('browserdeck_fixture')"
       )
     ).toBe(aliceStorageBeforeRestart)
 
     expect(await readCookie(restartApp, restarted.panes[0]?.id as string)).toContain(
-      'paneflow_user=alice'
+      'browserdeck_user=alice'
     )
 
     // Closing Bob's last pane released his exclusive profile and session data.
@@ -2677,7 +2677,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const bobProfileCookies = await restartApp.evaluate(
       async ({ session }, args) => {
         const cookies = await session
-          .fromPartition(`persist:paneflow-profile-${args.profileId}`)
+          .fromPartition(`persist:browserdeck-profile-${args.profileId}`)
           .cookies.get({ url: args.url })
         return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
       },
@@ -2793,7 +2793,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(
       await shellEvaluate<{ ok: boolean }>(
         restartApp,
-        `window.paneflow.addPane(${JSON.stringify(clearPaneUrl)})`
+        `window.browserdeck.addPane(${JSON.stringify(clearPaneUrl)})`
       )
     ).toMatchObject({ ok: true })
     const clearPaneState = await waitFor(
@@ -2816,10 +2816,10 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await evaluateInPane(
       restartApp,
       clearPane.id,
-      "localStorage.setItem('paneflow_clear_probe', 'present')"
+      "localStorage.setItem('browserdeck_clear_probe', 'present')"
     )
-    await clearPaneCard.getByRole('button', { name: 'Device actions' }).click()
-    const clearPaneMenu = restartShell.getByRole('menu', { name: 'Device actions' })
+    await clearPaneCard.getByRole('button', { name: 'Browser actions' }).click()
+    const clearPaneMenu = restartShell.getByRole('menu', { name: 'Browser actions' })
     await expect(
       clearPaneMenu.getByRole('menuitem', { name: 'Clear Site Data…' })
     ).toBeVisible()
@@ -2833,12 +2833,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         evaluateInPane<string | null>(
           restartApp,
           clearPane.id,
-          "localStorage.getItem('paneflow_clear_probe')"
+          "localStorage.getItem('browserdeck_clear_probe')"
         )
       )
       .toBe('present')
 
-    await clearPaneCard.getByRole('button', { name: 'Device actions' }).click()
+    await clearPaneCard.getByRole('button', { name: 'Browser actions' }).click()
     await clearPaneMenu.getByRole('menuitem', { name: 'Clear Site Data…' }).click()
     await clearConfirm.getByRole('menuitem', { name: 'Clear Site Data and Reload' }).click()
     await expect(clearConfirm).toHaveCount(0)
@@ -2855,12 +2855,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
         evaluateInPane<string | null>(
           restartApp,
           clearPane.id,
-          "localStorage.getItem('paneflow_clear_probe')"
+          "localStorage.getItem('browserdeck_clear_probe')"
         )
       )
       .toBeNull()
 
-    await shellEvaluate(restartApp, `window.paneflow.closePane(${JSON.stringify(clearPane.id)})`)
+    await shellEvaluate(restartApp, `window.browserdeck.closePane(${JSON.stringify(clearPane.id)})`)
     await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.panes.length === 1 && state.panes[0]?.id === alicePaneId,
@@ -2890,13 +2890,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       `.workspace-row[data-workspace-id="${originalWorkspaceId}"]`
     )
     await expect(originalWorkspaceRow).toContainText('Active')
-    await expect(originalWorkspaceRow).toContainText('1 device')
+    await expect(originalWorkspaceRow).toContainText('1 browser')
 
     const workspaceIdByName = async (name: string): Promise<string> => {
       const result = await shellEvaluate<{
         ok: boolean
         workspaces?: Array<{ id: string; name: string }>
-      }>(restartApp, 'window.paneflow.listWorkspaces()')
+      }>(restartApp, 'window.browserdeck.listWorkspaces()')
       const id = result.ok ? result.workspaces?.find((workspace) => workspace.name === name)?.id : null
       if (!id) {
         throw new Error(`Workspace ${name} is unavailable`)
@@ -2915,7 +2915,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
     const secondWorkspaceRow = workspaceRowById(secondWorkspaceId)
     await expect(secondWorkspaceRow).toHaveCount(1)
-    await expect(secondWorkspaceRow).toContainText('0 devices')
+    await expect(secondWorkspaceRow).toContainText('0 browsers')
     await expect
       .poll(async () => (await readAppMenuItem(restartApp, 'workspace-next'))?.enabled)
       .toBe(true)
@@ -2932,7 +2932,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'second workspace to become active'
     )
 
-    await shellEvaluate<{ ok: boolean }>(restartApp, 'window.paneflow.addPane()')
+    await restartShell
+      .locator('.empty-state')
+      .getByRole('button', { name: 'Add browser', exact: true })
+      .click()
+    const emptyAddMenu = restartShell.getByRole('menu', { name: 'Add browser' })
+    await expect(emptyAddMenu).toBeVisible()
+    await emptyAddMenu.getByRole('menuitem', { name: 'Responsive' }).click()
     const populatedSecond = await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
@@ -2968,7 +2974,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'workspace duplicate'
     )
     await expect(workspaceRowById(copyWorkspaceId)).toHaveCount(1)
-    await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 device')
+    await expect(workspaceRowById(copyWorkspaceId)).toContainText('1 browser')
     await workspacesDialog.getByRole('button', { name: 'Close' }).last().click()
     await expect(workspacesDialog).toHaveCount(0)
 
@@ -3111,7 +3117,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(
       await shellEvaluate<{ ok: boolean; error?: string }>(
         restartApp,
-        "window.paneflow.createWorkspace('Stress Workspace')"
+        "window.browserdeck.createWorkspace('Stress Workspace')"
       )
     ).toMatchObject({ ok: true })
     const stressWorkspaceId = await waitFor(
@@ -3119,14 +3125,14 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       (id) => id.length > 0,
       'stress workspace creation'
     )
-    await shellEvaluate(restartApp, `window.paneflow.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`)
+    await shellEvaluate(restartApp, `window.browserdeck.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`)
     await waitFor(
       () => getSnapshot(restartApp),
       (state) => state.workspace.id === stressWorkspaceId && state.panes.length === 0,
       'stress workspace activation'
     )
     for (let count = 1; count <= 4; count += 1) {
-      await shellEvaluate(restartApp, 'window.paneflow.addPane()')
+      await shellEvaluate(restartApp, 'window.browserdeck.addPane()')
       await waitFor(
         () => getSnapshot(restartApp),
         (state) => state.workspace.id === stressWorkspaceId && state.panes.length === count,
@@ -3173,7 +3179,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!firstStressBox || !secondStressBox) {
       throw new Error('Stress pane bounds are unavailable')
     }
-    const selectTool = restartZoomPage.getByRole('button', { name: 'Select devices' })
+    const selectTool = restartZoomPage.getByRole('button', { name: 'Select browsers' })
     await expect(selectTool).toHaveAttribute('aria-pressed', 'false')
     await selectTool.click()
     await expect(selectTool).toHaveAttribute('aria-pressed', 'true')
@@ -3202,7 +3208,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Restore the four-pane stress workspace expected by the leak cycles.
     for (let count = 3; count <= 4; count += 1) {
-      await shellEvaluate(restartApp, 'window.paneflow.addPane()')
+      await shellEvaluate(restartApp, 'window.browserdeck.addPane()')
       await waitFor(
         () => getSnapshot(restartApp),
         (state) =>
@@ -3213,7 +3219,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     await shellEvaluate(
       restartApp,
-      `window.paneflow.switchWorkspace(${JSON.stringify(originalWorkspaceId)})`
+      `window.browserdeck.switchWorkspace(${JSON.stringify(originalWorkspaceId)})`
     )
     await waitFor(
       () => getSnapshot(restartApp),
@@ -3227,11 +3233,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'webContents cleanup after stress pane teardown'
     )
 
-    const stressCycles = Number.parseInt(process.env.PANEFLOW_STRESS_CYCLES ?? '3', 10) || 3
+    const stressCycles = Number.parseInt(process.env.BROWSERDECK_STRESS_CYCLES ?? '3', 10) || 3
     for (let cycle = 0; cycle < stressCycles; cycle += 1) {
       await shellEvaluate(
         restartApp,
-        `window.paneflow.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`
+        `window.browserdeck.switchWorkspace(${JSON.stringify(stressWorkspaceId)})`
       )
       await waitFor(
         () => getSnapshot(restartApp),
@@ -3242,7 +3248,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
       await shellEvaluate(
         restartApp,
-        `window.paneflow.switchWorkspace(${JSON.stringify(originalWorkspaceId)})`
+        `window.browserdeck.switchWorkspace(${JSON.stringify(originalWorkspaceId)})`
       )
       await waitFor(
         () => getSnapshot(restartApp),
@@ -3266,7 +3272,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(
       await shellEvaluate<{ ok: boolean; error?: string }>(
         restartApp,
-        `window.paneflow.deleteWorkspace(${JSON.stringify(stressWorkspaceId)})`
+        `window.browserdeck.deleteWorkspace(${JSON.stringify(stressWorkspaceId)})`
       )
     ).toMatchObject({ ok: true })
 
@@ -3279,7 +3285,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     )
 
     for (const expectedCount of [2, 3, 4]) {
-      await shellEvaluate<{ ok: boolean }>(restartApp, 'window.paneflow.addPane()')
+      await shellEvaluate<{ ok: boolean }>(restartApp, 'window.browserdeck.addPane()')
       await waitFor(
         () => getSnapshot(restartApp),
         (state) => state.panes.length === expectedCount,
@@ -3294,7 +3300,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       }
       await shellEvaluate<{ ok: boolean }>(
         restartApp,
-        `window.paneflow.navigate(${JSON.stringify(pane.id)}, ${JSON.stringify(
+        `window.browserdeck.navigate(${JSON.stringify(pane.id)}, ${JSON.stringify(
           `${fixture.url}${path}`
         )})`
       )
@@ -3308,7 +3314,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(await readPaneCardRects(restartShell)).toHaveLength(4)
 
     for (let count = 5; count <= 8; count += 1) {
-      await shellEvaluate<{ ok: boolean }>(restartApp, 'window.paneflow.addPane()')
+      await shellEvaluate<{ ok: boolean }>(restartApp, 'window.browserdeck.addPane()')
       await waitFor(
         () => getSnapshot(restartApp),
         (state) => state.panes.length === count,
@@ -3322,7 +3328,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     for (const pane of stressPanesToClose) {
       await shellEvaluate<{ ok: boolean }>(
         restartApp,
-        `window.paneflow.closePane(${JSON.stringify(pane.id)})`
+        `window.browserdeck.closePane(${JSON.stringify(pane.id)})`
       )
     }
     await waitFor(

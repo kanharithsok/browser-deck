@@ -266,7 +266,7 @@ const CANVAS_VIEW_SAVE_DELAY = 150
 
 const paneCountLabel = computed(() => {
   const count = panes.value.length
-  return `${count} ${count === 1 ? 'device' : 'devices'}`
+  return `${count} ${count === 1 ? 'browser' : 'browsers'}`
 })
 
 const orderedPanes = computed(() => {
@@ -477,7 +477,7 @@ function presetLabel(preset: (typeof VIEWPORT_PRESETS)[number]): string {
 }
 
 const addPaneMenuModel = computed<AppMenuModel>(() => ({
-  label: 'Add device',
+  label: 'Add browser',
   sections: [
     {
       label: 'Start with viewport',
@@ -620,7 +620,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
       items: [
         {
           id: 'open-add-menu',
-          label: 'Add device',
+          label: 'Add browser',
           icon: 'add',
           detail: 'Choose viewport'
         }
@@ -631,7 +631,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
       items: [
         {
           id: 'fit-all',
-          label: 'Fit all devices',
+          label: 'Fit all browsers',
           icon: 'fit',
           disabled: panes.value.length === 0
         },
@@ -668,7 +668,7 @@ const canvasMenuModel = computed<AppMenuModel>(() => ({
 }))
 
 const arrangeMenuModel = computed<AppMenuModel>(() => ({
-  label: 'Arrange devices',
+  label: 'Arrange browsers',
   sections: [
     {
       items: [
@@ -705,7 +705,7 @@ const arrangeMenuModel = computed<AppMenuModel>(() => ({
 const paneMenuModel = computed<AppMenuModel>(() => {
   const pane = panes.value.find((entry) => entry.id === paneMenuPaneId.value)
   return {
-    label: 'Device actions',
+    label: 'Browser actions',
     sections: [
       {
         label: 'Navigate',
@@ -763,13 +763,13 @@ const paneMenuModel = computed<AppMenuModel>(() => {
         items: [
           {
             id: 'pane:duplicate',
-            label: 'Duplicate Device',
+            label: 'Duplicate Browser',
             icon: 'duplicate',
             disabled: !pane
           },
           {
             id: 'pane:rename',
-            label: 'Rename Device…',
+            label: 'Rename Browser…',
             icon: 'rename',
             disabled: !pane
           },
@@ -791,7 +791,7 @@ const paneMenuModel = computed<AppMenuModel>(() => {
         items: [
           {
             id: 'pane:close',
-            label: 'Close Device',
+            label: 'Close Browser',
             icon: 'close',
             separatorBefore: true,
             disabled: !pane
@@ -1183,7 +1183,7 @@ async function refreshPaneSnapshots(): Promise<void> {
   }
   const request = ++snapshotRequest
   try {
-    const result = await window.paneflow.capturePaneSnapshots()
+    const result = await window.browserdeck.capturePaneSnapshots()
     if (request !== snapshotRequest || !result.ok) {
       return
     }
@@ -1261,7 +1261,7 @@ function raisePane(paneId: string): void {
   if (nextOrder) {
     freeformOrder.value = nextOrder
   }
-  void window.paneflow.bringPaneToFront(paneId).catch(() => undefined)
+  void window.browserdeck.bringPaneToFront(paneId).catch(() => undefined)
 }
 
 function lowerPane(paneId: string): void {
@@ -1272,7 +1272,7 @@ function lowerPane(paneId: string): void {
   if (nextOrder) {
     freeformOrder.value = nextOrder
   }
-  void window.paneflow.sendPaneToBack(paneId).catch(() => undefined)
+  void window.browserdeck.sendPaneToBack(paneId).catch(() => undefined)
 }
 
 function applyFreeformRect(paneId: string, rect: Rect): void {
@@ -1375,7 +1375,7 @@ function beginCanvasPan(event: PointerEvent, empty = true): void {
   }
   clearCanvasGuides()
   isCanvasPanning.value = true
-  document.body.classList.add('paneflow-canvas-panning')
+  document.body.classList.add('browserdeck-canvas-panning')
   void nextTick(scheduleMeasure)
   if (Object.keys(paneSnapshots.value).length === 0) {
     scheduleSnapshotRefresh(0)
@@ -1412,7 +1412,7 @@ function finishCanvasPan(event?: PointerEvent): void {
     drag.button === 0 && drag.empty && !drag.moved && event?.type !== 'pointercancel'
   canvasDrag.value = null
   isCanvasPanning.value = false
-  document.body.classList.remove('paneflow-canvas-panning')
+  document.body.classList.remove('browserdeck-canvas-panning')
   window.removeEventListener('pointermove', onCanvasPointerMove)
   window.removeEventListener('pointerup', finishCanvasPan)
   window.removeEventListener('pointercancel', finishCanvasPan)
@@ -1444,7 +1444,7 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
     base: { x: frame.x, y: frame.y }
   }
   isCanvasPaneDragging.value = true
-  document.body.classList.add('paneflow-canvas-pane-dragging')
+  document.body.classList.add('browserdeck-canvas-pane-dragging')
   clearCanvasGuides()
   void nextTick(scheduleMeasure)
   window.addEventListener('pointermove', onCanvasPanePointerMove)
@@ -1524,7 +1524,7 @@ function finishCanvasPaneDrag(): void {
   canvasPaneDrag.value = null
   isCanvasPaneDragging.value = false
   clearCanvasGuides()
-  document.body.classList.remove('paneflow-canvas-pane-dragging')
+  document.body.classList.remove('browserdeck-canvas-pane-dragging')
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
   window.removeEventListener('pointercancel', finishCanvasPaneDrag)
@@ -1586,7 +1586,7 @@ function cancelMarqueeSelection(): void {
   marqueeDrag = null
   marqueeRect.value = null
   isMarqueeSelecting.value = false
-  document.body.classList.remove('paneflow-canvas-selecting')
+  document.body.classList.remove('browserdeck-canvas-selecting')
   window.removeEventListener('pointermove', onMarqueePointerMove)
   window.removeEventListener('pointerup', finishMarqueeSelection)
   window.removeEventListener('pointercancel', finishMarqueeSelection)
@@ -1635,7 +1635,7 @@ function beginMarqueeSelection(event: PointerEvent, anchorPaneId: string | null)
   }
   selectedPaneIds.value = new Set()
   isMarqueeSelecting.value = true
-  document.body.classList.add('paneflow-canvas-selecting')
+  document.body.classList.add('browserdeck-canvas-selecting')
   syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
   if (Object.keys(paneSnapshots.value).length === 0) {
@@ -1691,7 +1691,7 @@ function finishMarqueeSelection(event?: PointerEvent): void {
   marqueeDrag = null
   marqueeRect.value = null
   isMarqueeSelecting.value = false
-  document.body.classList.remove('paneflow-canvas-selecting')
+  document.body.classList.remove('browserdeck-canvas-selecting')
   window.removeEventListener('pointermove', onMarqueePointerMove)
   window.removeEventListener('pointerup', finishMarqueeSelection)
   window.removeEventListener('pointercancel', finishMarqueeSelection)
@@ -1718,27 +1718,27 @@ async function closeSelectedPanes(): Promise<void> {
   actionError.value = null
   try {
     for (const paneId of ids) {
-      const result = await window.paneflow.closePane(paneId)
+      const result = await window.browserdeck.closePane(paneId)
       if (!result.ok) {
         actionError.value = result.error
         return
       }
     }
   } catch {
-    actionError.value = 'Could not close the selected devices.'
+    actionError.value = 'Could not close the selected browsers.'
   }
 }
 
 watch(canvasHandActive, (active) => {
-  void window.paneflow.setCanvasHandMode(active).catch(() => undefined)
+  void window.browserdeck.setCanvasHandMode(active).catch(() => undefined)
 })
 
 watch(selectionToolActive, (active) => {
-  void window.paneflow.setCanvasSelectMode(active).catch(() => undefined)
+  void window.browserdeck.setCanvasSelectMode(active).catch(() => undefined)
 })
 
 function syncCanvasZoomToMain(zoom: number): void {
-  void window.paneflow.setCanvasZoom(zoom).catch(() => undefined)
+  void window.browserdeck.setCanvasZoom(zoom).catch(() => undefined)
 }
 
 function setCanvasZoomAtPoint(nextZoom: number, clientX: number, clientY: number): void {
@@ -1889,7 +1889,7 @@ function beginCanvasWheelGesture(): void {
     return
   }
   isCanvasPanning.value = true
-  document.body.classList.add('paneflow-canvas-panning')
+  document.body.classList.add('browserdeck-canvas-panning')
   void nextTick(scheduleMeasure)
   if (Object.keys(paneSnapshots.value).length === 0) {
     scheduleSnapshotRefresh(0)
@@ -1903,7 +1903,7 @@ function scheduleCanvasWheelEnd(): void {
   canvasWheelEndTimer = setTimeout(() => {
     canvasWheelEndTimer = null
     isCanvasPanning.value = false
-    document.body.classList.remove('paneflow-canvas-panning')
+    document.body.classList.remove('browserdeck-canvas-panning')
     saveCanvasViewNow()
     void nextTick(async () => {
       await measurePanes()
@@ -2064,7 +2064,7 @@ function scheduleCanvasMinimapState(delay = 40): void {
     if (layoutMode.value !== 'canvas') {
       return
     }
-    void window.paneflow
+    void window.browserdeck
       .updateCanvasMinimap(canvasMinimapState.value)
       .catch(() => undefined)
   }, delay)
@@ -2105,7 +2105,7 @@ function syncCanvasMinimapVisibility(): void {
     // instead of hiding and immediately showing them again.
   }
 
-  void window.paneflow
+  void window.browserdeck
     .setCanvasOverlayVisibility({ minimap: minimapVisible, zoom: zoomVisible })
     .catch(() => undefined)
   if (minimapVisible || zoomVisible) {
@@ -2298,7 +2298,7 @@ async function saveWorkspaceLayout(): Promise<void> {
   lastSavedLayoutKey = key
 
   try {
-    const result = await window.paneflow.saveWorkspaceLayout(layout)
+    const result = await window.browserdeck.saveWorkspaceLayout(layout)
     if (!result.ok) {
       actionError.value = result.error
     }
@@ -2379,8 +2379,8 @@ function applyState(state: ShellState): void {
     isCanvasPaneDragging.value = false
     canvasDrag.value = null
     canvasPaneDrag.value = null
-    document.body.classList.remove('paneflow-canvas-panning')
-    document.body.classList.remove('paneflow-canvas-pane-dragging')
+    document.body.classList.remove('browserdeck-canvas-panning')
+    document.body.classList.remove('browserdeck-canvas-pane-dragging')
     paneSnapshots.value = {}
     clearAllPaneNotices()
     devicePaletteOpen.value = false
@@ -2512,14 +2512,14 @@ async function runAddPane(add: () => Promise<ScriptResult>): Promise<void> {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not add a device.'
+    actionError.value = 'Could not add a browser.'
   } finally {
     addingPane.value = false
   }
 }
 
 async function addPaneWithViewport(preset: ViewportPresetId): Promise<void> {
-  await runAddPane(() => window.paneflow.addPaneWithViewport(viewportFromPreset(preset)))
+  await runAddPane(() => window.browserdeck.addPaneWithViewport(viewportFromPreset(preset)))
 }
 
 async function prepareMenuSnapshots(): Promise<void> {
@@ -2603,14 +2603,14 @@ async function openClearSiteDataConfirm(paneId: string): Promise<void> {
 async function clearPaneSiteData(paneId: string): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.clearPaneSiteData(paneId)
+    const result = await window.browserdeck.clearPaneSiteData(paneId)
     if (!result.ok) {
       actionError.value = result.error
       return
     }
     showPaneNotice({ paneId, message: 'Site data cleared' })
   } catch {
-    actionError.value = 'Could not clear the device data.'
+    actionError.value = 'Could not clear the browser data.'
   }
 }
 
@@ -2672,7 +2672,7 @@ function onAppMenuBounds(bounds: Rect): void {
 async function applyMenuTheme(theme: ThemePreference): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.setTheme(theme)
+    const result = await window.browserdeck.setTheme(theme)
     if (!result.ok) {
       actionError.value = result.error
     }
@@ -2746,16 +2746,16 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
   try {
     switch (action) {
       case 'back':
-        await window.paneflow.back(paneId)
+        await window.browserdeck.back(paneId)
         break
       case 'forward':
-        await window.paneflow.forward(paneId)
+        await window.browserdeck.forward(paneId)
         break
       case 'reload':
-        await window.paneflow.reload(paneId)
+        await window.browserdeck.reload(paneId)
         break
       case 'copy-url': {
-        const result = await window.paneflow.copyPaneUrl(paneId)
+        const result = await window.browserdeck.copyPaneUrl(paneId)
         if (!result.ok) {
           actionError.value = result.error
         }
@@ -2765,14 +2765,14 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
         await openPaneExternal(paneId)
         break
       case 'rotate': {
-        const result = await window.paneflow.rotatePaneViewport(paneId)
+        const result = await window.browserdeck.rotatePaneViewport(paneId)
         if (!result.ok) {
           actionError.value = result.error
         }
         break
       }
       case 'screenshot': {
-        const result = await window.paneflow.capturePaneScreenshot(paneId)
+        const result = await window.browserdeck.capturePaneScreenshot(paneId)
         if (!result.ok) {
           actionError.value = result.error
         }
@@ -2788,7 +2788,7 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
         openClearSiteDataConfirm(paneId)
         break
       case 'devtools': {
-        const result = await window.paneflow.openPaneDevTools(paneId)
+        const result = await window.browserdeck.openPaneDevTools(paneId)
         if (!result.ok) {
           actionError.value = result.error
         }
@@ -2799,7 +2799,7 @@ async function runPaneMenuAction(paneId: string, action: string): Promise<void> 
         break
     }
   } catch {
-    actionError.value = 'Could not complete the device action.'
+    actionError.value = 'Could not complete the browser action.'
   }
 }
 
@@ -2934,7 +2934,7 @@ function onAppMenuSelect(id: string): void {
 async function openPaneExternal(paneId: string): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.openPaneExternal(paneId)
+    const result = await window.browserdeck.openPaneExternal(paneId)
     if (!result.ok) {
       actionError.value = result.error
     }
@@ -2959,26 +2959,26 @@ async function duplicatePane(paneId: string): Promise<void> {
     pendingDuplicatePlacement = null
   }
   try {
-    const result = await window.paneflow.duplicatePane(paneId)
+    const result = await window.browserdeck.duplicatePane(paneId)
     if (!result.ok) {
       pendingDuplicatePlacement = null
       actionError.value = result.error
     }
   } catch {
     pendingDuplicatePlacement = null
-    actionError.value = 'Could not duplicate the device.'
+    actionError.value = 'Could not duplicate the browser.'
   }
 }
 
 async function closePane(paneId: string): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.closePane(paneId)
+    const result = await window.browserdeck.closePane(paneId)
     if (!result.ok) {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not close the device.'
+    actionError.value = 'Could not close the browser.'
   }
 }
 
@@ -3101,7 +3101,7 @@ async function refreshWorkspaces(): Promise<void> {
   workspacesLoading.value = true
   workspaceError.value = null
   try {
-    const result = await window.paneflow.listWorkspaces()
+    const result = await window.browserdeck.listWorkspaces()
     if (result.ok) {
       workspaces.value = result.workspaces
     } else {
@@ -3158,7 +3158,7 @@ async function importWorkspaceFile(): Promise<void> {
   workspaceError.value = null
   workspaceNotice.value = null
   try {
-    const result = await window.paneflow.importWorkspace()
+    const result = await window.browserdeck.importWorkspace()
     if (!result.ok) {
       workspaceError.value = result.error
       return
@@ -3185,7 +3185,7 @@ async function exportActiveWorkspace(): Promise<void> {
   workspaceError.value = null
   workspaceNotice.value = null
   try {
-    const result = await window.paneflow.exportWorkspace(active.id)
+    const result = await window.browserdeck.exportWorkspace(active.id)
     if (!result.ok) {
       workspaceError.value = result.error
       return
@@ -3212,7 +3212,7 @@ async function createWorkspace(): Promise<void> {
   workspaceBusy.value = true
   workspaceError.value = null
   try {
-    const result = await window.paneflow.createWorkspace(name)
+    const result = await window.browserdeck.createWorkspace(name)
     if (!result.ok) {
       workspaceError.value = result.error
       return
@@ -3263,7 +3263,7 @@ async function submitWorkspaceRename(workspace: WorkspaceSummary): Promise<void>
   workspaceBusy.value = true
   workspaceError.value = null
   try {
-    const result = await window.paneflow.renameWorkspace(workspace.id, name)
+    const result = await window.browserdeck.renameWorkspace(workspace.id, name)
     if (!result.ok) {
       workspaceError.value = result.error
       return
@@ -3301,7 +3301,7 @@ async function confirmWorkspaceDelete(workspace: WorkspaceSummary): Promise<void
   workspaceBusy.value = true
   workspaceError.value = null
   try {
-    const result = await window.paneflow.deleteWorkspace(workspace.id)
+    const result = await window.browserdeck.deleteWorkspace(workspace.id)
     if (!result.ok) {
       workspaceError.value = result.error
       await refreshWorkspaces()
@@ -3324,7 +3324,7 @@ async function duplicateWorkspace(workspace: WorkspaceSummary): Promise<void> {
   workspaceBusy.value = true
   workspaceError.value = null
   try {
-    const result = await window.paneflow.duplicateWorkspace(workspace.id)
+    const result = await window.browserdeck.duplicateWorkspace(workspace.id)
     if (!result.ok) {
       workspaceError.value = result.error
       return
@@ -3346,13 +3346,13 @@ async function switchToWorkspace(workspace: WorkspaceSummary): Promise<void> {
   workspaceError.value = null
   try {
     await saveWorkspaceLayout()
-    const result = await window.paneflow.switchWorkspace(workspace.id)
+    const result = await window.browserdeck.switchWorkspace(workspace.id)
     if (!result.ok) {
       workspaceError.value = result.error
       return
     }
     closeWorkspaces()
-    const state = await window.paneflow.getState()
+    const state = await window.browserdeck.getState()
     applyState(state)
     await nextTick()
     scheduleMeasure()
@@ -3469,12 +3469,12 @@ async function reloadAll(): Promise<void> {
   // selected device stable while the bulk reload settles.
   suppressPaneFocusUntil = Date.now() + 1500
   try {
-    const result = await window.paneflow.reloadAll()
+    const result = await window.browserdeck.reloadAll()
     if (!result.ok) {
       actionError.value = result.error
     }
   } catch {
-    actionError.value = 'Could not reload the devices.'
+    actionError.value = 'Could not reload the browsers.'
   } finally {
     if (activeBefore && panes.value.some((pane) => pane.id === activeBefore)) {
       selectPane(activeBefore)
@@ -3492,7 +3492,7 @@ async function openPaneMenu(paneId: string, position: { x: number; y: number }):
   }
   paneMenuPaneId.value = paneId
   const trigger = document.querySelector<HTMLElement>(
-    `[data-pane-id="${paneId}"] button[aria-label="Device actions"]`
+    `[data-pane-id="${paneId}"] button[aria-label="Browser actions"]`
   )
   await openAppMenu(
     'pane',
@@ -3532,7 +3532,7 @@ async function openCanvasMenu(event: MouseEvent): Promise<void> {
 async function setPaneViewport(paneId: string, viewport: PaneViewport): Promise<void> {
   actionError.value = null
   try {
-    const result = await window.paneflow.setPaneViewport(paneId, viewport)
+    const result = await window.browserdeck.setPaneViewport(paneId, viewport)
     if (!result.ok) {
       actionError.value = result.error
     }
@@ -3560,7 +3560,7 @@ async function reloadActivePane(): Promise<void> {
     await reloadAll()
     return
   }
-  await window.paneflow.reload(pane.id).catch(() => undefined)
+  await window.browserdeck.reload(pane.id).catch(() => undefined)
 }
 
 function handlePaneCommand(command: PaneCommand): void {
@@ -3660,7 +3660,7 @@ function finishDrag(): void {
   dropTargetId.value = null
   isDragging.value = false
   clearCanvasGuides()
-  document.body.classList.remove('paneflow-dragging')
+  document.body.classList.remove('browserdeck-dragging')
 
   if (wasDragging && state?.kind === 'reorder' && target) {
     const fromIndex = paneOrder.value.indexOf(state.paneId)
@@ -3688,7 +3688,7 @@ function onPointerMove(event: PointerEvent): void {
       return
     }
     isDragging.value = true
-    document.body.classList.add('paneflow-dragging')
+    document.body.classList.add('browserdeck-dragging')
     void nextTick(scheduleMeasure)
   }
 
@@ -3733,7 +3733,9 @@ function onWorkspacePointerDown(event: PointerEvent): void {
       return
     }
     if (!(canvasCard instanceof HTMLElement)) {
-      beginCanvasPan(event, true)
+      if (!interactive) {
+        beginCanvasPan(event, true)
+      }
       return
     }
     if (!canvasPaneId) {
@@ -3904,9 +3906,9 @@ async function measurePanes(): Promise<void> {
 
   let result: ScriptResult
   try {
-    result = await window.paneflow.setPaneBounds(updates)
+    result = await window.browserdeck.setPaneBounds(updates)
   } catch {
-    layoutError.value = 'Could not synchronize device layout.'
+    layoutError.value = 'Could not synchronize browser layout.'
     return
   }
 
@@ -3940,7 +3942,7 @@ watch(layoutMode, (mode) => {
   dropTargetId.value = null
   isDragging.value = false
   dragState.value = null
-  document.body.classList.remove('paneflow-dragging')
+  document.body.classList.remove('browserdeck-dragging')
   if (workspaceEl.value) {
     workspaceEl.value.scrollTop = 0
   }
@@ -3967,8 +3969,8 @@ watch(layoutMode, (mode) => {
     window.removeEventListener('pointermove', onCanvasPanePointerMove)
     window.removeEventListener('pointerup', finishCanvasPaneDrag)
     window.removeEventListener('pointercancel', finishCanvasPaneDrag)
-    document.body.classList.remove('paneflow-canvas-panning')
-    document.body.classList.remove('paneflow-canvas-pane-dragging')
+    document.body.classList.remove('browserdeck-canvas-panning')
+    document.body.classList.remove('browserdeck-canvas-pane-dragging')
   } else {
     syncCanvasZoomToMain(canvasZoom.value)
   }
@@ -4062,17 +4064,17 @@ watch(resolvedTheme, () => {
 })
 
 onMounted(async () => {
-  disposeStateListener = window.paneflow.onStateChanged(applyState)
-  disposeMinimapActionListener = window.paneflow.onCanvasMinimapAction(
+  disposeStateListener = window.browserdeck.onStateChanged(applyState)
+  disposeMinimapActionListener = window.browserdeck.onCanvasMinimapAction(
     onCanvasMinimapAction
   )
-  disposeZoomActionListener = window.paneflow.onCanvasZoomAction(
+  disposeZoomActionListener = window.browserdeck.onCanvasZoomAction(
     applyCanvasZoomAction
   )
-  void window.paneflow.setCanvasHandMode(canvasHandActive.value).catch(() => undefined)
-  disposeMeasureListener = window.paneflow.onRequestMeasurement(scheduleMeasure)
-  disposeCommandListener = window.paneflow.onPaneCommand(handlePaneCommand)
-  disposeFocusListener = window.paneflow.onPaneFocused((paneId) => {
+  void window.browserdeck.setCanvasHandMode(canvasHandActive.value).catch(() => undefined)
+  disposeMeasureListener = window.browserdeck.onRequestMeasurement(scheduleMeasure)
+  disposeCommandListener = window.browserdeck.onPaneCommand(handlePaneCommand)
+  disposeFocusListener = window.browserdeck.onPaneFocused((paneId) => {
     if (Date.now() < suppressPaneFocusUntil) {
       return
     }
@@ -4083,8 +4085,8 @@ onMounted(async () => {
       closeAppMenu(false)
     }
   })
-  disposeRenameListener = window.paneflow.onPaneRenameRequested(requestPaneRename)
-  disposeNoticeListener = window.paneflow.onPaneNotice(showPaneNotice)
+  disposeRenameListener = window.browserdeck.onPaneRenameRequested(requestPaneRename)
+  disposeNoticeListener = window.browserdeck.onPaneNotice(showPaneNotice)
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -4102,7 +4104,7 @@ onMounted(async () => {
   readWorkspaceSize()
 
   try {
-    const initialState = await window.paneflow.getState()
+    const initialState = await window.browserdeck.getState()
     applyState(initialState)
     await nextTick()
     if (initialState.panes.length > 0 || initialState.layout.gridOrder.length === 0) {
@@ -4113,7 +4115,7 @@ onMounted(async () => {
       scheduleSnapshotRefresh(200)
     }
   } catch {
-    actionError.value = 'Could not read device state.'
+    actionError.value = 'Could not read browser state.'
   } finally {
     focusManagementEnabled = true
   }
@@ -4149,10 +4151,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', onCanvasSpaceUp)
   window.removeEventListener('blur', onWindowBlur)
   window.removeEventListener('beforeunload', flushCanvasView)
-  document.body.classList.remove('paneflow-dragging')
-  document.body.classList.remove('paneflow-canvas-panning')
-  document.body.classList.remove('paneflow-canvas-pane-dragging')
-  document.body.classList.remove('paneflow-canvas-selecting')
+  document.body.classList.remove('browserdeck-dragging')
+  document.body.classList.remove('browserdeck-canvas-panning')
+  document.body.classList.remove('browserdeck-canvas-pane-dragging')
+  document.body.classList.remove('browserdeck-canvas-selecting')
   snapshotRequest += 1
   if (snapshotRefreshTimer !== null) {
     clearTimeout(snapshotRefreshTimer)
@@ -4170,7 +4172,7 @@ onBeforeUnmount(() => {
     clearTimeout(minimapStateTimer)
     minimapStateTimer = null
   }
-  void window.paneflow.setCanvasMinimapVisible(false).catch(() => undefined)
+  void window.browserdeck.setCanvasMinimapVisible(false).catch(() => undefined)
   if (measureFrame !== 0) {
     window.cancelAnimationFrame(measureFrame)
   }
@@ -4184,7 +4186,7 @@ onBeforeUnmount(() => {
     :data-layout-mode="layoutMode"
   >
     <header class="toolbar">
-      <h1 class="sr-only">PaneFlow</h1>
+      <h1 class="sr-only">BrowserDeck</h1>
 
       <span class="pane-count sr-only" role="status" aria-live="polite">{{ paneCountLabel }}</span>
       <div
@@ -4197,8 +4199,8 @@ onBeforeUnmount(() => {
         <button
           class="icon-button selection-close"
           type="button"
-          :title="`Close ${selectedPaneIds.size} selected device${selectedPaneIds.size === 1 ? '' : 's'} (Delete)`"
-          :aria-label="`Close ${selectedPaneIds.size} selected device${selectedPaneIds.size === 1 ? '' : 's'}`"
+          :title="`Close ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'} (Delete)`"
+          :aria-label="`Close ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}`"
           @click="closeSelectedPanes"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -4209,8 +4211,8 @@ onBeforeUnmount(() => {
       <button
         class="icon-button toolbar-icon add-pane-button"
         type="button"
-        title="Add device"
-        aria-label="Add device"
+        title="Add browser"
+        aria-label="Add browser"
         aria-haspopup="menu"
         :aria-expanded="appMenuMode === 'add'"
         :disabled="addingPane"
@@ -4317,14 +4319,14 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="empty-state">
-        <p class="empty-title">No devices</p>
+        <p class="empty-title">No browsers</p>
         <p class="empty-detail">
-          Add a device to open a real, isolated browser session in this workspace.
+          Add a browser to open a real, isolated session in this workspace.
         </p>
         <button
           class="toolbar-button primary"
           type="button"
-          title="Add device"
+          title="Add browser"
           aria-haspopup="menu"
           :aria-expanded="appMenuMode === 'add'"
           :disabled="addingPane"
@@ -4333,7 +4335,7 @@ onBeforeUnmount(() => {
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M8 3v10M3 8h10" />
           </svg>
-          <span>Add device</span>
+          <span>Add browser</span>
         </button>
       </div>
     </main>
@@ -4356,7 +4358,7 @@ onBeforeUnmount(() => {
         <div class="profiles-header">
           <h2 id="workspaces-title" class="profiles-title">Workspaces</h2>
           <p id="workspaces-description" class="sr-only">
-            Each workspace keeps its own devices, layout, URLs, and viewport settings.
+            Each workspace keeps its own browsers, layout, URLs, and viewport settings.
           </p>
           <button
             class="icon-button"
@@ -4451,7 +4453,7 @@ onBeforeUnmount(() => {
                 <span v-if="workspace.active" class="workspace-badge">Active</span>
               </span>
               <span class="profile-meta">
-                {{ workspace.paneCount }} {{ workspace.paneCount === 1 ? 'device' : 'devices' }} ·
+                {{ workspace.paneCount }} {{ workspace.paneCount === 1 ? 'browser' : 'browsers' }} ·
                 Updated {{ formatProfileDate(workspace.updatedAt) }}
               </span>
             </button>
@@ -4536,7 +4538,7 @@ onBeforeUnmount(() => {
         class="device-palette"
         role="dialog"
         aria-modal="true"
-        aria-label="Find device"
+        aria-label="Find browser"
       >
         <input
           ref="devicePaletteInput"
@@ -4548,18 +4550,18 @@ onBeforeUnmount(() => {
           aria-expanded="true"
           :aria-controls="DEVICE_PALETTE_LIST_ID"
           :aria-activedescendant="devicePaletteSelectedId"
-          aria-label="Find device"
+          aria-label="Find browser"
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
-          placeholder="Find a device by name, host, or viewport"
+          placeholder="Find a browser by name, host, or viewport"
           @keydown="onDevicePaletteKeydown"
         />
         <ul
           :id="DEVICE_PALETTE_LIST_ID"
           class="device-palette-list"
           role="listbox"
-          aria-label="Devices"
+          aria-label="Browsers"
         >
           <li
             v-for="(result, index) in devicePaletteResults"
@@ -4620,8 +4622,8 @@ onBeforeUnmount(() => {
         >
           {{
             devicePaletteQuery.trim()
-              ? 'No matching devices.'
-              : 'No devices in this workspace.'
+              ? 'No matching browsers.'
+              : 'No browsers in this workspace.'
           }}
         </div>
         <footer class="device-palette-footer" aria-hidden="true">

@@ -4,7 +4,7 @@ import {
   type CanvasOverlayVisibility,
   type PaneBoundsUpdate,
   type PaneCommand,
-  type PaneFlowApi,
+  type BrowserDeckApi,
   type PaneNotice,
   type ShellState
 } from '../shared/ipc'
@@ -16,7 +16,7 @@ import type { PaneViewport } from '../shared/viewports'
 import type { CanvasZoomAction, CanvasZoomState } from '../shared/zoom'
 import type { WorkspaceLayout } from '../shared/workspace'
 
-const api: PaneFlowApi = {
+const api: BrowserDeckApi = {
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<ShellState>,
   addPane: (url) => ipcRenderer.invoke(IPC_CHANNELS.addPane, url),
   addPaneWithViewport: (viewport: PaneViewport) =>
@@ -173,4 +173,4 @@ const api: PaneFlowApi = {
   }
 }
 
-contextBridge.exposeInMainWorld('paneflow', api)
+contextBridge.exposeInMainWorld('browserdeck', api)

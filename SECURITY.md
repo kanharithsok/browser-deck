@@ -1,6 +1,6 @@
 # Security
 
-PaneFlow is a local-first macOS desktop workspace that embeds multiple remote
+BrowserDeck is a local-first macOS desktop workspace that embeds multiple remote
 websites in native Electron views. It is not a security boundary between those
 websites, an anonymity tool, or a hardened multi-user system.
 
@@ -25,7 +25,7 @@ live credentials.
 
 | Boundary | Trust | What it means |
 | --- | --- | --- |
-| Trusted shell | Trusted local code | The Vue shell is served from the internal `paneflow://shell/` protocol, sandboxed, context-isolated, and has the typed preload bridge. |
+| Trusted shell | Trusted local code | The Vue shell is served from the internal `browserdeck://shell/` protocol, sandboxed, context-isolated, and has the typed preload bridge. |
 | Main process | Trusted local code | Owns windows, native views, sessions, persistence, dialogs, and IPC validation. |
 | Remote pane | **Untrusted** | Every website, including localhost, LAN, staging, and production sites, is hostile. It receives no preload bridge, Node.js, filesystem, environment, or privileged IPC. |
 | Profile partition | Browser-session isolation | Each profile has its own persistent Electron partition. This isolates cookies, storage, and cache; it is not an OS process or user sandbox. |
@@ -40,7 +40,7 @@ renderer exploits.
 ### Trusted shell
 
 - Packaged and local production builds load the shell from
-  `paneflow://shell/index.html` using a privileged, standard, secure custom
+  `browserdeck://shell/index.html` using a privileged, standard, secure custom
   protocol. The handler serves only files inside the built renderer directory,
   rejects traversal and malformed paths, sets explicit MIME types, and sends
   `X-Content-Type-Options: nosniff`.
@@ -95,7 +95,7 @@ renderer exploits.
 ### Profiles and persisted data
 
 - Profile partitions are derived only from internally generated UUIDs:
-  `persist:paneflow-profile-<uuid>`. User labels, URLs, and workspace names
+  `persist:browserdeck-profile-<uuid>`. User labels, URLs, and workspace names
   never influence partition or directory names.
 - New and duplicated panes receive independent sessions. Sessions are never
   shared between panes, and there is no user-facing profile manager.
@@ -116,7 +116,7 @@ renderer exploits.
 ## Secret handling
 
 - Website credentials and session cookies stay in Electron-managed partitions
-  under the app's user-data directory. PaneFlow does not implement its own
+  under the app's user-data directory. BrowserDeck does not implement its own
   password or token store.
 - Do not put credentials, bearer tokens, session identifiers, or private page
   content in workspace names, pane URLs, fixtures, screenshots, exports, test
@@ -163,7 +163,7 @@ Run from a clean checkout:
 - [ ] `npm run test:e2e` (macOS GUI session)
 - [ ] `npm run build`
 - [ ] `npm run package:dir` or `npm run package:mac`
-- [ ] `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` reports
+- [ ] `npx electron-fuses read --app dist/mac-arm64/BrowserDeck.app` reports
       RunAsNode disabled, Node options/inspector disabled, embedded ASAR
       integrity enabled, only-load-app-from-asar enabled, and file-protocol
       extra privileges disabled. The `@electron/fuses` 1.8.0 CLI bundled with

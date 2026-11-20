@@ -41,18 +41,18 @@ const WORKSPACES_DIRECTORY = 'workspaces'
 
 function validatePanes(panes: WorkspacePaneDefinition[]): WorkspacePaneDefinition[] {
   if (panes.length > MAX_WORKSPACE_PANES) {
-    throw new Error('Too many workspace devices.')
+    throw new Error('Too many workspace browsers.')
   }
   const seen = new Set<string>()
   return panes.map((pane) => {
     if (!isValidPaneId(pane.id) || seen.has(pane.id)) {
-      throw new Error('Invalid or duplicated device ID.')
+      throw new Error('Invalid or duplicated browser ID.')
     }
     if (!isValidProfileId(pane.profileId)) {
       throw new Error('Invalid profile ID.')
     }
     if (!isAllowedNavigationUrl(pane.url)) {
-      throw new Error('Invalid device URL.')
+      throw new Error('Invalid browser URL.')
     }
     const viewport = parsePaneViewport(pane.viewport)
     if (!viewport.ok) {

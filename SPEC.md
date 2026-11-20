@@ -1,4 +1,4 @@
-# PaneFlow — Product and Engineering Specification
+# BrowserDeck — Product and Engineering Specification
 
 **Document role:** Product and engineering source of truth  
 **Status:** MVP specification  
@@ -6,19 +6,19 @@
 **Future platforms:** Windows and Linux  
 **Product category:** Multi-browser desktop workspace
 
-> This document defines what PaneFlow must do and the engineering constraints that shape it. Repository-wide coding-agent behavior belongs in `AGENTS.md`; OpenCode-specific workflows belong in `.opencode/`.
+> This document defines what BrowserDeck must do and the engineering constraints that shape it. Repository-wide coding-agent behavior belongs in `AGENTS.md`; OpenCode-specific workflows belong in `.opencode/`.
 
 ---
 
 ## 1. Product vision
 
-PaneFlow is a local-first desktop application for opening multiple independent, interactive browser sessions in one flexible workspace. Users can arrange browser panes on an infinite canvas, snap them to each other, emulate different viewport sizes, and save reusable workspaces.
+BrowserDeck is a local-first desktop application for opening multiple independent, interactive browser sessions in one flexible workspace. Users can arrange browser panes on an infinite canvas, snap them to each other, emulate different viewport sizes, and save reusable workspaces.
 
-PaneFlow is intended for frontend developers, designers, QA engineers, agencies, and teams that need to compare websites, environments, accounts, roles, themes, or responsive layouts side by side.
+BrowserDeck is intended for frontend developers, designers, QA engineers, agencies, and teams that need to compare websites, environments, accounts, roles, themes, or responsive layouts side by side.
 
 **Core promise: multiple real browser sessions, one organized workspace.**
 
-PaneFlow is not a screenshot viewer, a collection of iframes, or a static responsive preview. Every pane must display a real interactive website in Chromium, navigate independently, and use an isolated browser profile by default.
+BrowserDeck is not a screenshot viewer, a collection of iframes, or a static responsive preview. Every pane must display a real interactive website in Chromium, navigate independently, and use an isolated browser profile by default.
 
 ## 2. Product principles
 
@@ -28,7 +28,7 @@ PaneFlow is not a screenshot viewer, a collection of iframes, or a static respon
 4. **Predictability:** navigation, dragging, resizing, snapping, focus, and persistence behave consistently.
 5. **Local-first:** workspace configuration and browser profiles remain on the user's machine. The MVP requires no account, cloud service, or hosted browser infrastructure.
 6. **Honest emulation:** viewport/device emulation is not a physical device, a separate browser engine, or a perfect reproduction of hardware.
-7. **Secure by design:** remote websites are untrusted and never receive PaneFlow's privileged application APIs.
+7. **Secure by design:** remote websites are untrusted and never receive BrowserDeck's privileged application APIs.
 8. **Measured performance:** design for a practical multi-pane workload and measure resource use; do not promise unlimited capacity.
 9. **Useful before clever:** deliver a reliable browser workspace before adding automation, analytics, collaboration, or AI features.
 
@@ -65,7 +65,7 @@ Representative use cases:
 
 ### 4.3 MVP product boundary
 
-PaneFlow is a desktop workspace for real browser sessions. It is not intended to replace a full daily-use browser, a browser automation platform, or a cloud device farm.
+BrowserDeck is a desktop workspace for real browser sessions. It is not intended to replace a full daily-use browser, a browser automation platform, or a cloud device farm.
 
 ---
 
@@ -82,7 +82,7 @@ PaneFlow is a desktop workspace for real browser sessions. It is not intended to
 - Canvas-only workspace with world-coordinate pane placement and header dragging.
 - World-space snapping to neighboring pane edges and centers, with visible alignment guides.
 - Per-pane viewport presets, including popular phones, tablets, laptops, and desktops, plus custom dimensions.
-- A compact **+** add control with a device picker, and a right-click canvas context menu for adding panes and common workspace settings.
+- A compact **+** add control with a browser picker, and a right-click canvas context menu for adding panes and common workspace settings.
 - Save, restore, duplicate, rename, switch, and delete workspaces.
 - Persistent browser profile data across normal application restarts.
 - Profile management, including clear and delete operations with confirmation.
@@ -130,7 +130,7 @@ Do not silently add out-of-scope features.
 
 ### 6.1 Design direction
 
-PaneFlow must have a **minimal, clean, calm, and developer-focused interface**. It is a desktop tool, not an analytics dashboard or marketing website.
+BrowserDeck must have a **minimal, clean, calm, and developer-focused interface**. It is a desktop tool, not an analytics dashboard or marketing website.
 
 Visual principles:
 
@@ -147,30 +147,30 @@ Visual principles:
 
 The initial interface should contain:
 
-1. **Top toolbar:** a minimal stable row with the compact **+** add-pane control and empty draggable space. The Canvas backdrop begins below it. The active pane's address and viewport controls belong to its device header.
+1. **Top toolbar:** a minimal stable row with the compact **+** add-browser control and empty draggable space. The Canvas backdrop begins below it. The active pane's address and viewport controls belong to its browser header.
 2. **Workspace canvas:** the largest area; it contains browser panes and layout interactions.
 3. **Bottom canvas bar:** Hand tool, zoom-out/zoom-in with a percentage menu, find-device, reload-all, and appearance.
 4. **Pane chrome:** a compact two-row header. The top row carries the drag grip, title, viewport preset, navigation, contextual actions, and close; the second row shows the viewport class and CSS resolution around that pane's centered address bar. Lower-priority actions such as rotate, screenshot, and clear site data live in the contextual menu.
-5. **Empty state:** one clear action to add the first browser device. Never show fake sample websites as if they were live pages.
+5. **Empty state:** one clear action to add the first browser pane. Never show fake sample websites as if they were live pages.
 6. **Focus state:** allow one pane to temporarily fill the workspace and restore its previous geometry afterward.
 
 Workspace management lives in the native menu bar, not the top toolbar. Browser sessions are internal to panes and require no manager. Do not add a complex sidebar to the MVP unless testing demonstrates a clear need.
 
 ### 6.3 Pane controls
 
-Each device exposes its own compact title, loading/error status, address bar, viewport preset, viewport class and resolution, back, forward, reload, contextual menu, and close action. No pane's address or viewport control lives in the main top toolbar.
+Each browser exposes its own compact title, loading/error status, address bar, viewport preset, viewport class and resolution, back, forward, reload, contextual menu, and close action. No pane's address or viewport control lives in the main top toolbar.
 
 When space is tight, collapse lower-priority controls into the contextual menu. Controls must never overlap or become unusable. In Canvas, keep the address, viewport, back, forward, reload, contextual-menu, and close controls available at every zoom level.
 
-User-facing copy calls each browser frame a **device**. The internal model and APIs may continue to use **pane**.
+User-facing copy calls each browser frame a **browser**; reserve **device** for viewport/emulation details. The internal model and APIs may continue to use **pane**.
 
-Supported device actions:
+Supported browser actions:
 
 - Add, close, rename, and duplicate.
 - Navigate to a URL, back, forward, and reload.
 - Rotate a fixed viewport between portrait and landscape.
-- Capture a screenshot of one device to a user-selected PNG file.
-- Reload all devices from the bottom canvas bar.
+- Capture a screenshot of one browser to a user-selected PNG file.
+- Reload all browsers from the bottom canvas bar.
 - Change viewport preset or custom dimensions.
 - Open DevTools for an individual pane when native-view composition supports it cleanly; this may follow the first stable MVP slice.
 
@@ -190,10 +190,10 @@ Closing a pane destroys its active native view and `webContents`. When a pane cl
 
 Use standard platform conventions and document the final shortcuts. At minimum, plan for:
 
-- Open the Add pane/device picker (`Cmd/Ctrl+N`); do not create a pane until the user chooses a viewport or preset.
+- Open the Add browser picker (`Cmd/Ctrl+N`); do not create a pane until the user chooses a viewport or preset.
 - Duplicate selected pane (`Cmd/Ctrl+D`); the duplicate is placed beside the source, or directly below it when the adjacent slot is occupied.
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
-- Find a device by name, host, profile, or viewport (`Cmd/Ctrl+K`).
+- Find a browser by name, host, profile, or viewport (`Cmd/Ctrl+K`).
 - Focus the selected pane address (`Cmd/Ctrl+L`).
 - Reload the selected pane (`Cmd/Ctrl+R`).
 - Reload all panes.
@@ -221,9 +221,9 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 
 ### 7.3 Canvas add and context menus
 
-- The toolbar **+** control opens a compact menu grouped into Phone viewports, Tablet viewports, and Desktop viewports. It includes responsive mode and popular devices such as iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop.
-- Right-clicking empty Canvas opens a menu with Add pane, Fit all panes, Reset zoom, Hand tool, Workspaces, and Appearance.
-- The Add pane item switches the menu to the device picker without opening a separate modal.
+- The toolbar **+** control opens a compact browser menu grouped into Phone viewports, Tablet viewports, and Desktop viewports. It includes responsive mode and popular viewports such as iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop.
+- Right-clicking empty Canvas opens a menu with Add browser, Fit all panes, Reset zoom, Hand tool, Workspaces, and Appearance.
+- The Add browser item switches the menu to the browser picker without opening a separate modal.
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
 - Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
 - Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
@@ -246,12 +246,12 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
 - Provide a Fit all panes action in the overview and in the zoom menu. It must bring every pane back inside the workspace and keep pane bottoms clear of the bottom Canvas bar.
-- Keep the top toolbar limited to Add and draggable space. Each device header owns its address bar, viewport preset trigger with the short preset name, viewport class and resolution, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
+- Keep the top toolbar limited to Add and draggable space. Each browser header owns its address bar, viewport preset trigger with the short preset name, viewport class and resolution, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
 - Give pane headers a visible drag grip. Keep the one-row header compact and hide non-essential metadata at narrow frame widths.
-- Provide the + device menu and right-click canvas context menu described in §7.3.
+- Provide the + browser menu and right-click canvas context menu described in §7.3.
 - Provide a Select tool in the bottom canvas bar. While active, dragging a marquee across the Canvas selects every pane whose frame intersects it. Give selected panes a visible ring and show the selected count with a close action. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
-- Persist canvas positions and the last Canvas camera (pan and zoom) plus the active-device selection per workspace. Restore that view when the workspace is reopened or switched; only fit when the workspace has no saved camera.
-- Device bezels and pane frame resizing are not required.
+- Persist canvas positions and the last Canvas camera (pan and zoom) plus the active-browser selection per workspace. Restore that view when the workspace is reopened or switched; only fit when the workspace has no saved camera.
+- Viewport bezels and pane frame resizing are not required.
 
 ### 7.5 Canvas-only layout
 
@@ -298,7 +298,7 @@ Do not place layout calculations directly inside Vue components or Electron IPC 
 - Support `http://` and `https://` URLs.
 - Support `about:blank` for an empty pane.
 - Support localhost development servers, loopback addresses, LAN addresses, private IPs, `.local` hosts, staging websites, and public websites.
-- Do not require a website to permit iframe embedding. PaneFlow uses real browser views, not iframe embedding.
+- Do not require a website to permit iframe embedding. BrowserDeck uses real browser views, not iframe embedding.
 
 ### 8.2 URL normalization
 
@@ -334,7 +334,7 @@ Do not pass arbitrary untrusted URLs directly to `shell.openExternal`.
 
 ### 8.5 Known website limitations
 
-Some identity providers, payment pages, streaming services, or bot-protection systems may block embedded Electron user agents or behave differently from a standard Chrome installation. Fixed device presets use category-appropriate user agents so sites serve their mobile layout; this is for layout fidelity, not for bypassing restrictions. Responsive and custom panes keep the runtime default UA. Do not promise compatibility with every website.
+Some identity providers, payment pages, streaming services, or bot-protection systems may block embedded Electron user agents or behave differently from a standard Chrome installation. Fixed viewport presets use category-appropriate user agents so sites serve their mobile layout; this is for layout fidelity, not for bypassing restrictions. Responsive and custom panes keep the runtime default UA. Do not promise compatibility with every website.
 
 ---
 
@@ -344,7 +344,7 @@ Some identity providers, payment pages, streaming services, or bot-protection sy
 
 Every newly created pane receives a newly generated internal browser profile ID and a unique persistent Electron partition, for example:
 
-`persist:paneflow-profile-<uuid>`
+`persist:browserdeck-profile-<uuid>`
 
 Never derive partition names from user-entered names, URLs, tenant labels, or other untrusted input.
 
@@ -370,7 +370,7 @@ This is browser-session isolation, not a guarantee that two panes run in separat
 - Closing a pane destroys its active `WebContentsView` and `webContents`. If that was the last pane using its profile, release the profile: clear cookies/storage/cache, remove metadata, and delete the partition. No extra confirmation is required.
 - A profile shared by multiple panes remains until its last pane closes.
 - Workspace switching, app shutdown, and internal view teardown must not release profiles.
-- Provide **Clear Site Data…** in the device actions menu. It clears that pane's cookies, storage, cache, and auth state after confirmation, then reloads the pane.
+- Provide **Clear Site Data…** in the browser actions menu. It clears that pane's cookies, storage, cache, and auth state after confirmation, then reloads the pane.
 - Duplicating a pane creates an independent session; it copies URL and viewport settings, not cookies or authentication.
 - Duplicating a workspace creates independent sessions for its panes.
 - Do not provide a profile manager, profile labels in the UI, or shared sessions between panes. Profiles are an internal storage detail.
@@ -383,7 +383,7 @@ There is no user-facing profile manager. Pane sessions are created internally, r
 
 Use Electron's `session.fromPartition()` with persistent partition names. Confirm the API and lifecycle behavior against the exact Electron version pinned by the project.
 
-Do not manually copy cookies or authentication tokens into PaneFlow's configuration files.
+Do not manually copy cookies or authentication tokens into BrowserDeck's configuration files.
 
 ---
 
@@ -399,7 +399,7 @@ Provide sensible presets for common:
 
 Also support custom width and height.
 
-Preset labels in the viewport and Add menus must always show the CSS viewport dimensions and use “viewport”/“emulation” language. A compact header trigger may show the short device name, with the full label and dimensions available in its tooltip. Do not present a preset as physical hardware accuracy.
+Preset labels in the viewport and Add menus must always show the CSS viewport dimensions and use “viewport”/“emulation” language. A compact header trigger may show the short browser name, with the full label and dimensions available in its tooltip. Do not present a preset as physical hardware accuracy.
 
 ### 10.2 Per-pane settings
 
@@ -412,7 +412,7 @@ Each pane can have independent:
 
 Fixed viewport presets and custom dimensions always scale the emulated page to fit the available pane content area. Responsive panes use the pane content size directly. There is no actual-size/overflow display mode.
 
-New devices can be created directly with a fixed viewport preset from the **+** menu. The new pane receives that preset and an independent browser session. Phone/tablet presets use mobile device metrics and five-point touch emulation so viewport meta tags, mobile scrollbars, `hover: none`, and `pointer: coarse` behave like a mobile browser.
+New browsers can be created directly with a fixed viewport preset from the **+** menu. The new pane receives that preset and an independent browser session. Phone/tablet presets use mobile device metrics and five-point touch emulation so viewport meta tags, mobile scrollbars, `hover: none`, and `pointer: coarse` behave like a mobile browser.
 
 ### 10.3 Implementation and validation
 
@@ -420,7 +420,7 @@ New devices can be created directly with a fixed viewport preset from the **+** 
 - Verify all parameters against current official Electron and Chromium DevTools Protocol documentation during implementation.
 - Confirm actual page values using a local fixture page that displays `window.innerWidth`, `window.innerHeight`, and `window.devicePixelRatio`.
 - Confirm that different panes can use different viewport configurations simultaneously.
-- Confirm that creating a pane from the **+** device menu applies the selected preset without changing other panes.
+- Confirm that creating a pane from the **+** browser menu applies the selected preset without changing other panes.
 - Confirm that the visual fit scale is recalculated after pane and window resizing without changing the intended emulated CSS viewport.
 - Confirm that fixed presets send the documented category user agent and that responsive/custom panes return to the runtime default UA.
 - Confirm that phone/tablet presets report mobile scrollbars, touch points, `hover: none`, and `pointer: coarse`, and that switching back to responsive clears those overrides.
@@ -440,7 +440,7 @@ Users can:
 - Duplicate a workspace.
 - Switch between workspaces.
 - Delete a workspace.
-- Restore the last active workspace after restarting PaneFlow.
+- Restore the last active workspace after restarting BrowserDeck.
 
 Example workspaces:
 
@@ -691,7 +691,7 @@ Performance testing must include several lightweight fixtures and a more realist
 
 ## 15. Local development environment and Docker policy
 
-PaneFlow is a native desktop application. **Docker is not required and must not be introduced for normal development, testing, running, or packaging of the macOS application.**
+BrowserDeck is a native desktop application. **Docker is not required and must not be introduced for normal development, testing, running, or packaging of the macOS application.**
 
 ### 15.1 Native development
 
@@ -710,7 +710,7 @@ Use the project's `.nvmrc` and npm lockfile to keep the local toolchain consiste
 
 Do not add speculatively:
 
-- `Dockerfile` for PaneFlow.
+- `Dockerfile` for BrowserDeck.
 - `docker-compose.yml` / `compose.yaml`.
 - Containerized Electron or Chromium runtime.
 - Containerized browser sessions.
@@ -732,7 +732,7 @@ Do not assume a container can replace a native macOS runner for macOS packaging,
 
 ## 16. Public repository and project hygiene
 
-PaneFlow is developed in a public GitHub repository. Treat all committed files as public.
+BrowserDeck is developed in a public GitHub repository. Treat all committed files as public.
 
 - Keep the README useful for users and contributors.
 - Keep `AGENTS.md` as the durable instruction source for coding agents.
@@ -826,7 +826,7 @@ Use local fixture pages/servers.
 - Open at least 8 panes using local test pages.
 - Add, close, duplicate, rename, and navigate panes.
 - Drag panes with snapping guides, use Fit all, collapse/expand the minimap, and recover partially visible panes.
-- Open the + device menu and right-click canvas menu, verify keyboard dismissal, and create a pane from a selected device.
+- Open the + browser menu and right-click canvas menu, verify keyboard dismissal, and create a pane from a selected browser.
 - Resize/maximize/restore the application window and verify native view alignment.
 - Test Retina coordinate behavior where available.
 - Verify viewport values from inside each page.
@@ -895,7 +895,7 @@ Do not build the full product UI until this experiment passes.
 
 ### Phase 3 — Viewport emulation and persistence
 
-- Add device/viewport presets and custom dimensions.
+- Add browser/viewport presets and custom dimensions.
 - Verify emulation using local fixture pages.
 - Save/restore workspaces and active state.
 - Implement per-pane Clear Site Data and session release on close.
@@ -921,7 +921,7 @@ Do not build the full product UI until this experiment passes.
 
 The MVP is complete when a user can:
 
-1. Launch PaneFlow on macOS.
+1. Launch BrowserDeck on macOS.
 2. Create, save, duplicate, switch between, and restore workspaces.
 3. Add at least 8 independent browser panes without encountering a hardcoded 8-pane product limit.
 4. Open supported HTTP/HTTPS websites, including localhost, LAN, staging, and production sites.
@@ -946,7 +946,7 @@ The MVP is complete when a user can:
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or application restart.
 - Browser extensions, DRM, cloud sync, collaboration, automatic updates, code signing, and notarization are outside the MVP.
 - Website performance and the practical pane count depend on the user's hardware and loaded pages.
-- Docker is not required for normal development or use of PaneFlow.
+- Docker is not required for normal development or use of BrowserDeck.
 
 ---
 

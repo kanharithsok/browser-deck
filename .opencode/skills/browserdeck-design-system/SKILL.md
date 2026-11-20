@@ -1,15 +1,15 @@
 ---
-name: paneflow-design-system
-description: Use before meaningful PaneFlow renderer, layout, CSS, theme, or accessibility work.
+name: browserdeck-design-system
+description: Use before meaningful BrowserDeck renderer, layout, CSS, theme, or accessibility work.
 ---
 
-# PaneFlow design system
+# BrowserDeck design system
 
 Read `AGENTS.md` section “Product and UI direction”, `SPEC.md` section 6, and this file before changing the renderer.
 
 ## Direction
 
-PaneFlow is a compact desktop tool, not a marketing page or dashboard. Websites inside panes are the primary content. Chrome should be quiet, predictable, and secondary.
+BrowserDeck is a compact desktop tool, not a marketing page or dashboard. Websites inside panes are the primary content. Chrome should be quiet, predictable, and secondary.
 
 - Use system typography, neutral surfaces, subtle separators, consistent spacing, and one restrained accent.
 - Keep the workspace visually dominant. Avoid cards inside cards, gradients, glass, heavy shadows, decorative illustrations, oversized headings, and excessive badges.

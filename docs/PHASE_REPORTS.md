@@ -11,7 +11,7 @@ The agent updates this file at the end of each phase. Record actual outcomes, no
 
 - npm project with a `package-lock.json`, `.nvmrc` for Node 24, strict TypeScript configs, ESLint, Vitest, and Playwright.
 - `BaseWindow` application with a trusted Vue shell `WebContentsView`.
-- Two independently navigable `WebContentsView` panes using separate persistent `persist:paneflow-profile-<uuid>` partitions.
+- Two independently navigable `WebContentsView` panes using separate persistent `persist:browserdeck-profile-<uuid>` partitions.
 - Pane chrome outside native bounds: title, profile label, back/forward/reload, editable address bar, loading/error status, native actions menu, and close.
 - Add-pane, close-pane, reload-all, address navigation, back, forward, and reload operations through a typed preload bridge.
 - Validated bounds synchronization from shell content placeholders to native views, including window resize handling. The first navigation is deferred until valid bounds exist, so pages do not start with a 0 × 0 viewport.
@@ -55,7 +55,7 @@ ADR-001 in `docs/DECISIONS.md`: trusted shell `WebContentsView` plus inset `WebC
 
 ### Manual evidence
 
-- Two live fixture panes displayed independent cookies (`paneflow_user=alice` and `paneflow_user=bob`) with profile labels “Profile 1” and “Profile 2”.
+- Two live fixture panes displayed independent cookies (`browserdeck_user=alice` and `browserdeck_user=bob`) with profile labels “Profile 1” and “Profile 2”.
 - The pane actions native menu overlapped both a pane header and native browser content, confirming the menu overlay strategy.
 - Browser viewport metrics reported `623 × 696` at DPR 2, matching the shell card content measurement after the deferred initial load fix.
 - Node and the app bridge were absent in both remote pages; popups and notification requests were denied.
@@ -103,7 +103,7 @@ Phase 1 (completed below): independent authentication with a deterministic local
   - Persistent cookies, localStorage, and the authenticated session survive an app restart.
   - IndexedDB and localStorage stay isolated between profiles.
   - Pane-specific back navigation does not affect the other pane.
-- No production authentication code was added: PaneFlow does not own credentials or authorization; it preserves each website's cookies and storage inside the selected profile partition.
+- No production authentication code was added: BrowserDeck does not own credentials or authorization; it preserves each website's cookies and storage inside the selected profile partition.
 
 ### Verification commands and results
 
@@ -362,8 +362,8 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - Native window/shell background colors update with the theme, and menu checkmarks stay synchronized.
   - E2e selects Dark, verifies the persisted value and dark tokens before restart, confirms Dark restores after relaunch, then resets to System.
 - Unsigned macOS packaging:
-  - added `electron-builder` 26.18.0 with `electron-builder.yml`: app ID `com.kanharithsok.paneflow`, product name PaneFlow, version 0.1.0, developer-tools category, arm64 DMG/ZIP targets, asar, and signing disabled (`identity: null`);
-  - added a locally generated minimalist PaneFlow icon (`build/icon.svg` source, `build/icon.icns` bundle asset) with transparent rounded-square geometry;
+  - added `electron-builder` 26.18.0 with `electron-builder.yml`: app ID `com.kanharithsok.browser-deck`, product name BrowserDeck, version 0.1.0, developer-tools category, arm64 DMG/ZIP targets, asar, and signing disabled (`identity: null`);
+  - added a locally generated minimalist BrowserDeck icon (`build/icon.svg` source, `build/icon.icns` bundle asset) with transparent rounded-square geometry;
   - added an MIT license and matching package metadata;
   - added `npm run package:mac` and `npm run package:dir` scripts; `dist/` remains ignored;
   - documented that arm64-only unsigned builds are for local verification, not notarized distribution.
@@ -373,7 +373,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - after every return to the original workspace, asserts the non-destroyed webContents count equals the baseline and native view states equal the active pane count;
   - verifies four stress-workspace native views during each stress activation, then deletes the stress workspace;
   - this covers BrowserManager teardown/recreation, profile reuse, renderer reset, and workspace-file persistence under repeated switching;
-  - `PANEFLOW_STRESS_CYCLES` overrides the default 3 cycles for local soak runs;
+  - `BROWSERDECK_STRESS_CYCLES` overrides the default 3 cycles for local soak runs;
   - an 8-cycle run reported 2 webContents and working set 575 MB → 515 MB after returning to the original workspace;
   - a 25-cycle run reported 2 webContents and working set 573 MB → 643 MB; no webContents/native-view leak was observed, but the +70 MB working-set change is recorded as cache/runtime variance rather than proof of long-term stability.
 - Close-and-delete profile lifecycle:
@@ -394,7 +394,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - custom titles persist in workspace JSON, restart with the workspace, are copied by duplicate pane/workspace, and round-trip through workspace import/export while profile IDs and session data stay excluded;
   - e2e rejects unsafe/unknown-pane renames, renames Alice inline, verifies the workspace file and restart restore, then clears the name and verifies the page title returns and the stored title is removed.
 - Workspace import/export:
-  - added a versioned `paneflow-workspace` transfer format containing only name, pane URLs, viewport settings, custom titles, and index-based layout;
+  - added a versioned `browserdeck-workspace` transfer format containing only name, pane URLs, viewport settings, custom titles, and index-based layout;
   - profile IDs, cookies, storage, session data, executable content, and filesystem paths are never exported;
   - export uses a native Save dialog and atomic JSON write; import uses a native Open dialog, a 1 MB size limit, strict schema/URL/viewport/layout validation, and fresh profiles;
   - imported workspaces receive new IDs, pane IDs, profiles, a unique `(imported)` name, and mapped grid/freeform order/geometry;
@@ -417,18 +417,18 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - all checked pairs now meet 4.5:1 for text or 3:1 for UI/focus;
   - `npm run check:contrast` runs in CI.
 - Security hardening:
-  - replaced the packaged `file://` shell load with a privileged, standard, secure `paneflow://shell/index.html` custom protocol; the handler serves only the built renderer root, rejects traversal/backslash/null/ambiguous paths and malformed encodings, sets explicit MIME types, `nosniff`, no-referrer, no-store, and CSP headers;
+  - replaced the packaged `file://` shell load with a privileged, standard, secure `browserdeck://shell/index.html` custom protocol; the handler serves only the built renderer root, rejects traversal/backslash/null/ambiguous paths and malformed encodings, sets explicit MIME types, `nosniff`, no-referrer, no-store, and CSP headers;
   - moved CSP construction into pure `src/shared/shell.ts`; production is `connect-src 'self'` with no localhost/WebSocket allowance, while development adds only the exact loopback `ELECTRON_RENDERER_URL` origin and matching `ws:`/`wss:` source; inline script/eval stay blocked and inline styles remain for Vue geometry;
   - removed the static CSP meta tag so headers are authoritative in both modes;
-  - IPC sender validation now checks the shell `WebContents`, shell main frame, and trusted document URL (`paneflow://shell/index.html` or the validated dev origin); unauthorized state reads return an empty default state instead of workspace metadata;
+  - IPC sender validation now checks the shell `WebContents`, shell main frame, and trusted document URL (`browserdeck://shell/index.html` or the validated dev origin); unauthorized state reads return an empty default state instead of workspace metadata;
   - remote and shell sessions deny permission requests/checks, display capture, HID/serial/USB device access, Bluetooth pairing, and downloads; shell navigation still denies redirects outside the dev origin;
   - remote and shell views declare `webviewTag: false`, no subframe/worker Node integration, and no drag-drop navigation; a global `web-contents-created` handler denies popups and webview attachment;
   - URLs with embedded credentials or more than 2,048 characters are rejected before they can enter workspace state or exports;
-  - partition directory removal uses the validated UUID-only `paneflow-profile-<uuid>` helper; profile clearing uses the hardened session accessor;
+  - partition directory removal uses the validated UUID-only `browserdeck-profile-<uuid>` helper; profile clearing uses the hardened session accessor;
   - workspace import verifies the selected path is a regular file and read failures return a safe error; transfer validation rejects credential-bearing and oversized URLs and prototype-pollution-style freeform keys;
   - added Electron fuses to `electron-builder.yml`: RunAsNode and Node options/inspector arguments disabled, file-protocol extra privileges disabled, embedded ASAR integrity and only-load-from-ASAR enabled, ad-hoc Darwin signature reset;
   - added 10 unit tests for CSP, trusted shell documents, shell asset path/MIME handling, partition directory validation, credential/length URL rejection, and import hardening;
-  - extended e2e to verify the `paneflow://shell/index.html` shell URL, inline-script and cross-origin-fetch CSP blocking, invalid-sender rejection from a separate node-enabled `BrowserWindow`, and blocked remote `file:`/`data:` navigation;
+  - extended e2e to verify the `browserdeck://shell/index.html` shell URL, inline-script and cross-origin-fetch CSP blocking, invalid-sender rejection from a separate node-enabled `BrowserWindow`, and blocked remote `file:`/`data:` navigation;
   - added `SECURITY.md` covering threat boundaries, secret handling, unsigned/local distribution, and the packaging checklist, and updated README, architecture, decisions, and manual checks.
 - Accessibility automation and audit:
   - added `tests/e2e/accessibility.spec.ts`, a second Playwright Electron test that launches the built app independently and inspects the shell toolbar, pane cards, profile dialog, and workspace dialog;
@@ -441,7 +441,7 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
   - profile/workspace row actions now include the profile or workspace label in their accessible names while retaining the visible labels;
   - VoiceOver/screen-reader order and announcements remain a manual check; axe and the CDP tree cannot verify the spoken experience.
 - 50-cycle loaded-page soak:
-  - `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` exercised 50 round trips between the authenticated original workspace and a four-pane stress workspace with two loaded fixture pages;
+  - `BROWSERDECK_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` exercised 50 round trips between the authenticated original workspace and a four-pane stress workspace with two loaded fixture pages;
   - non-destroyed webContents returned to the baseline of 2 after every cycle, and the active native view count returned to 1 after every return;
   - whole-app working set was 589 MB before and 684 MB after the 50 cycles on `main` after the final merge; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB. This is a before/after sample, not a peak or per-process measurement;
   - the final `main` run took ≈20.1 s. It is still a short switch soak, not multi-hour profiling, heavy third-party pages, or CPU/frame measurement.
@@ -454,17 +454,17 @@ Phase 4: accessibility and visual polish, performance stress, import/export, and
 | `npm run typecheck` | Passed (`tsc` for main/preload/shared/tests and `vue-tsc` for the renderer). |
 | `npm run lint` | Passed with no warnings or errors. |
 | `npm run check:contrast` | Passed: 13 light and 13 dark token pairs meet WCAG thresholds. |
-| `npm run test:e2e` | Passed: 2 Playwright tests, 14.0 s on final `main`. Integration coverage includes native/session/lifecycle/workspace/rename/shortcut behavior, `paneflow://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection, and blocked remote `file:`/`data:` navigation; the accessibility test covers roles, names, focus, dialogs, the CDP tree, and axe audits. |
-| `PANEFLOW_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
-| `PANEFLOW_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
-| `PANEFLOW_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 20.1 s on `main` after the final merge. Fifty cycles ended with 2 webContents and working set 589 MB → 684 MB. Earlier 50-cycle runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB. |
+| `npm run test:e2e` | Passed: 2 Playwright tests, 14.0 s on final `main`. Integration coverage includes native/session/lifecycle/workspace/rename/shortcut behavior, `browserdeck://shell/index.html`, shell CSP inline-script and cross-origin-fetch blocking, invalid-sender IPC rejection, and blocked remote `file:`/`data:` navigation; the accessibility test covers roles, names, focus, dialogs, the CDP tree, and axe audits. |
+| `BROWSERDECK_STRESS_CYCLES=8 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 11.3 s. Eight switch cycles ended with 2 webContents and working set 575 MB → 515 MB. |
+| `BROWSERDECK_STRESS_CYCLES=25 npm run test:e2e` | Passed earlier in Phase 4: 1 Playwright test, 14.5 s. Twenty-five cycles ended with 2 webContents and working set 573 MB → 643 MB. |
+| `BROWSERDECK_STRESS_CYCLES=50 npx playwright test tests/e2e/browser-panes.spec.ts` | Passed: 1 Playwright test, 20.1 s on `main` after the final merge. Fifty cycles ended with 2 webContents and working set 589 MB → 684 MB. Earlier 50-cycle runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB. |
 | `npm run build` | Passed. electron-vite emitted `out/main/index.js` (114.38 kB), preload (5.75 kB), renderer bundle (271.17 kB), and CSS (22.81 kB). |
-| `npm run package:dir` | Passed on final `main`. electron-builder packaged PaneFlow 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
-| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; embedded ASAR integrity and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
-| `npm run package:mac` | Passed earlier in Phase 4: produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), `PaneFlow-0.1.0-arm64.zip` (115 MB), and `PaneFlow.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt after the security merge; `package:dir` exercised the merged fuse configuration. |
-| Packaged bundle inspection | Passed earlier: binary arm64; `CFBundleIdentifier=com.kanharithsok.paneflow`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`; unsigned/ad-hoc. |
+| `npm run package:dir` | Passed on final `main`. electron-builder packaged BrowserDeck 0.1.0 arm64, applied `@electron/fuses`, and skipped macOS signing because `identity: null`. |
+| `npx electron-fuses read --app dist/mac-arm64/BrowserDeck.app` | Passed. RunAsNode disabled; Node options and inspector arguments disabled; embedded ASAR integrity and only-load-from-ASAR enabled; file-protocol extra privileges disabled. |
+| `npm run package:mac` | Passed earlier in Phase 4: produced `BrowserDeck-0.1.0-arm64.dmg` (118 MB), `BrowserDeck-0.1.0-arm64.zip` (115 MB), and `BrowserDeck.app` (273 MB) under `dist/`. DMG/ZIP were not rebuilt after the security merge; `package:dir` exercised the merged fuse configuration. |
+| Packaged bundle inspection | Passed earlier: binary arm64; `CFBundleIdentifier=com.kanharithsok.browser-deck`, version `0.1.0`, icon `icon.icns`, category `public.app-category.developer-tools`; unsigned/ad-hoc. |
 | Packaged launch | Passed earlier. The unsigned app launched, rendered the shell and panes, and quit cleanly. |
-| Packaged shell smoke (final merged branch) | Passed. Fresh `dist/mac-arm64/PaneFlow.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "PaneFlow"` and `url: "paneflow://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
+| Packaged shell smoke (final merged branch) | Passed. Fresh `dist/mac-arm64/BrowserDeck.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "BrowserDeck"` and `url: "browserdeck://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
 
 ### Security hardening verification (security branch, pre-merge)
 
@@ -478,10 +478,10 @@ The security slice was verified before merging the rename and accessibility bran
 | `npm run test:e2e` | Passed: 1 Playwright test, 11.4 s, with the new security assertions. |
 | `npm run build` | Passed: main 107.79 kB, preload 5.27 kB, renderer JS 266.69 kB, CSS 22.03 kB. |
 | `npm run package:dir` | Passed; fuses applied before signing was skipped (`identity: null`). |
-| `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app` | Passed. `RunAsNode` disabled; `EnableNodeOptionsEnvironmentVariable` disabled; `EnableNodeCliArguments` disabled; `EnableEmbeddedAsarIntegrityValidation` enabled; `OnlyLoadAppFromAsar` enabled; `GrantFileProtocolExtraPrivileges` disabled. The bundled `@electron/fuses` 1.8.0 CLI labels Electron 45's unconfigured `WasmTrapHandlers` fuse as `undefined`; all configured security fuses read correctly. |
-| Packaged shell smoke | Passed. Fresh `dist/mac-arm64/PaneFlow.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "PaneFlow"`, `url: "paneflow://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
+| `npx electron-fuses read --app dist/mac-arm64/BrowserDeck.app` | Passed. `RunAsNode` disabled; `EnableNodeOptionsEnvironmentVariable` disabled; `EnableNodeCliArguments` disabled; `EnableEmbeddedAsarIntegrityValidation` enabled; `OnlyLoadAppFromAsar` enabled; `GrantFileProtocolExtraPrivileges` disabled. The bundled `@electron/fuses` 1.8.0 CLI labels Electron 45's unconfigured `WasmTrapHandlers` fuse as `undefined`; all configured security fuses read correctly. |
+| Packaged shell smoke | Passed. Fresh `dist/mac-arm64/BrowserDeck.app` launched with an isolated `HOME` and `--remote-debugging-port=9333`; `/json/list` reported `title: "BrowserDeck"`, `url: "browserdeck://shell/index.html"`. The process was terminated after inspection, so clean quit was not re-verified in this smoke check. |
 | Packaged app log | No startup or protocol errors were emitted; only Chromium's DevTools listening line appeared. |
-| Development shell smoke | Passed. `npx electron-vite dev --remoteDebuggingPort 9335` served the shell at `http://localhost:5173/`; CDP evaluation reported `title: "PaneFlow"`, `.toolbar` present, one `#app` child, and no static CSP meta tag. The development process was terminated after inspection. |
+| Development shell smoke | Passed. `npx electron-vite dev --remoteDebuggingPort 9335` served the shell at `http://localhost:5173/`; CDP evaluation reported `title: "BrowserDeck"`, `.toolbar` present, one `#app` child, and no static CSP meta tag. The development process was terminated after inspection. |
 | `npm audit --omit=dev` | Passed: 0 runtime vulnerabilities. Full `npm audit` reports 6 moderate advisories in the development toolchain (`minimatch` via `electron-builder`); the offered fix requires a breaking downgrade and was not applied. |
 
 ### Exit criteria
@@ -632,7 +632,7 @@ The Canvas overview is a persistent native `WebContentsView` in the bottom-right
 
 **Status:** Implemented. Canvas is the only selectable layout. Grid/Freeform controls and the native layout toggle were removed. Device presets, world-space snapping guides, a quiet **+** menu, and a right-click Canvas menu are complete. Frame resizing and device bezels remain deferred.
 
-**Change:** Removed the Grid/Freeform/Canvas switcher, grid-column selector, Tidy action, and native grid/freeform toggle. Startup, workspace restore, saves, and exports normalize to Canvas; legacy Grid/Freeform layout fields remain readable for migration. Canvas pane headers now drag with live edge/center snapping guides calculated in world space, using an 8-screen-pixel threshold divided by zoom. The quiet toolbar **+** opens a Herdr-inspired in-shell menu with Responsive plus curated iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop presets; a Dimensions column replaces the old native menu. Right-clicking empty Canvas opens a matching menu with Add pane, Fit all panes, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance. The menus use sections, monochrome icons, checked/radio states, keyboard navigation, Escape dismissal, click-outside dismissal, and focus return. Because native pane views sit above the shell, only pane views intersecting the open menu are hidden and replaced by snapshots; uncovered panes stay live. The native overview hides while a menu or dialog is open. Appearance items call a new validated `paneflow:set-theme` path. New panes are centered and focused after creation.
+**Change:** Removed the Grid/Freeform/Canvas switcher, grid-column selector, Tidy action, and native grid/freeform toggle. Startup, workspace restore, saves, and exports normalize to Canvas; legacy Grid/Freeform layout fields remain readable for migration. Canvas pane headers now drag with live edge/center snapping guides calculated in world space, using an 8-screen-pixel threshold divided by zoom. The quiet toolbar **+** opens a Herdr-inspired in-shell menu with Responsive plus curated iPhone, Samsung Galaxy, Google Pixel, iPad, Galaxy Tab, MacBook Air, and desktop presets; a Dimensions column replaces the old native menu. Right-clicking empty Canvas opens a matching menu with Add pane, Fit all panes, Reset zoom, Hand tool, Profiles, Workspaces, and Appearance. The menus use sections, monochrome icons, checked/radio states, keyboard navigation, Escape dismissal, click-outside dismissal, and focus return. Because native pane views sit above the shell, only pane views intersecting the open menu are hidden and replaced by snapshots; uncovered panes stay live. The native overview hides while a menu or dialog is open. Appearance items call a new validated `browserdeck:set-theme` path. New panes are centered and focused after creation.
 
 **Files changed:** `src/shared/canvas.ts`, `src/shared/viewports.ts`, `src/shared/ipc.ts`, `src/shared/workspace.ts`, `src/shared/workspace-transfer.ts`, `src/main/browser-manager.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/AppMenu.vue`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, unit/e2e tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-035/036/037), and `docs/MANUAL_CHECKS.md`.
 
@@ -727,7 +727,7 @@ The Canvas overview is a persistent native `WebContentsView` in the bottom-right
 
 **Status:** Implemented.
 
-**Change:** Consolidated the top toolbar into one stable 42 px row: PaneFlow brand, active-pane context, back/forward/reload, address, viewport selector, Fit all, Reload all, and Add pane. Removed the separate active-pane row and the Workspace, Profiles, Hand, and appearance toolbar buttons. Workspace management now lives in the native **Workspace → Workspaces…** item; profile management lives in a native **Profiles → Manage Profiles…** menu. Both open the existing dialogs and return focus to the active address input. Hand and appearance moved into the bottom canvas bar, which is now 280 × 40 DIP and holds Hand, zoom-out, percentage, zoom-in, and appearance; appearance opens the in-shell System/Light/Dark menu above the bar, while the native View → Theme menu remains. The custom viewport editor now replaces the address row inline, so the toolbar height stays 42 px while editing.
+**Change:** Consolidated the top toolbar into one stable 42 px row: BrowserDeck brand, active-pane context, back/forward/reload, address, viewport selector, Fit all, Reload all, and Add pane. Removed the separate active-pane row and the Workspace, Profiles, Hand, and appearance toolbar buttons. Workspace management now lives in the native **Workspace → Workspaces…** item; profile management lives in a native **Profiles → Manage Profiles…** menu. Both open the existing dialogs and return focus to the active address input. Hand and appearance moved into the bottom canvas bar, which is now 280 × 40 DIP and holds Hand, zoom-out, percentage, zoom-in, and appearance; appearance opens the in-shell System/Light/Dark menu above the bar, while the native View → Theme menu remains. The custom viewport editor now replaces the address row inline, so the toolbar height stays 42 px while editing.
 
 Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the declared frame times the zoom, the header wrapper is `32 px × zoom`, and the header itself is laid out at its world width and CSS-scaled by the zoom. The page keeps its declared CSS viewport while main applies the matching device-emulation scale, so a 100 × 100 frame remains a 100 × 100 viewport at 50% and is rendered at half size without reflowing. Fit and centering math now uses the full scaled frame height.
 
@@ -796,7 +796,7 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Status:** Implemented.
 
-**Change:** Added a `paneflow:pane-notice` main → shell event and a transient header status for blocked remote actions. Popups are reported by the pane `setWindowOpenHandler`; permission requests are mapped by `webContents` ID; downloads are mapped by profile and initiator origin. Notices are short, non-interactive messages, coalesce identical text per device, and auto-dismiss after six seconds. The deny-by-default policy is unchanged: there are no Allow/Prompt controls, no download handling, and no permission persistence in this slice.
+**Change:** Added a `browserdeck:pane-notice` main → shell event and a transient header status for blocked remote actions. Popups are reported by the pane `setWindowOpenHandler`; permission requests are mapped by `webContents` ID; downloads are mapped by profile and initiator origin. Notices are short, non-interactive messages, coalesce identical text per device, and auto-dismiss after six seconds. The deny-by-default policy is unchanged: there are no Allow/Prompt controls, no download handling, and no permission persistence in this slice.
 
 **Files changed:** `src/main/session-policy.ts`, `src/main/browser-manager.ts`, `src/main/index.ts`, `src/preload/index.ts`, `src/shared/ipc.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-045), and `docs/MANUAL_CHECKS.md`.
 
@@ -924,13 +924,13 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Known behavior / limitations:** The bottom bar is wider and more control-dense. Fit all is available from the overview and zoom menu but no longer has a dedicated top-toolbar button.
 
-## Post-MVP — Compact centered top bar, reliable hit targets, and PaneFlow app menu
+## Post-MVP — Compact centered top bar, reliable hit targets, and BrowserDeck app menu
 
 **Date:** 2026-11-20
 
 **Status:** Implemented.
 
-**Change:** Removed back, forward, and reload from the top bar so navigation exists only in each device header. Marked the top navigation row as a no-drag region, increased nav-control and field hit areas, gave the address and viewport controls visible inset surfaces, and added pointer cursors. Centered a 400 px address field with the viewport select; URL text is centered while idle and left-aligned while editing. The viewport select stays next to the address with a fixed default width of 184 px, keeps full preset names and CSS dimensions, steps down at narrow toolbar widths, and falls back to a tooltip when space truncates the label. The active-device context remains anchored at the far left so the bar reads as three stable zones: context, address plus viewport, and Add. Removed the visible PaneFlow brand from the toolbar while retaining a visually hidden level-one heading. Replaced the default macOS app-menu role with an explicit **PaneFlow** application menu and set the About panel name to PaneFlow.
+**Change:** Removed back, forward, and reload from the top bar so navigation exists only in each device header. Marked the top navigation row as a no-drag region, increased nav-control and field hit areas, gave the address and viewport controls visible inset surfaces, and added pointer cursors. Centered a 400 px address field with the viewport select; URL text is centered while idle and left-aligned while editing. The viewport select stays next to the address with a fixed default width of 184 px, keeps full preset names and CSS dimensions, steps down at narrow toolbar widths, and falls back to a tooltip when space truncates the label. The active-device context remains anchored at the far left so the bar reads as three stable zones: context, address plus viewport, and Add. Removed the visible BrowserDeck brand from the toolbar while retaining a visually hidden level-one heading. Replaced the default macOS app-menu role with an explicit **BrowserDeck** application menu and set the About panel name to BrowserDeck.
 
 **Files changed:** `src/main/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/PaneNavigation.vue`, tests, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-051), and `docs/MANUAL_CHECKS.md`.
 
@@ -939,10 +939,10 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `make check` | Passed: typecheck, lint, 155 unit tests, and all contrast pairs. |
 | `npm run build` | Passed: main 150.24 kB, preload 9.28 kB, renderer JS 344.05 kB, shell CSS 30.53 kB. |
 | `npm run test:e2e` | Passed: 2 Playwright tests in 15.7 s. Added fixed-width viewport selector, full-label, and tooltip coverage. |
-| Visual check | Confirmed the centered short address field, the fixed-width viewport selector with the full preset label at 1280 px, its responsive width at 720 px, no visible PaneFlow brand, Add-only right side, and new bottom-bar Find/Reload controls. |
-| App menu check | The running macOS menu reports `PaneFlow` as its application-menu label. |
+| Visual check | Confirmed the centered short address field, the fixed-width viewport selector with the full preset label at 1280 px, its responsive width at 720 px, no visible BrowserDeck brand, Add-only right side, and new bottom-bar Find/Reload controls. |
+| App menu check | The running macOS menu reports `BrowserDeck` as its application-menu label. |
 
-**Known behavior / limitations:** Window dragging remains available from the toolbar background, active-device context, and titlebar inset. The Dock name in an unpackaged development launch still comes from Electron; packaged builds use PaneFlow.
+**Known behavior / limitations:** Window dragging remains available from the toolbar background, active-device context, and titlebar inset. The Dock name in an unpackaged development launch still comes from Electron; packaged builds use BrowserDeck.
 
 ## Post-MVP — Restore the last Canvas camera and add zoom shortcuts
 
@@ -1006,7 +1006,7 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Status:** Implemented.
 
-**Change:** Canvas device headers now have a six-dot drag grip and a per-device viewport trigger that shows the short preset name plus CSS dimensions and opens the 17-item preset menu for that specific pane from the trigger's left edge. Dimensions drop out below a 470 px header width, keeping every action inside a 390 px mobile frame. The full viewport selector was removed from the main top toolbar; selecting Custom… from a header still opens the existing inline width/height/DPR editor in the toolbar, and a compact edit button remains while the active device uses a custom viewport. A new Open in Browser action is available from the header and the device actions menu, backed by a validated `paneflow:open-pane-external` channel that accepts only the pane's current HTTP(S) URL, rejects blank and non-web addresses, and calls `shell.openExternal` in main. The header stays on one row; synced/mirroring UI and global zoom controls were intentionally not added.
+**Change:** Canvas device headers now have a six-dot drag grip and a per-device viewport trigger that shows the short preset name plus CSS dimensions and opens the 17-item preset menu for that specific pane from the trigger's left edge. Dimensions drop out below a 470 px header width, keeping every action inside a 390 px mobile frame. The full viewport selector was removed from the main top toolbar; selecting Custom… from a header still opens the existing inline width/height/DPR editor in the toolbar, and a compact edit button remains while the active device uses a custom viewport. A new Open in Browser action is available from the header and the device actions menu, backed by a validated `browserdeck:open-pane-external` channel that accepts only the pane's current HTTP(S) URL, rejects blank and non-web addresses, and calls `shell.openExternal` in main. The header stays on one row; synced/mirroring UI and global zoom controls were intentionally not added.
 
 **Files changed:** `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `src/renderer/src/components/GlobalPaneBar.vue`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/App.vue`, `src/renderer/src/menu.ts`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/browser-manager.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/e2e/accessibility.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-055), and `docs/MANUAL_CHECKS.md`.
 
@@ -1025,7 +1025,7 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Status:** Implemented.
 
-**Change:** Added a Select toggle to the bottom canvas bar. While active, dragging from empty canvas or pane chrome draws a marquee instead of panning or moving a pane; native views are hidden for the gesture so the rectangle and selected rings remain visible. The pure `canvasPaneIdsInRect` helper selects every intersecting frame. Selected pane slots get a two-pixel accent ring, and the toolbar shows a live `N selected` chip with a close action. `Delete`/`Backspace` closes the selected set, `Escape` clears it and then exits the tool, and clicking a pane without dragging selects only that pane. Select and Hand are mutually exclusive and their states are synchronized to the native bottom bar through a validated `paneflow:set-canvas-select-mode` channel.
+**Change:** Added a Select toggle to the bottom canvas bar. While active, dragging from empty canvas or pane chrome draws a marquee instead of panning or moving a pane; native views are hidden for the gesture so the rectangle and selected rings remain visible. The pure `canvasPaneIdsInRect` helper selects every intersecting frame. Selected pane slots get a two-pixel accent ring, and the toolbar shows a live `N selected` chip with a close action. `Delete`/`Backspace` closes the selected set, `Escape` clears it and then exits the tool, and clicking a pane without dragging selects only that pane. Select and Hand are mutually exclusive and their states are synchronized to the native bottom bar through a validated `browserdeck:set-canvas-select-mode` channel.
 
 **Files changed:** `src/shared/canvas.ts`, `src/shared/zoom.ts`, `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/index.ts`, `src/main/ipc.ts`, `src/renderer/src/App.vue`, `src/renderer/src/zoom.ts`, `src/renderer/zoom.html`, `tests/unit/canvas.test.ts`, `tests/unit/zoom.test.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/e2e/accessibility.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-056), and `docs/MANUAL_CHECKS.md`.
 
@@ -1063,7 +1063,7 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Status:** Implemented.
 
-**Change:** The native **Add Device** command and `Cmd/Ctrl+N` now open the same in-shell Add Device menu as the toolbar + button instead of creating a responsive pane immediately. The menu anchors to the + button, keeps the normal focus-return behavior, and creates nothing until the user chooses Responsive or a fixed preset. The direct `paneflow:add-pane` IPC remains available for tests and internal creation paths.
+**Change:** The native **Add Device** command and `Cmd/Ctrl+N` now open the same in-shell Add Device menu as the toolbar + button instead of creating a responsive pane immediately. The menu anchors to the + button, keeps the normal focus-return behavior, and creates nothing until the user chooses Responsive or a fixed preset. The direct `browserdeck:add-pane` IPC remains available for tests and internal creation paths.
 
 **Files changed:** `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/DECISIONS.md` (ADR-058), and `docs/MANUAL_CHECKS.md`.
 
@@ -1204,26 +1204,30 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Known behavior / limitations:** Panes cannot be displayed interactively behind the top toolbar with the current single-shell composition. A native top-bar overlay would be required to support that visual overlap. Manual Canvas panning can still move a pane partly off-screen; selecting it or using Fit all restores it.
 
-## PaneFlow 1.0.0 — App identity and release cleanup
+## BrowserDeck 1.1.0 — Rebrand, browser copy, and empty-state Add fix
 
 **Date:** 2026-11-20
 
 **Status:** Implemented.
 
-**Change:** Released the local macOS app as PaneFlow 1.0.0. `make start` now builds and packages `PaneFlow.app` and launches that bundle, so the Dock name, menu identity, version, copyright, and icon come from the real app instead of the shared Electron runtime. `make preview` remains the faster electron-vite path, and development runs receive the PaneFlow Dock icon from `build/icon.png`. Added a packaged-launch script, set the Windows app user model ID, and documented the remaining Electron-label limitation of the development runtime.
+**Change:** Renamed the product from PaneFlow to **BrowserDeck**. The GitHub repository is now `kanharithsok/browser-deck`; the package slug is `browser-deck`; the app ID is `com.kanharithsok.browser-deck`; the display name remains BrowserDeck. User-facing copy now uses **browser** consistently (“Add browser”, “No browsers”, “Browser actions”, browser counts, menus, empty states, and accessibility labels). Internal pane terminology and device-emulation terminology remain where technically accurate. Version is now 1.1.0.
 
-**Cleanup:** Removed the obsolete pane-chrome A/B/C preview type, storage key, prop, classes, and unit test; removed the unused profile rename API and per-pane `profileLabel`; removed dead profile-usage styles; deleted the duplicate per-pane-session phase report; updated the repository map, package version, packaging metadata, run instructions, and manual checks. The product name remains **PaneFlow** because panes are the core object and “flow” still describes arranging independent browser sessions.
+**Identity and migration:** `make start` builds, packages, and launches the real `BrowserDeck.app` with the checked-in icon. `make preview` remains the fast Electron preview. Startup best-effort migrates the old `PaneFlow` user-data directory to `BrowserDeck` and renames legacy `paneflow-profile-*` partition folders. Workspace imports accept the former `paneflow-workspace` format while exports use `browserdeck-workspace`.
 
-**Files changed:** `package.json`, `package-lock.json`, `electron-builder.yml`, `Makefile`, `scripts/start-packaged.mjs` (new), `build/icon.png` (new runtime asset), `src/main/index.ts`, `src/main/browser-manager.ts`, `src/main/profile-store.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/ipc.ts`, `src/shared/pane-chrome.ts` (removed), `tests/unit/pane-chrome.test.ts` (removed), `tests/unit/profile-store.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, `QUICKSTART.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-031 superseded, ADR-071/072), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+**Bug fix:** The empty-state **Add browser** button no longer starts a Canvas pan before opening its menu. The Canvas pointer handler now ignores interactive non-pane controls, so the Add picker opens and creates a browser normally.
+
+**Cleanup:** Removed the obsolete pane-chrome A/B/C preview type, storage key, prop, classes, and unit test; removed the unused profile rename API and per-pane `profileLabel`; removed dead profile-usage styles; deleted the duplicate per-pane-session phase report; renamed the local agent skills to BrowserDeck; updated the repository map, package version, packaging metadata, run instructions, and manual checks.
+
+**Files changed:** `package.json`, `package-lock.json`, `electron-builder.yml`, `Makefile`, `scripts/dev.mjs`, `scripts/start-packaged.mjs`, `build/icon.png`, `src/main/index.ts`, `src/main/browser-manager.ts`, `src/main/profile-store.ts`, `src/main/test-hook.ts`, `src/preload/index.ts`, `src/preload/index.d.ts`, `src/renderer/index.html`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `src/renderer/src/minimap.ts`, `src/renderer/src/zoom.ts`, `src/renderer/src/assets/app.css`, `src/renderer/minimap.html`, `src/renderer/zoom.html`, `src/shared/*`, `tests/**`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, `QUICKSTART.md`, `AGENTS.md`, `.opencode/commands/*`, `.opencode/skills/*`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-031 superseded, ADR-071 updated, ADR-072/073), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
 
 | Check | Result |
 | --- | --- |
-| `make check` | Passed: typecheck, lint, 175 unit tests, and all light/dark contrast pairs. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 18.7 s. |
-| `npm run build` | Passed: main 156.45 kB, preload 9.15 kB, renderer JS 358.68 kB, shell CSS 31.58 kB. |
-| `npm run package:dir` | Passed: PaneFlow 1.0.0 arm64 app, fuses applied. |
+| `make check` | Passed: typecheck, lint, 176 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.6 s, including the empty-state Add browser flow. |
+| `npm run build` | Passed: main 158.13 kB, preload 9.31 kB, renderer JS 358.96 kB, shell CSS 31.58 kB. |
+| `npm run package:dir` | Passed: BrowserDeck 1.1.0 arm64 app, fuses applied. |
 | `npm audit --omit=dev` | Passed: 0 production vulnerabilities. The full developer-tool audit has six moderate `minimatch` advisories in the `electron-builder` chain; they do not ship in the app runtime. |
-| Packaged identity | `CFBundleDisplayName`/`CFBundleName` are PaneFlow; `CFBundleIdentifier=com.kanharithsok.paneflow`; version `1.0.0`; copyright present; packaged icon matches `build/icon.icns`; `lsappinfo` reports `PaneFlow`. |
-| Packaged launch | `make start` path launches `dist/mac-arm64/PaneFlow.app/Contents/MacOS/PaneFlow`. |
+| Packaged identity | `CFBundleDisplayName`/`CFBundleName` are BrowserDeck; `CFBundleIdentifier=com.kanharithsok.browser-deck`; version `1.1.0`; copyright present; packaged icon matches `build/icon.icns`. Packaged launch reported `Migrated PaneFlow application data to BrowserDeck.` |
+| GitHub repository | Renamed to `kanharithsok/browser-deck`; local `origin` updated to `https://github.com/kanharithsok/browser-deck.git`. |
 
-**Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real PaneFlow identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build.
+**Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real BrowserDeck identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build. A small existing browser-workspace product also uses the BrowserDeck name, so a domain/trademark check is still required before public distribution.

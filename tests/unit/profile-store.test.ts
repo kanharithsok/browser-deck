@@ -8,7 +8,7 @@ import { PROFILE_STORE_VERSION, validateProfileStoreData } from '../../src/share
 const tempDirectories: string[] = []
 
 async function makeDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'paneflow-profiles-'))
+  const directory = await mkdtemp(join(tmpdir(), 'browserdeck-profiles-'))
   tempDirectories.push(directory)
   return directory
 }

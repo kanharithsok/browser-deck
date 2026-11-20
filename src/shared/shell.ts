@@ -1,4 +1,4 @@
-export const SHELL_SCHEME = 'paneflow'
+export const SHELL_SCHEME = 'browserdeck'
 export const SHELL_HOST = 'shell'
 export const SHELL_ORIGIN = `${SHELL_SCHEME}://${SHELL_HOST}`
 export const SHELL_ENTRY_URL = `${SHELL_ORIGIN}/index.html`

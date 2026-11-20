@@ -96,7 +96,7 @@ const deviceTypeLabel = computed(() => {
 const titleTooltip = computed(() => {
   const title = props.pane.customTitle ?? props.pane.title
   return props.pane.customTitle
-    ? `${title} (custom device name; double-click to rename; clear it to use the page title)`
+    ? `${title} (custom browser name; double-click to rename; clear it to use the page title)`
     : `${title} (double-click to rename)`
 })
 
@@ -130,7 +130,7 @@ async function submitRename(): Promise<void> {
   }
   savingTitle.value = true
   try {
-    const result = await window.paneflow.renamePane(props.pane.id, titleDraft.value.trim())
+    const result = await window.browserdeck.renamePane(props.pane.id, titleDraft.value.trim())
     if (!result.ok) {
       titleError.value = result.error
       await nextTick()
@@ -142,7 +142,7 @@ async function submitRename(): Promise<void> {
     renaming.value = false
     titleInput.value?.blur()
   } catch {
-    titleError.value = 'Could not rename the device.'
+    titleError.value = 'Could not rename the browser.'
     await nextTick()
     titleInput.value?.focus()
   } finally {
@@ -167,18 +167,18 @@ watch(
 
 function goBack(): void {
   if (props.pane.canGoBack) {
-    void window.paneflow.back(props.pane.id).catch(() => undefined)
+    void window.browserdeck.back(props.pane.id).catch(() => undefined)
   }
 }
 
 function goForward(): void {
   if (props.pane.canGoForward) {
-    void window.paneflow.forward(props.pane.id).catch(() => undefined)
+    void window.browserdeck.forward(props.pane.id).catch(() => undefined)
   }
 }
 
 function reload(): void {
-  void window.paneflow.reload(props.pane.id).catch(() => undefined)
+  void window.browserdeck.reload(props.pane.id).catch(() => undefined)
 }
 
 function openMenu(event: MouseEvent): void {
@@ -217,7 +217,7 @@ function requestClose(): void {
       }
     ]"
     :data-pane-id="pane.id"
-    :aria-label="`Browser device: ${pane.title}`"
+    :aria-label="`Browser: ${pane.title}`"
     :aria-current="active ? 'true' : undefined"
   >
     <div class="pane-header-shell">
@@ -251,7 +251,7 @@ function requestClose(): void {
                   autocomplete="off"
                   spellcheck="false"
                   placeholder="Use page title"
-                  :aria-label="`Device name for ${pane.title}`"
+                  :aria-label="`Browser name for ${pane.title}`"
                   :aria-invalid="titleError ? 'true' : 'false'"
                   :aria-describedby="titleError ? statusId : undefined"
                   @input="titleError = null"
@@ -264,7 +264,7 @@ function requestClose(): void {
                 type="button"
                 :data-preset="pane.viewport.preset"
                 :title="`Viewport preset: ${viewportLabel}`"
-                :aria-label="`Viewport preset for device ${pane.title}: ${viewportLabel}`"
+                :aria-label="`Viewport preset for browser ${pane.title}: ${viewportLabel}`"
                 aria-haspopup="menu"
                 :aria-expanded="viewportMenuOpen"
                 @click="openViewportMenu"
@@ -297,8 +297,8 @@ function requestClose(): void {
               v-if="freeform"
               class="icon-button"
               type="button"
-              title="Bring device to front"
-              aria-label="Bring device to front"
+              title="Bring browser to front"
+              aria-label="Bring browser to front"
               @click="emit('raise-pane')"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -309,8 +309,8 @@ function requestClose(): void {
               v-if="freeform"
               class="icon-button"
               type="button"
-              title="Send device to back"
-              aria-label="Send device to back"
+              title="Send browser to back"
+              aria-label="Send browser to back"
               @click="emit('lower-pane')"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -344,8 +344,8 @@ function requestClose(): void {
             <button
               class="icon-button"
               type="button"
-              title="Reload device"
-              aria-label="Reload device"
+              title="Reload browser"
+              aria-label="Reload browser"
               @click="reload"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -369,8 +369,8 @@ function requestClose(): void {
             <button
               class="icon-button"
               type="button"
-              title="Device actions"
-              aria-label="Device actions"
+              title="Browser actions"
+              aria-label="Browser actions"
               @click="openMenu"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -382,8 +382,8 @@ function requestClose(): void {
             <button
               class="icon-button"
               type="button"
-              title="Close device (Delete)"
-              aria-label="Close device"
+              title="Close browser (Delete)"
+              aria-label="Close browser"
               @click="requestClose"
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -426,15 +426,15 @@ function requestClose(): void {
         </div>
         <div v-else-if="pane.url === 'about:blank' && !pane.isLoading" class="pane-message">
           <p class="message-title">No page loaded</p>
-          <p class="message-detail">Enter an address above to open a site in this device.</p>
+          <p class="message-detail">Enter an address above to open a site in this browser.</p>
         </div>
         <div v-else-if="suspended && !pane.isLoading && !snapshot" class="pane-message">
-          <p class="message-title">Device hidden while off-screen</p>
+          <p class="message-title">Browser hidden while off-screen</p>
           <p v-if="canvas" class="message-detail">
-            Select this device to bring it fully into view.
+            Select this browser to bring it fully into view.
           </p>
           <p v-else class="message-detail">
-            Scroll this device fully into view to interact with the site.
+            Scroll this browser fully into view to interact with the site.
           </p>
         </div>
         <div v-else-if="pane.isLoading && !snapshot" class="pane-message" aria-hidden="true">

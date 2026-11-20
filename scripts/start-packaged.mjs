@@ -15,13 +15,13 @@ if (!appDirectory) {
   process.exit(1)
 }
 
-const appBundle = join(dist, appDirectory.name, 'PaneFlow.app')
-const binary = join(appBundle, 'Contents', 'MacOS', 'PaneFlow')
+const appBundle = join(dist, appDirectory.name, 'BrowserDeck.app')
+const binary = join(appBundle, 'Contents', 'MacOS', 'BrowserDeck')
 
 try {
   await access(binary)
 } catch {
-  console.error(`Could not find the PaneFlow executable at ${binary}.`)
+  console.error(`Could not find the BrowserDeck executable at ${binary}.`)
   process.exit(1)
 }
 
@@ -46,7 +46,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 child.on('error', (error) => {
-  console.error('Could not launch the packaged PaneFlow app.', error)
+  console.error('Could not launch the packaged BrowserDeck app.', error)
   process.exit(1)
 })
 
