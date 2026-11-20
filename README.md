@@ -6,7 +6,7 @@ PaneFlow is a local-first macOS desktop application for developers, designers, a
 
 > **Terminology:** The application UI calls each browser frame a **device**. The code and architecture notes retain **pane** for the underlying native `WebContentsView`.
 
-> **Project status:** Phases 0–4 complete; the unsigned local macOS MVP is complete. The app is a working Electron/Vue browser workspace with isolated persistent sessions, a Canvas-only workspace with world-space snapping, a custom device menu and canvas context menu, native-aware view hiding, native Device-menu commands, per-device viewport emulation, workspace persistence and management, safe window bounds, per-pane session release on close, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-MVP hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
+> **Project status:** PaneFlow 1.0.0 is the first local macOS release. It is a working Electron/Vue browser workspace with isolated persistent sessions, a Canvas-only workspace with world-space snapping, a custom device menu and canvas context menu, native-aware view hiding, native Device-menu commands, per-device viewport emulation, workspace persistence and management, safe window bounds, per-pane session release on close, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-1.0 hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
 
 ## Current capabilities
 
@@ -60,14 +60,17 @@ make dev
 
 `make dev` checks the Node.js version, installs dependencies when `package.json` or `package-lock.json` has changed, downloads the Electron runtime when needed, and starts a local fixture server on a random loopback port. Two panes open with independent fixture sessions (`alice` and `bob`) that display their per-pane cookie, localStorage, viewport, and device pixel ratio. Open `/login` in a pane to try the fixture's independent authenticated sessions.
 
-To preview the production build instead, run `make start`. Run `make` or `make help` to list every target. A separate `npm install` is not normally required; use `make install` to force a clean reinstall.
+To launch the packaged PaneFlow app with its real name and icon, run `make start`. This builds and packages the unpacked arm64 app, then runs it. `make preview` remains available for the faster Electron dev-runtime preview. Run `make` or `make help` to list every target. A separate `npm install` is not normally required; use `make install` to force a clean reinstall.
+
+The development runtime (`make dev` and `make preview`) uses the shared Electron bundle, so macOS may still label that process “Electron” in the Dock even though it now receives the PaneFlow icon. `make start` uses `dist/mac-arm64/PaneFlow.app` and shows the final PaneFlow name and icon.
 
 ## Commands
 
 | Make target | npm script | Purpose |
 | --- | --- | --- |
 | `make dev` | `npm run dev` | Fixture server + electron-vite development app |
-| `make start` | `npm run start` | Build and preview the app through electron-vite |
+| `make start` | `npm run start` | Build, package, and launch the real PaneFlow app |
+| `make preview` | `npm run preview` | Build and preview through the Electron dev runtime |
 | `make build` | `npm run build` | Build main, preload, and renderer into `out/` |
 | `make typecheck` | `npm run typecheck` | Strict TypeScript check for node and renderer code |
 | `make lint` | `npm run lint` | ESLint across source, tests, and scripts |
@@ -83,7 +86,7 @@ To preview the production build instead, run `make start`. Run `make` or `make h
 
 ## Packaging
 
-`npm run package:mac` produces `dist/PaneFlow-0.1.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/PaneFlow.app`. The bundle uses `com.kanharithsok.paneflow`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
+`npm run package:mac` produces `dist/PaneFlow-1.0.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/PaneFlow.app`. The bundle uses `com.kanharithsok.paneflow`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
 
 Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node options and inspector arguments, and `file://` extra privileges, while enabling ASAR integrity validation and load-only-from-ASAR. These controls reduce accidental local privilege paths; they do not replace code signing. See [`SECURITY.md`](./SECURITY.md) for the threat model and the full packaging checklist.
 
@@ -184,11 +187,11 @@ OpenCode discovers `AGENTS.md`, `.opencode/agents/`, `.opencode/skills/`, and `.
 docs/                 Architecture, decisions, manual checks, phase reports
 Makefile              Developer commands with toolchain and dependency checks
 SECURITY.md           Threat boundaries and local-distribution checklist
-scripts/              Development launcher
-src/main/             Electron lifecycle, native views, IPC, profiles
+scripts/              Development and packaged-launch scripts
+src/main/             Electron lifecycle, native views, IPC, per-pane sessions
 src/preload/          Minimal typed shell bridge
 src/renderer/         Vue shell and device chrome
-src/shared/           Pure URL, geometry, profile, and IPC types
+src/shared/           Pure URL, geometry, session, and IPC types
 tests/                Unit, integration, and fixture code
 AGENTS.md             Persistent coding-agent rules
 SPEC.md               Product and engineering specification
@@ -216,7 +219,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
 - Some identity providers and sites may block embedded browser user agents or behave differently from Chrome/Safari. Fixed presets send a category UA for layout fidelity; responsive and custom panes use Electron's default UA.
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.
-- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, automatic updates, extensions, DRM, and cloud sync remain outside the MVP.
+- Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, automatic updates, extensions, DRM, and cloud sync remain outside 1.0.
 - Workspace exports include pane URLs and therefore any query strings in them. Do not sign in through or store secret-bearing URLs when sharing an export.
 - `npm audit --omit=dev` reports 0 runtime vulnerabilities. `npm audit` reports 6 moderate development-toolchain advisories in `minimatch` via `electron-builder`/`@electron/universal`; the offered fix is a breaking downgrade, so it is tracked rather than applied.
 

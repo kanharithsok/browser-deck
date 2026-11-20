@@ -26,7 +26,6 @@ import {
   type CanvasMinimapAction,
   type CanvasMinimapState
 } from '../../shared/minimap'
-import { isPaneChromeStyle, type PaneChromeStyle } from '../../shared/pane-chrome'
 import type {
   PaneCommand,
   PaneNotice,
@@ -147,25 +146,6 @@ interface MarqueeDragState {
   moved: boolean
 }
 
-const PANE_CHROME_STORAGE_KEY = 'paneflow.preview.paneChrome'
-
-function readPaneChromePreference(): PaneChromeStyle {
-  try {
-    const value = localStorage.getItem(PANE_CHROME_STORAGE_KEY)
-    return isPaneChromeStyle(value) ? value : 'a'
-  } catch {
-    return 'a'
-  }
-}
-
-function persistPaneChromePreference(style: PaneChromeStyle): void {
-  try {
-    localStorage.setItem(PANE_CHROME_STORAGE_KEY, style)
-  } catch {
-    // A blocked storage API should not prevent switching the preview style.
-  }
-}
-
 const panes = ref<PaneState[]>([])
 const paneOrder = ref<string[]>([])
 const activePaneId = ref<string | null>(null)
@@ -246,7 +226,6 @@ const workspacesDialogEl = ref<HTMLElement | null>(null)
 const currentWorkspaceId = ref<string | null>(null)
 const themePreference = ref<ThemePreference>('system')
 const resolvedTheme = ref<'light' | 'dark'>('light')
-const paneChrome = ref<PaneChromeStyle>(readPaneChromePreference())
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -299,10 +278,6 @@ const orderedPanes = computed(() => {
 
 const activePane = computed(
   () => orderedPanes.value.find((pane) => pane.id === activePaneId.value) ?? null
-)
-
-const effectivePaneChrome = computed<PaneChromeStyle>(() =>
-  layoutMode.value === 'canvas' ? 'c' : paneChrome.value
 )
 
 const canvasHandActive = computed(() => canvasHandMode.value || spaceHandMode.value)
@@ -4045,11 +4020,6 @@ watch(
   }
 )
 
-watch(paneChrome, (style) => {
-  persistPaneChromePreference(style)
-  void nextTick(scheduleMeasure)
-})
-
 watch(
   () => JSON.stringify(canvasMinimapState.value),
   () => {
@@ -4211,7 +4181,6 @@ onBeforeUnmount(() => {
   <div
     class="app-shell"
     :class="{ 'is-dragging': isDragging, 'mac-titlebar': usesMacTitlebar }"
-    :data-pane-chrome="paneChrome"
     :data-layout-mode="layoutMode"
   >
     <header class="toolbar">
@@ -4304,7 +4273,6 @@ onBeforeUnmount(() => {
             :rename-request="paneRenameRequests[pane.id] ?? 0"
             :custom-viewport-request="customViewportRequests[pane.id] ?? 0"
             :notice="paneNotices[pane.id]"
-            :chrome-style="effectivePaneChrome"
             :snapshot="layoutMode === 'canvas' ? paneSnapshots[pane.id] : undefined"
             :canvas="layoutMode === 'canvas'"
             :viewport-menu-open="appMenuMode === 'viewport' && paneMenuPaneId === pane.id"
@@ -5344,19 +5312,10 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.profile-meta,
-.profile-usage {
+.profile-meta {
   color: var(--text-faint);
   font-size: 10.5px;
   line-height: 1.4;
-}
-
-.profile-usage {
-  color: var(--text-muted);
-}
-
-.profile-usage-active {
-  color: var(--accent-strong);
 }
 
 .profile-rename-form {

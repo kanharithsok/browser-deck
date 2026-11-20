@@ -16,6 +16,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Closing a pane destroys its view and `webContents`. (E2e checks the closed `webContents` and remaining pane.)
 - [x] Retina coordinate behavior. (DPR 2; bounds remained aligned.)
 - [x] Hidden-inset macOS title bar. (E2e checks that content bounds fill the window, traffic lights use the custom 16,16 position, the toolbar reports a drag region, and the active-pane controls clear the traffic lights; window capture manually reviewed.)
+- [x] Development and packaged app identity. (`make start` launches the packaged PaneFlow bundle; development runs use `build/icon.png` for the Dock icon. The shared Electron dev runtime may still be labelled Electron in the Dock.)
 
 ## Browser isolation
 
@@ -139,8 +140,9 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Packaging
 
 - [x] `npm run package:mac` builds an arm64 DMG, ZIP, and `.app`. (Artifacts produced under `dist/`.)
-- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.paneflow`, `0.1.0`, `icon.icns`, developer tools.)
+- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.paneflow`, `1.0.0`, `icon.icns`, developer tools.)
 - [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
+- [x] Packaged app exposes the PaneFlow name and icon. (`CFBundleDisplayName`/`CFBundleName` are PaneFlow, the packaged icon hash matches `build/icon.icns`, `lsappinfo` reports `PaneFlow`, and `make start` launches the packaged executable.)
 - [x] Electron fuses are applied to the packaged app. (`npx electron-fuses read --app dist/mac-arm64/PaneFlow.app`; RunAsNode/Node-options/inspector/file-protocol privileges disabled, ASAR integrity and only-load-from-ASAR enabled.)
 - [ ] Developer ID signing and notarization. (Post-MVP; blocked on Apple Developer credentials. The supported distribution is the unsigned/ad-hoc local arm64 build.)
 - [ ] Intel/universal packaging. (Current build is arm64-only by owner decision.)

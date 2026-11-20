@@ -102,7 +102,6 @@ export interface PaneBoundsUpdate {
 export interface PaneState {
   id: string
   profileId: string
-  profileLabel: string
   title: string
   customTitle: string | null
   url: string

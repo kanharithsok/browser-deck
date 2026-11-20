@@ -1,6 +1,6 @@
 # Contributing to PaneFlow
 
-Thanks for your interest in PaneFlow. The project is in its early development stage.
+Thanks for your interest in PaneFlow. The project is at its 1.0.0 local macOS release.
 
 ## Before making a change
 
@@ -29,4 +29,4 @@ Thanks for your interest in PaneFlow. The project is in its early development st
 
 ## Project decisions
 
-The product and MVP scope are defined in `SPEC.md`. Record significant architectural trade-offs in `docs/DECISIONS.md` rather than silently changing the design.
+The product and 1.0 scope are defined in `SPEC.md`. Record significant architectural trade-offs in `docs/DECISIONS.md` rather than silently changing the design.

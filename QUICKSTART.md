@@ -1,5 +1,7 @@
 # Quickstart — Fresh PaneFlow Repository
 
+> Historical starter-kit guide. For PaneFlow 1.0 setup and usage, see [`README.md`](./README.md).
+
 ## 1. Create the GitHub repository
 
 Create a new **public** GitHub repository named `paneflow`. Do not select an auto-generated README, license, or `.gitignore` if you plan to upload this starter kit as-is.

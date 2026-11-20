@@ -6,6 +6,7 @@ import {
   BaseWindow,
   dialog,
   Menu,
+  nativeImage,
   nativeTheme,
   screen,
   session,
@@ -110,12 +111,26 @@ let workspaceSwitching = false
 let devServerUrl: URL | null = null
 let workspaceMenuRefreshToken = 0
 
-app.setName('PaneFlow')
+const APP_ID = 'com.kanharithsok.paneflow'
+const APP_NAME = 'PaneFlow'
+
+app.setName(APP_NAME)
+app.setAppUserModelId(APP_ID)
 app.setAboutPanelOptions({
-  applicationName: 'PaneFlow',
+  applicationName: APP_NAME,
   applicationVersion: app.getVersion()
 })
 registerShellScheme()
+
+function applyDevelopmentIdentity(): void {
+  if (process.platform !== 'darwin' || app.isPackaged) {
+    return
+  }
+  const icon = nativeImage.createFromPath(join(app.getAppPath(), 'build/icon.png'))
+  if (!icon.isEmpty()) {
+    app.dock?.setIcon(icon)
+  }
+}
 
 const userDataOverride = process.env.PANEFLOW_USER_DATA_DIR
 if (userDataOverride) {
@@ -1521,6 +1536,7 @@ app.on('web-contents-created', (_event, contents) => {
 setBlockedActionReporter(reportBlockedAction)
 
 app.whenReady().then(async () => {
+  applyDevelopmentIdentity()
   devServerUrl = getDevServerUrl()
   const shellCsp = buildShellCsp(devServerUrl?.toString() ?? null)
 

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import PaneNavigation from './PaneNavigation.vue'
-import type { PaneChromeStyle } from '../../../shared/pane-chrome'
 import type { PaneState } from '../../../shared/ipc'
 import {
   findViewportPreset,
@@ -18,7 +17,6 @@ const props = withDefaults(
     active?: boolean
     renameRequest?: number
     notice?: string
-    chromeStyle?: PaneChromeStyle
     snapshot?: string
     canvas?: boolean
     viewportMenuOpen?: boolean
@@ -30,7 +28,6 @@ const props = withDefaults(
     active: false,
     renameRequest: 0,
     notice: undefined,
-    chromeStyle: 'a',
     snapshot: undefined,
     canvas: false,
     viewportMenuOpen: false,
@@ -95,10 +92,6 @@ const deviceTypeLabel = computed(() => {
   }
   return props.pane.viewport.preset === 'custom' ? 'Custom' : 'Responsive'
 })
-
-const showViewportBadge = computed(
-  () => props.chromeStyle === 'c' || props.chromeStyle === 'b'
-)
 
 const titleTooltip = computed(() => {
   const title = props.pane.customTitle ?? props.pane.title
@@ -217,7 +210,6 @@ function requestClose(): void {
   <article
     class="pane-card"
     :class="[
-      `pane-card-${chromeStyle}`,
       {
         'pane-card-freeform': freeform,
         'pane-card-active': active,
@@ -225,7 +217,6 @@ function requestClose(): void {
       }
     ]"
     :data-pane-id="pane.id"
-    :data-pane-chrome="chromeStyle"
     :aria-label="`Browser device: ${pane.title}`"
     :aria-current="active ? 'true' : undefined"
   >
@@ -269,7 +260,6 @@ function requestClose(): void {
                 />
               </form>
               <button
-                v-if="showViewportBadge"
                 class="pane-viewport-trigger"
                 type="button"
                 :data-preset="pane.viewport.preset"
@@ -547,10 +537,6 @@ function requestClose(): void {
   display: none;
 }
 
-.pane-card-c .pane-header {
-  border-bottom-color: transparent;
-}
-
 .pane-drag-grip {
   flex: none;
   display: inline-flex;
@@ -580,6 +566,7 @@ function requestClose(): void {
 
 .pane-card-canvas .pane-header {
   padding: 0;
+  border-bottom-color: transparent;
   background: transparent;
   cursor: grab;
 }

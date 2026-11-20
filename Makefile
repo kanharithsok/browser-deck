@@ -8,12 +8,13 @@ NPM := npm
 DEPS_STAMP := node_modules/.package-lock.json
 ELECTRON_STAMP := node_modules/electron/path.txt
 
-.PHONY: help check-toolchain deps runtime install start dev build typecheck lint test test-unit test-e2e check-contrast check package package-mac package-dir clean
+.PHONY: help check-toolchain deps runtime install start preview dev build typecheck lint test test-unit test-e2e check-contrast check package package-mac package-dir clean
 
 help:
 	@echo 'PaneFlow developer commands:'
 	@echo ''
-	@echo '  make start          Build and preview the production app'
+	@echo '  make start          Build, package, and launch PaneFlow with its real app identity'
+	@echo '  make preview        Build and preview through the Electron dev runtime'
 	@echo '  make dev            Start the development app with fixtures'
 	@echo '  make build          Build main, preload, and renderer into out/'
 	@echo '  make check          Typecheck, lint, run unit tests, and check contrast'
@@ -55,8 +56,11 @@ install: check-toolchain
 	@node node_modules/electron/install.js
 
 start: runtime
-	@echo '==> Starting PaneFlow'
+	@echo '==> Starting packaged PaneFlow'
 	@$(NPM) run start
+
+preview: runtime
+	@$(NPM) run preview
 
 dev: runtime
 	@$(NPM) run dev

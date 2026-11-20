@@ -191,6 +191,11 @@ Run from a clean checkout:
 - See [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md) and
   [`docs/MANUAL_CHECKS.md`](./docs/MANUAL_CHECKS.md) for exact results.
 
+## Dependency audit
+
+- `npm audit --omit=dev` reports **0** vulnerabilities in production dependencies.
+- The full development-tool audit reports six moderate `minimatch` advisories in the `electron-builder` chain. They are build/packaging-only, are not shipped in the app runtime, and were not force-upgraded for 1.0 because a major override could break packaging.
+
 ## Reporting
 
 Open a GitHub security advisory or contact the repository owner privately. Do

@@ -71,7 +71,7 @@ describe('ProfileStore', () => {
     await expect(store.ensure('not-a-profile')).rejects.toThrow()
   })
 
-  it('renames profiles, rejects duplicate names, and removes metadata', async () => {
+  it('removes profile metadata', async () => {
     const directory = await makeDirectory()
     const store = new ProfileStore(directory)
     await store.load()
@@ -80,18 +80,12 @@ describe('ProfileStore', () => {
       throw new Error('Expected seeded profiles')
     }
 
-    await store.rename(first.id, '  Alice QA  ')
-    expect(store.get(first.id)?.label).toBe('Alice QA')
-    await expect(store.rename(second.id, 'alice qa')).rejects.toThrow('already in use')
-    await expect(store.rename(first.id, '   ')).rejects.toThrow()
-    await expect(store.rename('missing-profile', 'Name')).rejects.toThrow('not found')
-
     await store.remove(second.id)
     expect(store.get(second.id)).toBeUndefined()
 
     const reloaded = new ProfileStore(directory)
     await reloaded.load()
-    expect(reloaded.get(first.id)?.label).toBe('Alice QA')
+    expect(reloaded.get(first.id)?.id).toBe(first.id)
     expect(reloaded.get(second.id)).toBeUndefined()
   })
 

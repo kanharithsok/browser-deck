@@ -39,9 +39,9 @@ async function writeJsonAtomically(filePath: string, data: unknown): Promise<voi
 }
 
 /**
- * Minimal Phase 0 profile registry. It owns persistent profile records so the
- * same Electron partitions can be reused across restarts. Full profile
- * management (rename/clear/delete) arrives in Phase 3.
+ * Persistent internal profile registry. Profiles are created per pane and
+ * removed when their pane's session is released; labels remain internal
+ * metadata and are not exposed in the shell.
  */
 export class ProfileStore {
   private profiles: BrowserProfile[] = []
@@ -118,28 +118,6 @@ export class ProfileStore {
       createdAt: new Date().toISOString()
     }
     this.profiles = [...this.profiles, profile]
-    await this.save()
-    return profile
-  }
-
-  async rename(profileId: string, label: string): Promise<BrowserProfile> {
-    const profile = this.get(profileId)
-    if (!profile) {
-      throw new Error('Profile not found.')
-    }
-    const normalized = normalizeProfileLabel(label)
-    if (!normalized) {
-      throw new Error('Enter a profile name of 80 characters or fewer.')
-    }
-    const duplicate = this.profiles.some(
-      (entry) => entry.id !== profileId && entry.label.toLowerCase() === normalized.toLowerCase()
-    )
-    if (duplicate) {
-      throw new Error('That profile name is already in use.')
-    }
-
-    // Keep the object identity so live pane records see the new label.
-    profile.label = normalized
     await this.save()
     return profile
   }

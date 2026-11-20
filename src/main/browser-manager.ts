@@ -493,7 +493,6 @@ export class BrowserManager {
       panes.push({
         id: record.id,
         profileId: record.profile.id,
-        profileLabel: record.profile.label,
         title: record.customTitle ?? (record.title || fallbackTitle(record.url)),
         customTitle: record.customTitle,
         url: record.url,

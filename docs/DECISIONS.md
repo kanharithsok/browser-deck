@@ -918,7 +918,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-031 — Pane chrome preview modes are an app-wide temporary comparison
 
-- **Status:** Accepted for preview
+- **Status:** Superseded; the preview modes were removed for 1.0 by ADR-072.
 - **Date:** 2026-11-19
 - **Context:** The current two-row pane header is denser than the desired minimal direction. Three alternatives need comparison in the running app before choosing one: A (quiet single-row bar), B (Figma-like canvas label), and C (global browser bar). C cannot be mixed per pane because the address and navigation belong to the active pane.
 
@@ -2124,6 +2124,58 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e and running-app screenshots verify the opaque toolbar, workspace-owned dot backdrop, and pan-driven background position.
   - Fit all and pane drag-clamp coverage remain unchanged.
+
+## ADR-071 — PaneFlow 1.0 identity comes from the packaged app
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** `make start` launched the shared Electron development runtime. macOS derives the Dock name and bundle identity from `Electron.app` before JavaScript runs, so `app.setName()` cannot make that process appear as PaneFlow. The checked-in `build/icon.icns` and `build/icon.svg` already existed, but the runtime still showed the default Electron icon.
+
+- **Decision:**
+  1. Keep the product name **PaneFlow**; it accurately names the pane-based workspace.
+  2. Make `make start` build the unpacked arm64 app with electron-builder and launch `dist/mac-arm64/PaneFlow.app` through `scripts/start-packaged.mjs`.
+  3. Keep `make preview` as the faster electron-vite preview, and document that macOS may label the shared Electron runtime "Electron" in the Dock.
+  4. Set the Dock icon from `build/icon.png` and keep the app name/about metadata configured in the development runtime too.
+  5. Set the macOS bundle identity, copyright, version, and icon through `package.json` and `electron-builder.yml`.
+  6. Release as version 1.0.0.
+
+- **Alternatives considered:**
+  - **Patch `node_modules/electron/Electron.app` at development time.** Rejected; it mutates dependency-managed files and adds fragile bundle-copy work for a problem the packaged app already solves.
+  - **Accept the Electron identity for `make start`.** Rejected; it is confusing for a 1.0 build and hides the real app icon.
+  - **Rename the project.** Rejected; PaneFlow still describes the core model and avoids unnecessary repository, app-ID, and user-data churn.
+
+- **Consequences:**
+  - `make start` takes longer because it packages the app before launching.
+  - Packaged launches show PaneFlow in the Dock and menu bar with the checked-in icon.
+  - `make dev` and `make preview` remain fast development paths, with the PaneFlow icon but the Electron runtime name.
+
+- **Evidence / verification:**
+  - Packaged `Info.plist` reports `CFBundleDisplayName=PaneFlow`, `CFBundleName=PaneFlow`, `CFBundleIdentifier=com.kanharithsok.paneflow`, and version `1.0.0`.
+  - The packaged app uses the same `build/icon.icns` hash as the source.
+  - `lsappinfo` reports the running packaged process as `PaneFlow`, and `make start` launches that executable.
+
+## ADR-072 — Remove the pane-chrome preview scaffolding
+
+- **Status:** Accepted
+- **Context:** The Canvas-only UI settled on one pane chrome. The old A/B/C preview type, localStorage key, prop, classes, and unit test remained after the comparison UI was removed.
+
+- **Decision:**
+  1. Remove `src/shared/pane-chrome.ts` and its unit test.
+  2. Remove the stored preview preference and app-wide pane-chrome state.
+  3. Always render the viewport trigger in the Canvas pane header and keep the transparent Canvas header treatment.
+  4. Remove the unused profile rename store method and legacy profile-usage styles as part of the same 1.0 cleanup.
+
+- **Alternatives considered:**
+  - **Leave the preview scaffolding for future experimentation.** Rejected; it is unused, exposes a dead preference, and increases the maintenance surface before 1.0.
+
+- **Consequences:**
+  - There is one pane-chrome implementation instead of three implied variants.
+  - The unit suite drops the obsolete preview test; the remaining behavior is covered by pane and accessibility tests.
+  - Profile metadata is now create/ensure/remove only, matching the internal session model.
+
+- **Evidence / verification:**
+  - Typecheck, lint, unit tests, and e2e pass after removal.
+  - No `pane-chrome`, `chromeStyle`, or preview storage references remain in source or tests.
 
 ### ADR-NNN — Title
 

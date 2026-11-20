@@ -570,7 +570,6 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     expect(initial.panes).toHaveLength(2)
     expect(initial.panes[0]?.profileId).not.toBe(initial.panes[1]?.profileId)
-    expect(initial.panes[0]?.profileLabel).not.toBe(initial.panes[1]?.profileLabel)
     const firstProfileIds = initial.panes.map((pane) => pane.profileId)
     const alicePaneId = initial.panes[0]?.id
     const bobPaneId = initial.panes[1]?.id

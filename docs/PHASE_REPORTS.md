@@ -1129,24 +1129,6 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Known behavior / limitations:** Overlay overlap is estimated from the shell using the shared bar/minimap dimensions and the uncollapsed minimap height, so a collapsed minimap may hide slightly earlier than strictly necessary. Menus near the bottom edge can still hide the overlay they cover.
 
-## Post-MVP — Per-pane sessions, Clear Site Data, and two-row headers
-
-**Date:** 2026-11-20
-
-**Status:** Implemented.
-
-**Change:** Removed the native Profiles menu, Profiles dialog, profile labels/counts, explicit sharing, and the profile-picker IPC. Each pane now owns an independent browser session; closing it clears cookies/storage/cache/auth, removes its profile metadata, and best-effort deletes its partition. Deleting an inactive workspace releases sessions referenced only by that workspace. Added a confirmed **Clear Site Data…** action to the device actions menu; it clears one pane and reloads it without touching other panes. Moved the address bar from the top toolbar into a second pane-header row; the top toolbar is now just Add plus draggable space. Canvas headers increased from 32 to 64 CSS pixels, and custom viewport editing now replaces that pane's address row. The device palette no longer searches profile labels.
-
-**Files changed:** `src/shared/ipc.ts`, `src/shared/canvas.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/main/index.ts`, `src/main/browser-manager.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/MenuIcon.vue`, `src/renderer/src/menu.ts`, `src/renderer/src/components/GlobalPaneBar.vue` (removed), `tests/e2e/accessibility.spec.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/unit/minimap.test.ts`, `README.md`, `SPEC.md`, `SECURITY.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-062, ADR-063), and `docs/MANUAL_CHECKS.md`.
-
-| Check | Result |
-| --- | --- |
-| `make check` | Passed: typecheck, lint, 172 unit tests, and all light/dark contrast pairs. |
-| `npm run test:e2e` | Passed: 2 Playwright tests in 17.6 s. Verifies the missing Profiles menu, per-pane address rows, Add-only toolbar, exclusive session release on close/self-close, confirmed Clear Site Data without affecting Alice, workspace cleanup, and the updated accessibility tab order. |
-| `npm run build` | Passed: main 154.18 kB, preload 9.15 kB, renderer JS 357.01 kB, shell CSS 30.73 kB. |
-
-**Known behavior / limitations:** There is no way to reuse a signed-in session after closing its pane. Clear Site Data signs the pane out and loses unsaved page state. Inactive workspaces retain their sessions until opened or deleted. Canvas frames are 32 px taller. The top toolbar intentionally contains only Add and draggable space.
-
 ## Post-MVP — Independent pane browsers, Clear Site Data, and two-row headers
 
 **Date:** 2026-11-20
@@ -1221,3 +1203,27 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Running-app screenshot | Confirms the toolbar surface and divider above a dotted workspace, with fitted panes clear of the bottom bar. |
 
 **Known behavior / limitations:** Panes cannot be displayed interactively behind the top toolbar with the current single-shell composition. A native top-bar overlay would be required to support that visual overlap. Manual Canvas panning can still move a pane partly off-screen; selecting it or using Fit all restores it.
+
+## PaneFlow 1.0.0 — App identity and release cleanup
+
+**Date:** 2026-11-20
+
+**Status:** Implemented.
+
+**Change:** Released the local macOS app as PaneFlow 1.0.0. `make start` now builds and packages `PaneFlow.app` and launches that bundle, so the Dock name, menu identity, version, copyright, and icon come from the real app instead of the shared Electron runtime. `make preview` remains the faster electron-vite path, and development runs receive the PaneFlow Dock icon from `build/icon.png`. Added a packaged-launch script, set the Windows app user model ID, and documented the remaining Electron-label limitation of the development runtime.
+
+**Cleanup:** Removed the obsolete pane-chrome A/B/C preview type, storage key, prop, classes, and unit test; removed the unused profile rename API and per-pane `profileLabel`; removed dead profile-usage styles; deleted the duplicate per-pane-session phase report; updated the repository map, package version, packaging metadata, run instructions, and manual checks. The product name remains **PaneFlow** because panes are the core object and “flow” still describes arranging independent browser sessions.
+
+**Files changed:** `package.json`, `package-lock.json`, `electron-builder.yml`, `Makefile`, `scripts/start-packaged.mjs` (new), `build/icon.png` (new runtime asset), `src/main/index.ts`, `src/main/browser-manager.ts`, `src/main/profile-store.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/ipc.ts`, `src/shared/pane-chrome.ts` (removed), `tests/unit/pane-chrome.test.ts` (removed), `tests/unit/profile-store.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SECURITY.md`, `CONTRIBUTING.md`, `QUICKSTART.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-031 superseded, ADR-071/072), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 175 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 18.7 s. |
+| `npm run build` | Passed: main 156.45 kB, preload 9.15 kB, renderer JS 358.68 kB, shell CSS 31.58 kB. |
+| `npm run package:dir` | Passed: PaneFlow 1.0.0 arm64 app, fuses applied. |
+| `npm audit --omit=dev` | Passed: 0 production vulnerabilities. The full developer-tool audit has six moderate `minimatch` advisories in the `electron-builder` chain; they do not ship in the app runtime. |
+| Packaged identity | `CFBundleDisplayName`/`CFBundleName` are PaneFlow; `CFBundleIdentifier=com.kanharithsok.paneflow`; version `1.0.0`; copyright present; packaged icon matches `build/icon.icns`; `lsappinfo` reports `PaneFlow`. |
+| Packaged launch | `make start` path launches `dist/mac-arm64/PaneFlow.app/Contents/MacOS/PaneFlow`. |
+
+**Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real PaneFlow identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build.

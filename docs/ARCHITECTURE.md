@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: Phase 4 complete; the unsigned local macOS MVP is complete. Native composition, profile sessions, Canvas-only workspace behavior with world-space snapping, anchored duplicate placement, explicit arrangements, and custom menus, keyboard/menu actions, two-row device headers with per-pane address and viewport controls, per-pane viewport emulation, workspace persistence/management, internal per-pane sessions released on close, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, workspace import/export, active-pane accessibility, automated accessibility audits, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified. Post-MVP hardening covers the VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist.
+> Status: PaneFlow 1.0.0 is the unsigned local macOS release. Native composition, profile sessions, Canvas-only workspace behavior with world-space snapping, anchored duplicate placement, explicit arrangements, custom menus, keyboard/menu actions, two-row device headers with per-pane address and viewport controls, per-pane viewport emulation, workspace persistence/management, internal per-pane sessions released on close, safe window bounds, theme persistence, unsigned arm64 packaging, repeated-switch leak stress, duplicate pane, workspace import/export, active-pane accessibility, automated accessibility audits, a 50-cycle loaded-page soak, and shell/IPC/session security hardening are implemented and verified. Post-1.0 hardening covers the VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist.
 
 ## Technology baseline
 
@@ -41,12 +41,16 @@ src/
   renderer/
     index.html          shell entry
     minimap.html        trusted Canvas overview entry
+    zoom.html           trusted bottom Canvas bar entry
     src/App.vue         toolbar, workspace, bounds measurement
+    src/components/AppMenu.vue
+    src/components/MenuIcon.vue
     src/components/PaneCard.vue
     src/components/PaneNavigation.vue
-    src/components/GlobalPaneBar.vue
     src/minimap.ts      Canvas overview rendering and actions
     src/minimap.css     compact overview panel styles
+    src/zoom.ts         bottom Canvas bar rendering and actions
+    src/zoom.css        bottom Canvas bar styles
     src/assets/app.css  design tokens and base styles
   shared/
     ipc.ts              channel names and IPC payload types
@@ -54,7 +58,6 @@ src/
     canvas.ts           infinite-canvas frame sizing and row arrangement
     layout.ts           legacy grid/freeform helpers and general geometry
     minimap.ts          projects pane frames and the viewport into an overview map
-    pane-chrome.ts      temporary pane-chrome preview types and labels
     profiles.ts         profile IDs, labels, partition names, validation
     shell.ts            shell URL constants, CSP builder, trusted document check
     url.ts              address normalization and scheme policy
@@ -64,6 +67,7 @@ tests/
   fixtures/             deterministic local HTTP + authentication fixture server
 scripts/
   dev.mjs               starts fixtures + electron-vite dev
+  start-packaged.mjs    launches the packaged PaneFlow app for `make start`
 ```
 
 `src/shared` has no Vue or Electron imports. Layout/bounds validation, URL handling, and profile validation remain usable from main, renderer, and unit tests.
@@ -324,7 +328,7 @@ The Playwright tests inspect the main process through a test hook that is only i
 
 ## Packaging
 
-`electron-builder.yml` packages the built `out/` tree with asar enabled. Product metadata is PaneFlow 0.1.0, app ID `com.kanharithsok.paneflow`, developer-tools category, MIT license, and the `build/icon.icns` icon generated from the checked-in SVG source. `npm run package:mac` builds arm64 DMG and ZIP artifacts into `dist/`; `npm run package:dir` produces the unpacked app for faster checks. `dist/` is ignored by Git.
+`electron-builder.yml` packages the built `out/` tree with asar enabled. Product metadata is PaneFlow 1.0.0, app ID `com.kanharithsok.paneflow`, developer-tools category, MIT license, and the `build/icon.icns` icon generated from the checked-in SVG source. `npm run package:mac` builds arm64 DMG and ZIP artifacts into `dist/`; `npm run package:dir` produces the unpacked app for faster checks. `make start` uses that unpacked app so the Dock name, menu identity, and icon come from the real bundle rather than the Electron runtime. `dist/` is ignored by Git.
 
 Electron fuses are applied after packing and before the (skipped) signing step: `RunAsNode` disabled, Node options and inspector arguments disabled, embedded ASAR integrity validation enabled, only-load-from-ASAR enabled, `file://` extra privileges disabled, and the ad-hoc Darwin signature reset. The shell custom protocol plus these fuses avoid the former broad `file://` shell transport. Fuse state is read back with `npx electron-fuses read --app dist/mac-arm64/PaneFlow.app`.
 

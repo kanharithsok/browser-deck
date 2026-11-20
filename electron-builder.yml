@@ -1,5 +1,6 @@
 appId: com.kanharithsok.paneflow
 productName: PaneFlow
+copyright: Copyright © 2026 PaneFlow contributors
 asar: true
 directories:
   output: dist
