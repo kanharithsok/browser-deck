@@ -322,6 +322,57 @@ async function evaluateInPane<T>(
   }, { id: webContentsId, script }) as Promise<T>
 }
 
+async function dragPaneWithMouseInput(
+  app: ElectronApplication,
+  paneId: string,
+  start: { x: number; y: number },
+  end: { x: number; y: number }
+): Promise<void> {
+  const view = (await getViewStates(app)).find((state) => state.paneId === paneId)
+  if (!view) {
+    throw new Error('Pane native view is unavailable')
+  }
+  const fromX = Math.round(view.rect.width * start.x)
+  const fromY = Math.round(view.rect.height * start.y)
+  const toX = Math.round(view.rect.width * end.x)
+  const toY = Math.round(view.rect.height * end.y)
+
+  await app.evaluate(async ({ webContents }, args) => {
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
+    const webContentsId = hook?.webContentsId(args.paneId) ?? null
+    const target = webContentsId === null ? undefined : webContents.fromId(webContentsId)
+    if (!target || target.isDestroyed()) {
+      throw new Error('Pane page is not available')
+    }
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    target.sendInputEvent({
+      type: 'mouseDown',
+      x: args.fromX,
+      y: args.fromY,
+      button: 'left',
+      clickCount: 1
+    })
+    await wait(30)
+    for (let step = 1; step <= 12; step += 1) {
+      target.sendInputEvent({
+        type: 'mouseMove',
+        x: Math.round(args.fromX + ((args.toX - args.fromX) * step) / 12),
+        y: Math.round(args.fromY + ((args.toY - args.fromY) * step) / 12),
+        button: 'left',
+        modifiers: []
+      })
+      await wait(30)
+    }
+    target.sendInputEvent({
+      type: 'mouseUp',
+      x: args.toX,
+      y: args.toY,
+      button: 'left',
+      clickCount: 1
+    })
+  }, { paneId, fromX, fromY, toX, toY })
+}
+
 async function writeIndexedDbProbe(page: Page, value: string): Promise<void> {
   await page.evaluate(async (probe) => {
     await new Promise<void>((resolve, reject) => {
@@ -749,6 +800,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       width: window.innerWidth,
       height: window.innerHeight
     }))
+    const aliceInitialViewport = await alicePage.evaluate(
+      () =>
+        (window as unknown as {
+          __browserdeckInitialViewport?: { width: number; height: number; dpr: number }
+        }).__browserdeckInitialViewport ?? null
+    )
     const aliceZoom = await shellPage
       .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
       .evaluate((element) => Number(getComputedStyle(element).getPropertyValue('--pane-zoom')))
@@ -760,6 +817,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(
       Math.abs(aliceViewport.height * aliceZoom - (aliceDomRect?.rect.height ?? 0))
     ).toBeLessThanOrEqual(1)
+    // The first document must already see the fitted frame, not a 0x0 or
+    // pre-fit viewport that later reflows when the camera changes.
+    expect(aliceInitialViewport).not.toBeNull()
+    expect(aliceInitialViewport?.width).toBe(aliceViewport.width)
+    expect(aliceInitialViewport?.height).toBe(aliceViewport.height)
 
     // Canvas is the only workspace layout now. There is no Grid/Freeform
     // switcher and no grid-column control.
@@ -1628,6 +1690,29 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(mobileFitEmulation?.scale).toBeGreaterThan(0)
     expect(mobileFitEmulation?.scale).toBeLessThanOrEqual(1)
 
+    // Phone/tablet panes translate mouse drags into touch scrolling, matching
+    // Chromium's device emulation instead of letting the Canvas capture them.
+    await alicePage.evaluate(() => {
+      const spacer = document.createElement('div')
+      spacer.dataset.scrollProbe = 'true'
+      spacer.style.height = '2000px'
+      document.body.appendChild(spacer)
+      window.scrollTo(0, 0)
+    })
+    await dragPaneWithMouseInput(
+      app as ElectronApplication,
+      alicePaneId as string,
+      { x: 0.5, y: 0.8 },
+      { x: 0.5, y: 0.2 }
+    )
+    await expect
+      .poll(() => alicePage.evaluate(() => window.scrollY), { timeout: 5_000 })
+      .toBeGreaterThan(0)
+    await alicePage.evaluate(() => {
+      document.querySelector('[data-scroll-probe]')?.remove()
+      window.scrollTo(0, 0)
+    })
+
     // A second pane can hold a different emulated viewport at the same time.
     await fitAllDevices(app as ElectronApplication)
     await focusPane(shellPage, bobPaneId as string)
@@ -2250,6 +2335,26 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'window resize to propagate to the shell'
     )
     await waitForAlignedBounds(app)
+    const resizedAliceDomRect = (await readDomPaneRects(app)).find(
+      (entry) => entry.paneId === alicePaneId
+    )
+    const resizedAliceViewport = await alicePage.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight
+    }))
+    const resizedAliceZoom = await shellPage
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+      .evaluate((element) => Number(getComputedStyle(element).getPropertyValue('--pane-zoom')))
+    expect(resizedAliceDomRect).toBeTruthy()
+    expect(resizedAliceZoom).toBeGreaterThan(0)
+    expect(
+      Math.abs(resizedAliceViewport.width * resizedAliceZoom - (resizedAliceDomRect?.rect.width ?? 0))
+    ).toBeLessThanOrEqual(1)
+    expect(
+      Math.abs(
+        resizedAliceViewport.height * resizedAliceZoom - (resizedAliceDomRect?.rect.height ?? 0)
+      )
+    ).toBeLessThanOrEqual(1)
 
     // Phase 1 exit criterion: two profiles authenticate independently on the
     // same local origin, with a HttpOnly persistent session per profile.
@@ -3231,8 +3336,46 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       throw new Error('Stress workspace bounds are unavailable')
     }
     await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+
+    // The persistent Select tool and temporary Cmd/Ctrl Select use the same
+    // click/empty-canvas semantics. The X close action is gone from the
+    // selection toolbar.
+    const selectButton = restartZoomPage.getByRole('button', {
+      name: 'Select browsers'
+    })
+    await selectButton.click()
+    await expect(selectButton).toHaveAttribute('aria-pressed', 'true')
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(1)
+    await expect(restartShell.locator('.selection-close')).toHaveCount(0)
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(0)
+    await selectButton.click()
+    await expect(selectButton).toHaveAttribute('aria-pressed', 'false')
+    await expect(restartShell.locator('.workspace')).not.toHaveClass(/canvas-select/)
+
     await restartShell.keyboard.down(selectModifier)
     await expect(restartShell.locator('.workspace')).toHaveClass(/canvas-select/)
+    await restartShell.mouse.move(firstStressBox.x - 8, firstStressBox.y + 12)
+    await restartShell.mouse.down()
+    await restartShell.mouse.move(
+      secondStressBox.x + secondStressBox.width + 8,
+      secondStressBox.y + secondStressBox.height + 8,
+      { steps: 8 }
+    )
+    await restartShell.mouse.up()
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
+
+    // Still holding Cmd/Ctrl: clicking empty canvas clears the temporary
+    // selection the same way a normal empty-canvas click does.
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(0)
+
     await restartShell.mouse.move(firstStressBox.x - 8, firstStressBox.y + 12)
     await restartShell.mouse.down()
     await restartShell.mouse.move(
@@ -3250,6 +3393,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       name: 'Viewport for 2 selected browsers'
     })
     await expect(selectionViewportMenu).toBeVisible()
+    await expect(
+      selectionViewportMenu.locator('[data-menu-item-id="selection:close"]')
+    ).toHaveCount(0)
     await selectionViewportMenu.locator('[data-menu-item-id="selection:viewport:iphone-se"]').click()
     await waitFor(
       () => getSnapshot(restartApp),

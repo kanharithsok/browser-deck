@@ -968,7 +968,9 @@ export class BrowserManager {
       record.url !== 'about:blank' &&
       // A navigation can temporarily reset Chromium emulation. Keep the native
       // view hidden while reloading an emulated pane so the old scale never
-      // flashes before the stop handler reapplies it.
+      // flashes before the stop handler reapplies it. A non-emulated page must
+      // stay visible while loading; a hidden WebContentsView reports a 0x0
+      // viewport to the page.
       (!record.isLoading || !record.emulationEnabled)
     record.view.setVisible(visible)
   }
@@ -1148,6 +1150,10 @@ export class BrowserManager {
         await webContents.debugger.sendCommand('Emulation.setTouchEmulationEnabled', {
           enabled,
           maxTouchPoints: enabled ? 5 : 1
+        })
+        await webContents.debugger.sendCommand('Emulation.setEmitTouchEventsForMouse', {
+          enabled,
+          configuration: 'mobile'
         })
       } catch (error) {
         record.touchEmulationEnabled = null

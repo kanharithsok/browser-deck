@@ -142,6 +142,11 @@ function panePage(paneName, user) {
   </p>
   <script>
     const paneName = ${JSON.stringify(paneName)};
+    window.__browserdeckInitialViewport = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      dpr: window.devicePixelRatio
+    };
     const output = document.getElementById('output');
     function refresh() {
       document.getElementById('address').textContent = location.href;

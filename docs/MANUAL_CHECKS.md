@@ -73,7 +73,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] The pane header shows viewport class and resolution. (E2e verifies `Phone` and `390 × 844` in the second header row; the side labels hide when the custom viewport editor opens.)
 - [x] The **+** add menu creates a pane with the selected browser preset. (E2e opens the custom menu, selects iPhone 15 Pro, and verifies the new pane's viewport.)
 - [x] Multiple URLs can be opened at once with a shared viewport. (E2e opens the empty-state bulk dialog, enters three fixture URLs, selects iPhone SE, verifies three distinct profiles all using that viewport, and cleans up two browsers.)
-- [x] Selected browsers expose common topbar actions. (E2e holds Cmd/Ctrl to activate Select temporarily, marquees two browsers, applies iPhone SE through the selection viewport menu, and closes the selected set with Delete.)
+- [x] Selected browsers expose common topbar actions and clear from empty canvas. (E2e exercises both the persistent Select tool and Cmd/Ctrl Select, checks that no X close action remains in the selection UI, applies iPhone SE through the selection viewport menu, clicks empty canvas to clear the active browser and rings, and closes the selected set with Delete.)
 - [x] Native page pointer interactions remain browser-native. (E2e drag-selects heading text inside a live pane and verifies the DOM selection.)
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)

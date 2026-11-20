@@ -1693,7 +1693,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-056 — Marquee Select tool for bulk pane cleanup
 
-- **Status:** Accepted
+- **Status:** Accepted; selection-toolbar close placement superseded by ADR-075
 - **Date:** 2026-11-20
 - **Context:** Workspaces with many panes require repeated close actions. Users asked for a marquee-selection tool in the bottom Canvas bar so they can drag around several panes and delete them together. Canvas panes are native views, so the shell cannot draw a selection rectangle over live page content, and normal Canvas dragging already owns empty-canvas panning and pane-header moves.
 
@@ -1702,9 +1702,9 @@ Record material technical decisions here. Keep entries short but include context
   2. While Select is active, a primary drag from empty canvas or pane chrome starts a marquee instead of panning or moving a pane. Interactive controls keep normal behavior.
   3. Hide native pane views for the duration of the marquee and draw the rectangle as shell DOM. Capture snapshots when none are available so covered panes do not flash.
   4. Convert pane frames to screen space and use the pure `canvasPaneIdsInRect` helper to select every intersecting frame. Selection replaces the previous set on each drag.
-  5. Ring selected pane slots outside native bounds and show a toolbar count chip with a close action. A click without movement selects only the pane under the cursor, or clears the selection on empty canvas.
+  5. Ring selected pane slots outside native bounds and show a toolbar count chip. A click without movement selects only the pane under the cursor, or clears the selection on empty canvas.
   6. Delete/Backspace closes the selected set when focus is in shell chrome; Escape clears the selection, then exits the tool. Update the bar through a validated `browserdeck:set-canvas-select-mode` channel so `aria-pressed` reflects the real state.
-  7. Keep selection ephemeral. It is not persisted, does not change the active pane, and clears on workspace switch or when the last selected pane closes.
+  7. Keep the selection set ephemeral. It is not persisted and clears on workspace switch or when the last selected pane closes.
 
 - **Alternatives considered:**
   - **Shift-click to build a selection.** Deferred; marquee is the requested path, and click/Shift semantics can be added later without changing the model.
@@ -2246,13 +2246,15 @@ Record material technical decisions here. Keep entries short but include context
 - **Decision:**
   1. Keep the selected count in the top toolbar.
   2. Add a viewport trigger that opens the full preset catalog for every selected browser, with the shared preset checked when all selected browsers match.
-  3. Add visible Reload selected and Close selected actions.
+  3. Add visible Reload selected. Close the selected set with Delete/Backspace; do not put a close action in the selection toolbar or menu.
   4. Show “Viewport” when the selection has mixed presets; applying a preset normalizes the set.
   5. Add a temporary Select mode: hold Cmd on macOS or Ctrl on Windows/Linux while shell chrome has focus, mirroring the existing hold-Space Hand tool. Remote page content keeps native browser input behavior.
-  6. Keep the persistent bottom-bar Select tool as the non-modifier path.
+  6. Keep the persistent bottom-bar Select tool as the non-modifier path. Both tools clear the selection on an empty-canvas click, including the active browser.
+  7. Remove the `selection-close` X control and do not replace it with another selection close action; Delete remains the bulk-close shortcut.
 
 - **Alternatives considered:**
-  - **Put all actions behind a single overflow menu.** Rejected; the user asked for the common items to be visible in the top toolbar.
+  - **Keep a visible X close action in the selection toolbar.** Rejected; it made accidental bulk deletion too easy and the user asked to remove it.
+  - **Put all actions behind a single overflow menu.** Rejected; the common viewport and reload actions should stay visible.
   - **Apply viewport changes through a renderer-only mutation.** Rejected; main must validate every viewport.
   - **Intercept modifier keys over native page content.** Rejected; native views receive those events, so the temporary Select tool is scoped to shell chrome.
 
@@ -2263,7 +2265,7 @@ Record material technical decisions here. Keep entries short but include context
   - Holding Cmd/Ctrl does not affect Cmd-click, text selection, or other native page behavior.
 
 - **Evidence / verification:**
-  - E2E uses the temporary Cmd/Ctrl Select mode, verifies the crosshair state, applies iPhone SE to two selected browsers through the topbar menu, and closes the selected set with Delete.
+  - E2E exercises the persistent and temporary Select tools, verifies the crosshair state, checks that empty canvas clears both the selection and active browser, confirms the selection toolbar has no X close control, applies iPhone SE to two selected browsers through the topbar menu, and closes the selected set with Delete.
   - Accessibility coverage continues to exercise the persistent Select button in the native bottom bar.
 
 ### ADR-NNN — Title

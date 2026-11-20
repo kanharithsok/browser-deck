@@ -1165,12 +1165,18 @@ function selectPane(paneId: string | null): void {
 }
 
 function clearPaneSelection(): void {
-  if (activePaneId.value === null) {
-    return
+  const hadActive = activePaneId.value !== null
+  const hadSelected = selectedPaneIds.value.size > 0
+  if (hadActive) {
+    blurActiveShellControl()
+    selectPane(null)
   }
-  blurActiveShellControl()
-  selectPane(null)
-  void nextTick(scheduleMeasure)
+  if (hadSelected) {
+    selectedPaneIds.value = new Set()
+  }
+  if (hadActive || hadSelected) {
+    void nextTick(scheduleMeasure)
+  }
 }
 
 function recoverFocus(): void {
@@ -1842,7 +1848,16 @@ function finishMarqueeSelection(event?: PointerEvent): void {
   if (cancelled) {
     clearSelectedPanes()
   } else if (!moved) {
-    selectedPaneIds.value = anchorPaneId ? new Set([anchorPaneId]) : new Set()
+    if (anchorPaneId) {
+      selectedPaneIds.value = new Set([anchorPaneId])
+    } else {
+      // Clicking empty canvas clears the active browser too, matching the
+      // normal Canvas selection behavior.
+      selectPane(null)
+    }
+  } else if (selectedPaneIds.value.size === 0) {
+    // A marquee that ends over empty canvas clears the active browser as well.
+    selectPane(null)
   }
 
   syncCanvasMinimapVisibility()
@@ -2672,9 +2687,15 @@ function applyState(state: ShellState): void {
     } else if (removedPane && document.activeElement === document.body) {
       recoverFocus()
     }
-    scheduleMeasure()
     if (workspaceChanged) {
-      requestAnimationFrame(() => restoreCanvasViewWhenReady())
+      // Let the first camera fit decide the frame sizes before native views are
+      // measured and their first navigation starts.
+      requestAnimationFrame(() => {
+        restoreCanvasViewWhenReady()
+        scheduleMeasure()
+      })
+    } else {
+      scheduleMeasure()
     }
   })
 }
@@ -4594,17 +4615,6 @@ onBeforeUnmount(() => {
             <path d="M12.8 3.3v3.2H9.6" />
           </svg>
         </button>
-        <button
-          class="icon-button selection-close"
-          type="button"
-          :title="`Close ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'} (Delete)`"
-          :aria-label="`Close ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}`"
-          @click="closeSelectedPanes"
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
       </div>
       <button
         class="icon-button toolbar-icon add-pane-button"
@@ -5315,15 +5325,13 @@ onBeforeUnmount(() => {
   stroke-linejoin: round;
 }
 
-.selection-reload,
-.selection-close {
+.selection-reload {
   width: 24px;
   height: 24px;
   color: inherit;
 }
 
-.selection-reload svg,
-.selection-close svg {
+.selection-reload svg {
   width: 12px;
   height: 12px;
   fill: none;
@@ -5332,8 +5340,7 @@ onBeforeUnmount(() => {
   stroke-linecap: round;
 }
 
-.selection-reload:hover:not(:disabled),
-.selection-close:hover:not(:disabled) {
+.selection-reload:hover:not(:disabled) {
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
