@@ -73,7 +73,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] The pane header shows viewport class and resolution. (E2e verifies `Phone` and `390 × 844` in the second header row; the side labels hide when the custom viewport editor opens.)
 - [x] The **+** add menu creates a pane with the selected browser preset. (E2e opens the custom menu, selects iPhone 15 Pro, and verifies the new pane's viewport.)
 - [x] Multiple URLs can be opened at once with a shared viewport. (E2e opens the empty-state bulk dialog, enters three fixture URLs, selects iPhone SE, verifies three distinct profiles all using that viewport, and cleans up two browsers.)
-- [x] Selected browsers expose common topbar actions and clear from empty canvas. (E2e exercises both the persistent Select tool and Cmd/Ctrl Select, checks that no X close action remains in the selection UI, applies iPhone SE through the selection viewport menu, clicks empty canvas to clear the active browser and rings, and closes the selected set with Delete.)
+- [x] Selected browsers expose common topbar actions and clear from empty canvas. (E2e exercises both the persistent Select tool and Cmd/Ctrl Select, checks plain-click and Cmd/Ctrl-click toggling, checks that no X close action remains in the selection UI, applies iPhone SE through the selection viewport menu, clicks empty canvas to clear the active browser and frames, and closes the selected set with Delete.)
 - [x] Native page pointer interactions remain browser-native. (E2e drag-selects heading text inside a live pane and verifies the DOM selection.)
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
@@ -200,10 +200,12 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Post-MVP — Marquee multi-select
 
 - [x] The bottom canvas bar has a Select tool with a pressed state. (E2e verifies its accessible name, tooltip, `aria-pressed` transition, and the `canvas-select` workspace cursor state.)
+- [x] A plain click and Cmd/Ctrl+click toggle a pane without dragging. (E2e clicks a title on and off, adds a second pane by clicking it, and confirms the same toggling while Cmd/Ctrl is held.)
+- [x] Click and marquee selections use the plain normal-click frame. (E2e computes the outline width, style, color, offset, and radius for a clicked pane and a marquee-selected pane, requires them to match, and confirms the radius is `0px`.)
 - [x] Dragging a marquee selects every intersecting pane. (E2e creates four stress panes, fits them, drags around two, and verifies two selected rings plus a `2 selected` toolbar chip.)
 - [x] Delete closes the selected set. (E2e presses Delete and verifies only the two selected pane IDs disappear; the remaining workspace and later leak cycles stay intact.)
-- [x] The marquee is visible and native pages do not cover it. (Native views are hidden during the gesture by the existing visibility path; selected rings are drawn on pane slots outside native bounds.)
-- [x] Escape clears the selection and a second press exits the tool. (Implemented in the trusted shell key handler; covered by the marquee flow and manual check.)
+- [x] The marquee is visible and native pages do not cover it. (Native views are hidden during the gesture by the existing visibility path; selected frames are drawn on pane slots outside native bounds.)
+- [x] Escape clears the selection and active browser, and a second press exits the tool. (Implemented in the trusted shell key handler; covered by the marquee flow and manual check.)
 - [x] Select and Hand are mutually exclusive. (Toolbar state is validated through `browserdeck:set-canvas-select-mode`; activating one clears the other.)
 
 ## Post-MVP — Preset user agents

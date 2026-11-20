@@ -532,7 +532,11 @@ async function readPaneCardRects(
 
 async function focusPane(page: Page, paneId: string): Promise<void> {
   const card = page.locator(`.pane-card[data-pane-id="${paneId}"]`)
-  await card.locator('.pane-title').click()
+  if ((await card.getAttribute('aria-current')) !== 'true') {
+    // Clicking interactive header chrome activates the pane without toggling
+    // its selection, unlike a plain click on the pane title.
+    await card.locator('.address-input').click()
+  }
   await expect(card).toHaveAttribute('aria-current', 'true')
 }
 
@@ -3383,6 +3387,42 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }
     await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
 
+    const readSelectionFrame = (card: typeof firstStressCard) =>
+      card.evaluate((element) => {
+        const slot = element.parentElement
+        if (!slot) {
+          return null
+        }
+        const style = getComputedStyle(slot)
+        return {
+          outlineWidth: style.outlineWidth,
+          outlineStyle: style.outlineStyle,
+          outlineColor: style.outlineColor,
+          outlineOffset: style.outlineOffset,
+          borderRadius: style.borderRadius
+        }
+      })
+
+    // A plain click toggles a pane in and out of the same selection used by
+    // Cmd/Ctrl and the Select tool. No drag is required, and the selection can
+    // grow by clicking another pane.
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(1)
+    const normalSelectionFrame = await readSelectionFrame(firstStressCard)
+    expect(normalSelectionFrame?.borderRadius).toBe('0px')
+    await secondStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
+    await secondStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(0)
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+
     // The persistent Select tool and temporary Cmd/Ctrl Select use the same
     // click/empty-canvas semantics. The X close action is gone from the
     // selection toolbar.
@@ -3412,6 +3452,15 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       { steps: 8 }
     )
     await restartShell.mouse.up()
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
+    expect(await readSelectionFrame(secondStressCard)).toEqual(normalSelectionFrame)
+
+    // Cmd/Ctrl+click toggles a pane without dragging, just like a plain click.
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(1)
+    await firstStressCard.locator('.pane-title').click()
     await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
     await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
 

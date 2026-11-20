@@ -1270,3 +1270,21 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed as part of `npm run test:e2e`: main 158.33 kB, preload 9.32 kB, renderer JS 380.85 kB, shell CSS 35.66 kB. |
 
 **Known behavior / limitations:** Clicking a partially visible pane does not make its page interactive; the user must bring the pane fully into view with Fit all, the overview, Cmd/Ctrl+K, or canvas panning. Panes that are panned mostly off-screen continue to show a snapshot and a hidden-browser message until then.
+
+## Canvas selection — Click and Cmd/Ctrl+click share one toggle selection
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Plain click, Cmd/Ctrl+click, and a click in the persistent Select tool now toggle a pane in the same multi-selection without requiring a drag. Clicking an unselected pane adds it; clicking a selected pane removes it and moves or clears the active pane appropriately. Header drags still move the pane and leave selection unchanged. Marquee drags still replace the selection with every intersecting pane. Selected and active pane slots now use the same plain click frame: a 1 px accent outline with a 1 px offset and no corner radius. Clicking interactive pane chrome (address, buttons, menus) normalizes the selection to that pane instead of toggling it, preventing stale multi-selection from affecting later actions. Escape clears the selection and active pane even when the persistent Select tool is off; a second press exits the tool when applicable.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-056 status note, ADR-077 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 179 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 20.5 s. New coverage verifies plain-click select/deselect, additive click selection, Cmd/Ctrl+click toggling without a drag, identical click/marquee selection-frame metrics, and the existing marquee/delete flow. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.33 kB, preload 9.32 kB, renderer JS 381.99 kB, shell CSS 35.58 kB. |
+
+**Known behavior / limitations:** Native page content receives its own clicks, so click-to-toggle applies to pane chrome and snapshots rather than the live website surface. Clicking any interactive pane control resets the selection to that pane, which intentionally clears a broader marquee selection. A single click now shows the selection toolbar with a one-browser count.

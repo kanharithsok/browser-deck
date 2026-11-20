@@ -1693,7 +1693,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-056 — Marquee Select tool for bulk pane cleanup
 
-- **Status:** Accepted; selection-toolbar close placement superseded by ADR-075
+- **Status:** Accepted; selection-toolbar close placement superseded by ADR-075; click/marquee semantics extended by ADR-077
 - **Date:** 2026-11-20
 - **Context:** Workspaces with many panes require repeated close actions. Users asked for a marquee-selection tool in the bottom Canvas bar so they can drag around several panes and delete them together. Canvas panes are native views, so the shell cannot draw a selection rectangle over live page content, and normal Canvas dragging already owns empty-canvas panning and pane-header moves.
 
@@ -2295,6 +2295,39 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e pans a pane partly off-screen, clicks its visible area, and verifies the pane becomes active while its position and the zoom level stay unchanged; the native view remains hidden. Fit all restores the camera afterward.
   - Unit, typecheck, lint, build, and the full e2e suite pass.
+
+## ADR-077 — Plain click and Cmd/Ctrl+click share one toggle selection
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Normal Canvas clicks selected one active pane with a thin frame, while Cmd/Ctrl+drag marquee selections used a heavier rounded frame and required a drag or a replacing click. The two selection paths therefore looked and behaved differently. Users asked for one frame and for click-to-toggle without dragging.
+
+- **Decision:**
+  1. A plain click on pane chrome toggles that pane in the multi-selection. Cmd/Ctrl+click and a click in the persistent Select tool use the same toggle path.
+  2. Clicking an already selected pane removes it. If it was active, the active pane moves to the last remaining selected pane or clears.
+  3. Clicking an unselected pane adds it without clearing the other selected panes.
+  4. A pane header click toggles only when the pointer does not move. Dragging still moves the pane and leaves selection unchanged.
+  5. A marquee drag replaces the selection with every intersecting pane; a no-drag click toggles instead of replacing.
+  6. Active and selected pane slots use the same plain 1 px accent outline and 1 px offset as the original click selection, with no corner radius.
+  7. Clicking interactive pane chrome selects only that pane, replacing the selection without toggling, so controls do not leave stale multi-selection behind.
+  8. Clicking empty canvas clears the selection and active pane. Escape clears both even when the persistent Select tool is off, then exits the tool on the next press when applicable.
+
+- **Alternatives considered:**
+  - **Keep plain click as single active selection.** Rejected; users asked for normal select and Cmd/Select to behave the same.
+  - **Keep the heavier 2 px selected frame.** Rejected; the normal click frame should be the shared visual.
+  - **Require a drag or Cmd/Ctrl to change selection.** Rejected; click-to-toggle is the requested path.
+  - **Toggle from interactive controls.** Rejected; clicking an address, button, or menu should not remove the pane from a selection the user is editing.
+
+- **Consequences:**
+  - A single click can show the selection toolbar with a one-browser count.
+  - Repeated clicks toggle panes on and off, and Delete then targets that visible selected set.
+  - Clicking a pane control normalizes the selection to that pane.
+  - Active and selected states are visually identical; selection count and the toolbar actions communicate the difference.
+  - Native page content still receives its own clicks, so toggling applies to shell pane chrome and snapshots.
+
+- **Evidence / verification:**
+  - E2e verifies plain-click select/deselect, additive click selection, Cmd/Ctrl+click toggling without a drag, and identical computed outline metrics for click- and marquee-selected panes.
+  - The existing marquee, shared viewport, empty-canvas clearing, Delete, and accessibility coverage still passes.
 
 ### ADR-NNN — Title
 

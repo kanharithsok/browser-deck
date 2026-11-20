@@ -135,6 +135,7 @@ interface CanvasPaneDragState {
   startX: number
   startY: number
   base: CanvasPosition
+  moved: boolean
 }
 
 interface PendingDuplicatePlacement {
@@ -1587,7 +1588,8 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
     paneId,
     startX: event.clientX,
     startY: event.clientY,
-    base: { x: frame.x, y: frame.y }
+    base: { x: frame.x, y: frame.y },
+    moved: false
   }
   isCanvasPaneDragging.value = true
   document.body.classList.add('browserdeck-canvas-pane-dragging')
@@ -1604,6 +1606,12 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
     return
   }
   event.preventDefault()
+  if (
+    Math.abs(event.clientX - drag.startX) > 3 ||
+    Math.abs(event.clientY - drag.startY) > 3
+  ) {
+    drag.moved = true
+  }
   const frame = canvasFrames.value.get(drag.paneId)
   if (!frame) {
     return
@@ -1663,10 +1671,12 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
   }
 }
 
-function finishCanvasPaneDrag(): void {
-  if (!canvasPaneDrag.value) {
+function finishCanvasPaneDrag(event?: PointerEvent): void {
+  const drag = canvasPaneDrag.value
+  if (!drag) {
     return
   }
+  const toggleSelection = !drag.moved && event?.type !== 'pointercancel'
   canvasPaneDrag.value = null
   isCanvasPaneDragging.value = false
   clearCanvasGuides()
@@ -1674,6 +1684,9 @@ function finishCanvasPaneDrag(): void {
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
   window.removeEventListener('pointercancel', finishCanvasPaneDrag)
+  if (toggleSelection) {
+    togglePaneSelection(drag.paneId)
+  }
   void nextTick(async () => {
     await measurePanes()
     await saveWorkspaceLayout()
@@ -1708,6 +1721,30 @@ function clearSelectedPanes(): void {
   if (selectedPaneIds.value.size > 0) {
     selectedPaneIds.value = new Set()
   }
+}
+
+function togglePaneSelection(paneId: string): void {
+  const next = new Set(selectedPaneIds.value)
+  if (next.has(paneId)) {
+    next.delete(paneId)
+    selectedPaneIds.value = next
+    if (activePaneId.value === paneId) {
+      selectPane([...next].at(-1) ?? null)
+    }
+  } else {
+    next.add(paneId)
+    selectedPaneIds.value = next
+    if (activePaneId.value !== paneId) {
+      selectPane(paneId)
+    }
+  }
+  void nextTick(scheduleMeasure)
+}
+
+function selectOnlyPane(paneId: string): void {
+  selectedPaneIds.value = new Set([paneId])
+  selectPane(paneId)
+  void nextTick(scheduleMeasure)
 }
 
 function setSelectionToolActive(active: boolean): void {
@@ -1782,7 +1819,6 @@ function beginMarqueeSelection(event: PointerEvent, anchorPaneId: string | null)
     width: 0,
     height: 0
   }
-  selectedPaneIds.value = new Set()
   isMarqueeSelecting.value = true
   document.body.classList.add('browserdeck-canvas-selecting')
   syncCanvasMinimapVisibility()
@@ -1801,11 +1837,17 @@ function onMarqueePointerMove(event: PointerEvent): void {
     return
   }
   event.preventDefault()
-  if (
+  const moved =
     Math.abs(event.clientX - drag.startX) > 2 ||
     Math.abs(event.clientY - drag.startY) > 2
-  ) {
+  if (!drag.moved && !moved) {
+    return
+  }
+  if (!drag.moved) {
     drag.moved = true
+    // A real marquee replaces the existing selection. A simple click toggles
+    // the pane under the pointer instead.
+    selectedPaneIds.value = new Set()
   }
   const rect = normalizedMarqueeRect(event.clientX, event.clientY)
   if (!rect) {
@@ -1849,10 +1891,11 @@ function finishMarqueeSelection(event?: PointerEvent): void {
     clearSelectedPanes()
   } else if (!moved) {
     if (anchorPaneId) {
-      selectedPaneIds.value = new Set([anchorPaneId])
+      togglePaneSelection(anchorPaneId)
     } else {
       // Clicking empty canvas clears the active browser too, matching the
       // normal Canvas selection behavior.
+      clearSelectedPanes()
       selectPane(null)
     }
   } else if (selectedPaneIds.value.size === 0) {
@@ -3809,14 +3852,17 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
   if (isTextEntryTarget(event.target)) {
     return
   }
-  if (event.key === 'Escape' && selectionToolActive.value) {
-    event.preventDefault()
+  if (event.key === 'Escape') {
     if (selectedPaneIds.value.size > 0) {
-      clearSelectedPanes()
-    } else {
-      setSelectionToolActive(false)
+      event.preventDefault()
+      clearPaneSelection()
+      return
     }
-    return
+    if (selectionToolActive.value) {
+      event.preventDefault()
+      setSelectionToolActive(false)
+      return
+    }
   }
   if (event.key !== 'Delete' && event.key !== 'Backspace') {
     return
@@ -4113,10 +4159,15 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     if (!canvasPaneId) {
       return
     }
-    selectPane(canvasPaneId)
-    if (target.closest('.pane-header') && !interactive) {
-      beginCanvasPaneDrag(event, canvasPaneId)
+    if (interactive || event.button !== 0) {
+      selectOnlyPane(canvasPaneId)
+      return
     }
+    if (target.closest('.pane-header')) {
+      beginCanvasPaneDrag(event, canvasPaneId)
+      return
+    }
+    togglePaneSelection(canvasPaneId)
     return
   }
 
@@ -5464,15 +5515,10 @@ onBeforeUnmount(() => {
   position: absolute;
 }
 
-.pane-slot-active {
+.pane-slot-active,
+.pane-slot-selected {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
-}
-
-.pane-slot-selected {
-  border-radius: 11px;
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .pane-slot-dragging {
