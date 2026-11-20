@@ -1324,3 +1324,21 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed as part of `npm run test:e2e`: main 158.91 kB, preload 9.32 kB, renderer JS 382.90 kB, shell CSS 35.58 kB. |
 
 **Known behavior / limitations:** Menu reveal now waits for one native-bounds round trip, so it can appear a few milliseconds later on a busy Canvas. The fix is specific to custom shell menus; native application menus are unchanged. The 16-pane repro was also confirmed with a temporary instrumented harness before and after the handshake.
+
+## Documentation — README screenshots
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Added two screenshots to the README, captured from the running Electron app with native pane content included. The dark-theme hero shows six iPhone 15 Pro panes in a horizontal row; the light-theme shot shows responsive, tablet, and phone viewports together. The overview is collapsed in both shots so it does not cover pane content. Capture provenance and demo URLs are documented in `docs/screenshots/README.md`.
+
+**Files changed:** `README.md`, `docs/screenshots/canvas-dark.png`, `docs/screenshots/canvas-light-mixed-viewports.png`, `docs/screenshots/README.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Image dimensions | Both screenshots are 1680 px wide; the dark hero is 1680 × 760 and the mixed-viewport shot is 1680 × 1000. |
+| Native content | Captured the actual `BrowserDeck` window through `desktopCapturer`; all pane content and app chrome are present. |
+| README links | Both relative image paths resolve from the repository root. |
+
+**Known behavior / limitations:** The screenshots use locally served demo sites, so the address bars show `localhost:5173`. The sites are illustrative demo content, not bundled with BrowserDeck.

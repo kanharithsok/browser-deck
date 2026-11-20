@@ -10,6 +10,16 @@ BrowserDeck is a local-first macOS desktop application for developers, designers
 
 > **Project status:** BrowserDeck 1.2.0 is the current source version. It is a working Electron/Vue browser workspace with isolated persistent sessions, a Canvas-only workspace with world-space snapping, a custom browser menu and canvas context menu, native-aware view hiding, native Browser-menu commands, per-browser viewport emulation, workspace persistence and management, safe window bounds, per-pane session release on close, persisted system/light/dark themes, unsigned arm64 macOS packaging, repeated-switch leak stress, workspace import/export, active-pane accessibility, automated Playwright/CDP/axe accessibility audits, a 50-cycle loaded-page soak, and a security-hardened shell/IPC/session boundary. Post-1.0 hardening covers a VoiceOver/manual screen-reader pass, longer CPU/memory profiling, Windows/Linux packaging, and signed/notarized distribution once Apple Developer credentials exist. See [`SECURITY.md`](./SECURITY.md).
 
+## Screenshots
+
+![BrowserDeck Canvas with six independent browser panes in the dark theme](docs/screenshots/canvas-dark.png)
+
+Six independent browser sessions arranged together on the Canvas.
+
+![BrowserDeck Canvas with responsive, tablet, and phone browser panes in the light theme](docs/screenshots/canvas-light-mixed-viewports.png)
+
+Responsive, tablet, and phone viewports sharing one workspace in the light theme.
+
 ## Current capabilities
 
 - Electron `BaseWindow` with a trusted Vue shell and native `WebContentsView` browser panes.
