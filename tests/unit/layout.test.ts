@@ -3,6 +3,7 @@ import {
   bringToFront,
   clampRect,
   isRectFullyVisible,
+  isRectSafeForLiveView,
   layoutGrid,
   moveItem,
   moveRect,
@@ -510,5 +511,49 @@ describe('isRectFullyVisible', () => {
     ).toBe(false)
     expect(isRectFullyVisible({ x: 0, y: 0, width: 0, height: 10 }, viewport)).toBe(false)
     expect(isRectFullyVisible({ x: 0, y: 0, width: 10, height: 10 }, viewport, -1)).toBe(false)
+  })
+})
+
+describe('isRectSafeForLiveView', () => {
+  const viewport = { x: 10, y: 60, width: 800, height: 400 }
+
+  it('accepts rectangles clipped only by the left, right, or bottom edge', () => {
+    expect(
+      isRectSafeForLiveView({ x: -200, y: 80, width: 300, height: 200 }, viewport)
+    ).toBe(true)
+    expect(
+      isRectSafeForLiveView({ x: 700, y: 80, width: 300, height: 200 }, viewport)
+    ).toBe(true)
+    expect(
+      isRectSafeForLiveView({ x: 100, y: 400, width: 300, height: 200 }, viewport)
+    ).toBe(true)
+  })
+
+  it('rejects rectangles that overlap the top edge or miss the viewport', () => {
+    expect(
+      isRectSafeForLiveView({ x: 100, y: 59, width: 300, height: 200 }, viewport)
+    ).toBe(false)
+    expect(
+      isRectSafeForLiveView({ x: -500, y: 80, width: 400, height: 200 }, viewport)
+    ).toBe(false)
+    expect(
+      isRectSafeForLiveView({ x: 900, y: 80, width: 300, height: 200 }, viewport)
+    ).toBe(false)
+    expect(
+      isRectSafeForLiveView({ x: 100, y: 500, width: 300, height: 200 }, viewport)
+    ).toBe(false)
+  })
+
+  it('applies tolerance and rejects invalid inputs', () => {
+    expect(
+      isRectSafeForLiveView({ x: 100, y: 59.6, width: 300, height: 200 }, viewport, 0.5)
+    ).toBe(true)
+    expect(
+      isRectSafeForLiveView({ x: 100, y: 59.6, width: 300, height: 200 }, viewport, 0)
+    ).toBe(false)
+    expect(isRectSafeForLiveView({ x: 0, y: 0, width: 0, height: 10 }, viewport)).toBe(false)
+    expect(isRectSafeForLiveView({ x: 0, y: 0, width: 10, height: 10 }, viewport, -1)).toBe(
+      false
+    )
   })
 })

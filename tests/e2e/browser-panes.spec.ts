@@ -540,8 +540,16 @@ async function focusPane(page: Page, paneId: string): Promise<void> {
   await expect(card).toHaveAttribute('aria-current', 'true')
 }
 
-function rectsAlign(domRects: DomPaneRect[], nativeBounds: Array<{ paneId: string; rect: PaneViewRect }>): boolean {
-  if (domRects.length !== nativeBounds.length) {
+function viewRectsOverlap(a: PaneViewRect, b: PaneViewRect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  )
+}
+
+function rectsAlign(domRects: DomPaneRect[], nativeBounds: Array<{ paneId: string; rect: PaneViewRect }>): boolean {  if (domRects.length !== nativeBounds.length) {
     return false
   }
 
@@ -1244,9 +1252,8 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const resetEmulation = await getEmulationState(app, alicePaneId as string)
     expect(resetEmulation?.enabled).toBe(false)
 
-    // Clicking a partially visible pane must only select it. It must not move
-    // or zoom the camera; the snapshot stays until an explicit camera action
-    // brings the pane fully into view.
+    // A pane clipped only by a window edge stays live. Its full native bounds
+    // are preserved so the page viewport does not reflow.
     await fitAllDevices(app as ElectronApplication)
     await waitForVisibleAlignedBounds(app)
     const pinnedCard = await firstCanvasCard.boundingBox()
@@ -1262,6 +1269,37 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(async () =>
         (await getViewStates(app as ElectronApplication)).some(
+          (state) => state.paneId === alicePaneId && state.visible
+        )
+      )
+      .toBe(true)
+    const edgeClippedState = (await getViewStates(app as ElectronApplication)).find(
+      (state) => state.paneId === alicePaneId
+    )
+    const edgeClippedDom = (await readDomPaneRects(app as ElectronApplication)).find(
+      (entry) => entry.paneId === alicePaneId
+    )
+    if (!edgeClippedState || !edgeClippedDom) {
+      throw new Error('Edge-clipped pane geometry is unavailable')
+    }
+    expect(edgeClippedState.rect.x).toBeLessThan(pinnedWorkspace.x)
+    expect(Math.abs(edgeClippedState.rect.width - edgeClippedDom.rect.width)).toBeLessThanOrEqual(
+      1
+    )
+    await expect(
+      shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"] .pane-message`)
+    ).toHaveCount(0)
+
+    // A pane that would overlap the top toolbar must stay suspended. Clicking
+    // it selects it without moving or zooming the camera.
+    await shellPage.mouse.move(
+      pinnedWorkspace.x + pinnedWorkspace.width - 8,
+      pinnedWorkspace.y + 8
+    )
+    await shellPage.mouse.wheel(0, 140)
+    await expect
+      .poll(async () =>
+        (await getViewStates(app as ElectronApplication)).some(
           (state) => state.paneId === alicePaneId && !state.visible
         )
       )
@@ -1274,10 +1312,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     }
     await shellPage.mouse.click(
       partiallyVisibleWorkspace.x + 32,
-      Math.min(
-        partiallyVisibleCard.y + 140,
-        partiallyVisibleWorkspace.y + partiallyVisibleWorkspace.height - 120
-      )
+      partiallyVisibleWorkspace.y + 140
     )
     await expect(shellPage.locator('.pane-card-active')).toHaveAttribute(
       'data-pane-id',
@@ -3655,6 +3690,133 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(
       restartShell.locator(`.pane-card[data-pane-id="${secondPaneId}"]`)
     ).toHaveAttribute('aria-current', 'true')
+  } finally {
+    if (app) {
+      await app.close().catch(() => undefined)
+    }
+    if (fixture) {
+      await fixture.close().catch(() => undefined)
+    }
+    if (userDataDir) {
+      await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+})
+
+test('Canvas menus hide covered native views with many panes', async () => {
+  test.setTimeout(120_000)
+
+  let fixture: FixtureServer | null = null
+  let userDataDir = ''
+  let app: ElectronApplication | null = null
+
+  try {
+    fixture = await startFixtureServer()
+    userDataDir = await mkdtemp(join(tmpdir(), 'browserdeck-menu-reveal-'))
+    const fixtureUrl = fixture.url
+    const urls = Array.from(
+      { length: 16 },
+      (_, index) => `${fixtureUrl}/pane/one?user=menu-${index}`
+    )
+    app = await launchApp(userDataDir, urls.slice(0, 2).join(','))
+
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.length === 2,
+      'initial menu-reveal panes'
+    )
+    const shellPage = await waitFor(
+      async () =>
+        (app as ElectronApplication)
+          .windows()
+          .find((page) => isShellPage(page.url())) ?? null,
+      (page) => page !== null,
+      'menu-reveal shell'
+    )
+    if (!shellPage) {
+      throw new Error('Menu-reveal shell is unavailable')
+    }
+    await shellPage.evaluate(async (remaining) => {
+      const bridge = (
+        window as unknown as { browserdeck: { addPane(url: string): Promise<unknown> } }
+      ).browserdeck
+      for (const url of remaining) {
+        await bridge.addPane(url)
+      }
+    }, urls.slice(2))
+
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.length === urls.length && state.panes.every((pane) => !pane.isLoading),
+      'menu-reveal panes to load'
+    )
+    const minimapPage = await waitFor(
+      async () =>
+        (app as ElectronApplication)
+          .windows()
+          .find((page) => page.url() === SHELL_MINIMAP_URL) ?? null,
+      (page) => page !== null,
+      'menu-reveal overview'
+    )
+    if (!minimapPage) {
+      throw new Error('Menu-reveal overview is unavailable')
+    }
+    await minimapPage.getByRole('button', { name: 'Fit all browsers' }).click()
+    await waitForVisibleAlignedBounds(app as ElectronApplication)
+    const zoomPage = await waitFor(
+      async () =>
+        (app as ElectronApplication)
+          .windows()
+          .find((page) => page.url() === SHELL_ZOOM_URL) ?? null,
+      (page) => page !== null,
+      'menu-reveal zoom bar'
+    )
+    if (!zoomPage) {
+      throw new Error('Menu-reveal zoom bar is unavailable')
+    }
+    // Menus are most likely to race a camera settle after a zoom.
+    await zoomPage.getByRole('button', { name: 'Zoom in' }).click()
+    await delay(40)
+    await zoomPage.getByRole('button', { name: 'Zoom in' }).click()
+    await delay(40)
+
+    const cardIndex = await shellPage.evaluate(() => {
+      const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
+      if (!workspace) {
+        return -1
+      }
+      return Array.from(document.querySelectorAll('.pane-card')).findIndex((element) => {
+        const rect = element.getBoundingClientRect()
+        return (
+          rect.top >= workspace.top &&
+          rect.top < workspace.bottom - 80 &&
+          rect.left < workspace.right - 40 &&
+          rect.right > workspace.left + 40
+        )
+      })
+    })
+    expect(cardIndex).toBeGreaterThanOrEqual(0)
+    const card = shellPage.locator('.pane-card').nth(cardIndex)
+    const menu = shellPage.getByRole('menu', { name: 'Browser actions' })
+
+    await card.getByRole('button', { name: 'Browser actions' }).click()
+    await expect(menu).toBeVisible()
+    const menuBox = await menu.boundingBox()
+    if (!menuBox) {
+      throw new Error('Menu-reveal bounds are unavailable')
+    }
+    const viewStates = await getViewStates(app as ElectronApplication)
+    expect(
+      viewStates.some((state) => state.visible && viewRectsOverlap(state.rect, menuBox))
+    ).toBe(false)
+    expect(
+      viewStates.some((state) => !state.visible && viewRectsOverlap(state.rect, menuBox))
+    ).toBe(true)
+
+    await shellPage.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    await waitForVisibleAlignedBounds(app as ElectronApplication)
   } finally {
     if (app) {
       await app.close().catch(() => undefined)

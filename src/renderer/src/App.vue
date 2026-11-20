@@ -69,7 +69,7 @@ import {
   GRID_MAX_COLUMNS,
   GRID_MIN_COLUMNS,
   bringToFront,
-  isRectFullyVisible,
+  isRectSafeForLiveView,
   layoutGrid,
   moveRect,
   normalizedToRect,
@@ -212,6 +212,8 @@ const appMenuAnchor = ref<{
   align: 'start'
 })
 const appMenuBounds = ref<Rect | null>(null)
+const appMenuReady = ref(true)
+let appMenuGeneration = 0
 let appMenuReturnFocus: HTMLElement | null = null
 const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
 const proximityGuides = ref<SnapGuides>({ vertical: [], horizontal: [] })
@@ -2784,6 +2786,8 @@ async function openAppMenu(
   appMenuReturnFocus = returnFocus instanceof HTMLElement ? returnFocus : null
   appMenuAnchor.value = anchor
   appMenuBounds.value = null
+  appMenuReady.value = false
+  appMenuGeneration += 1
   appMenuMode.value = mode
   syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
@@ -3049,6 +3053,8 @@ function closeAppMenu(restoreFocus = true): void {
   }
   appMenuMode.value = null
   appMenuBounds.value = null
+  appMenuReady.value = true
+  appMenuGeneration += 1
   paneMenuPaneId.value = null
   workspaceMenuId.value = null
   const target = appMenuReturnFocus
@@ -3063,9 +3069,19 @@ function closeAppMenu(restoreFocus = true): void {
 }
 
 function onAppMenuBounds(bounds: Rect): void {
+  const generation = appMenuGeneration
   appMenuBounds.value = bounds
   syncCanvasMinimapVisibility()
-  void nextTick(scheduleMeasure)
+  void nextTick(async () => {
+    try {
+      await measurePanes()
+    } catch {
+      // Reveal the menu even if native bounds could not be synchronized.
+    }
+    if (appMenuMode.value !== null && generation === appMenuGeneration) {
+      appMenuReady.value = true
+    }
+  })
 }
 
 async function applyMenuTheme(theme: ThemePreference): Promise<void> {
@@ -4308,7 +4324,7 @@ async function measurePanes(): Promise<void> {
       menuCovers
     const visible =
       !nativeViewsHidden &&
-      isRectFullyVisible(rect, workspaceRect)
+      isRectSafeForLiveView(rect, workspaceRect)
     if (!visible && !nativeViewsHidden) {
       suspended.add(paneId)
     }
@@ -5220,6 +5236,7 @@ onBeforeUnmount(() => {
       "
       :anchor="appMenuAnchor"
       :placement="isBottomBarMenu() ? 'above' : 'below'"
+      :ready="appMenuReady"
       :width="
         isBottomBarMenu()
           ? CANVAS_ZOOM_MENU_WIDTH

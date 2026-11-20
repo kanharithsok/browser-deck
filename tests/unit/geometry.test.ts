@@ -131,6 +131,57 @@ describe('parsePaneBounds', () => {
     ).toBe(false)
   })
 
+  it('preserves visible pane geometry that is clipped by a window edge', () => {
+    const result = parsePaneBounds(
+      [
+        {
+          paneId: 'pane-a',
+          rect: { x: -240, y: 100, width: 600, height: 400 },
+          visible: true
+        },
+        {
+          paneId: 'pane-b',
+          rect: { x: 700, y: 500, width: 600, height: 400 },
+          visible: true
+        }
+      ],
+      knownPanes,
+      canvas
+    )
+    expect(result).toEqual({
+      ok: true,
+      updates: [
+        {
+          paneId: 'pane-a',
+          rect: { x: -240, y: 100, width: 600, height: 400 },
+          visible: true
+        },
+        {
+          paneId: 'pane-b',
+          rect: { x: 700, y: 500, width: 600, height: 400 },
+          visible: true
+        }
+      ]
+    })
+  })
+
+  it('rejects visible panes that miss the canvas or exceed the size limit', () => {
+    expect(
+      parsePaneBounds(
+        [{ paneId: 'pane-a', rect: { x: -600, y: 100, width: 500, height: 400 }, visible: true }],
+        knownPanes,
+        canvas
+      ).ok
+    ).toBe(false)
+    expect(
+      parsePaneBounds(
+        [{ paneId: 'pane-a', rect: { x: 0, y: 0, width: 20_000, height: 400 }, visible: true }],
+        knownPanes,
+        canvas
+      ).ok
+    ).toBe(false)
+  })
+
   it('rejects panes below the supported minimum view size', () => {
     const result = parsePaneBounds(
       [

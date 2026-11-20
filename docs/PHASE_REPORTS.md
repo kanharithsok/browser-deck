@@ -1288,3 +1288,39 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed as part of `npm run test:e2e`: main 158.33 kB, preload 9.32 kB, renderer JS 381.99 kB, shell CSS 35.58 kB. |
 
 **Known behavior / limitations:** Native page content receives its own clicks, so click-to-toggle applies to pane chrome and snapshots rather than the live website surface. Clicking any interactive pane control resets the selection to that pane, which intentionally clears a broader marquee selection. A single click now shows the selection toolbar with a one-browser count.
+
+## Canvas visibility — Window-edge-clipped panes stay live
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Panes clipped only by the left, right, or bottom window edge now keep their live native views instead of switching to a paused snapshot. Their full native rectangle is preserved, so the page viewport and emulation do not reflow; the OS clips the overflow and the native bottom bar and overview stay above pane views. Panes that would overlap the top toolbar or an open Canvas menu still pause with a snapshot or message, and selecting one still leaves the camera untouched. The suspended message now reads “Browser paused while partly off-screen” with “Pan or use Fit all to make it fully visible.” Main validates live bounds with minimum/maximum sizes and requires canvas intersection, while allowing negative or past-edge coordinates only when the pane is at least partly visible. Snapshot capture remains in place for panning and menu-covered panes.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/layout.ts`, `src/shared/geometry.ts`, `tests/unit/layout.test.ts`, `tests/unit/geometry.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-005/032/033/076 status notes, ADR-078 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 184 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 21.4 s. New coverage pans a pane past the left window edge, verifies the native view stays visible with its full DOM width, then pans it under the top edge and verifies it suspends without moving the camera on click. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.91 kB, preload 9.32 kB, renderer JS 382.24 kB, shell CSS 35.58 kB. |
+
+**Known behavior / limitations:** True clipping under the top toolbar and open shell menus still requires a native-container spike, so those panes remain paused. Panes extending under the bottom bar or overview are live, but those native overlays cover their corners by design. Very large panes are still limited by the validated live-rectangle size cap.
+
+## Canvas menus — Reveal only after covered native views are hidden
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Custom menus no longer flash live page content over themselves while opening. A menu stays hidden until it has been positioned and the shell has hidden the native pane views intersecting its bounds. The shell awaits the native-bounds IPC before marking the menu ready and moving focus into it. Uncovered panes remain live, and opening a menu still only affects panes under that menu. Closing or failing to measure a menu always clears the waiting state, so an invisible menu cannot remain open indefinitely.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/AppMenu.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-079 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 184 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 3 Playwright tests in 22.3 s. New coverage loads 16 live fixture panes, zooms, opens a pane menu, and verifies no visible native view intersects the revealed menu while a covered view is hidden. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.91 kB, preload 9.32 kB, renderer JS 382.90 kB, shell CSS 35.58 kB. |
+
+**Known behavior / limitations:** Menu reveal now waits for one native-bounds round trip, so it can appear a few milliseconds later on a busy Canvas. The fix is specific to custom shell menus; native application menus are unchanged. The 16-pane repro was also confirmed with a temporary instrumented harness before and after the handshake.

@@ -228,7 +228,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - The Add browser item switches the menu to the browser picker without opening a separate modal.
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
 - Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
-- Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
+- Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live. Do not reveal a menu until the native views it intersects have been hidden, so page content cannot flash over the opening menu.
 - Keep the bottom canvas bar and overview visible when an open menu does not intersect them. Hide only the overlay a menu actually covers. The zoom, Arrange, and appearance menus always keep both visible, and a bar or overview action closes the menu.
 
 ### 7.4 Canvas mode
@@ -241,9 +241,9 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Keep the minimal top toolbar mounted at a stable height in Canvas. The workspace keeps a quiet empty state when no pane is selected, so selecting or clearing a pane never moves or resizes the Canvas.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas. Do not allow a drag to place the pane header above the top workspace inset.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
-- Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
+- Keep pages live as native views when their content does not overlap the top toolbar or an open menu. Live views may extend past the left, right, or bottom window edge and be clipped there without reflowing the page; the native bottom Canvas bar and overview remain above them.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
-- Partially visible panes remain snapshots until an explicit camera action brings them fully into view. Clicking a partially visible pane selects it without moving or zooming the camera; Fit all, overview focus, device-palette focus, and regular panning remain the explicit paths to bring it fully into view.
+- Panes that would overlap the top toolbar or an open menu remain snapshots until an explicit camera action brings them clear. Clicking such a pane selects it without moving or zooming the camera; Fit all, overview focus, device-palette focus, and regular panning remain the explicit paths.
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.

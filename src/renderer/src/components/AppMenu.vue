@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AppMenuModel } from '../menu'
 import MenuIcon from './MenuIcon.vue'
 
@@ -9,10 +9,12 @@ const props = withDefaults(
     anchor: { x: number; y: number; align: 'start' | 'end' | 'center' }
     placement?: 'below' | 'above'
     width?: number
+    ready?: boolean
   }>(),
   {
     placement: 'below',
-    width: undefined
+    width: undefined,
+    ready: true
   }
 )
 
@@ -105,8 +107,20 @@ function position(): void {
   top.value = Math.round(nextTop)
   positioned.value = true
   emit('bounds', { x: left.value, y: top.value, width, height })
-  requestAnimationFrame(focusMenu)
+  if (props.ready) {
+    requestAnimationFrame(focusMenu)
+  }
 }
+
+watch(
+  () => props.ready,
+  (ready) => {
+    if (ready && positioned.value) {
+      requestAnimationFrame(focusMenu)
+    }
+  },
+  { flush: 'post' }
+)
 
 function onWindowResize(): void {
   emit('close')
@@ -145,7 +159,7 @@ onBeforeUnmount(() => {
         left: `${left}px`,
         top: `${top}px`,
         width: width ? `${width}px` : undefined,
-        visibility: positioned ? 'visible' : 'hidden'
+        visibility: positioned && ready ? 'visible' : 'hidden'
       }"
       @keydown="onKeydown"
     >

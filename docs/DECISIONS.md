@@ -131,7 +131,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-005 — Native-aware scrolling shows only fully visible panes
 
-- **Status:** Accepted
+- **Status:** Accepted for the legacy grid; Canvas partial visibility superseded by ADR-078
 - **Date:** 2026-11-18
 - **Context:** Grid rows can exceed the workspace height. DOM scrolling clips pane cards, but native `WebContentsView`s are outside the DOM and cannot be clipped by the shell's overflow. Leaving off-screen views visible could cover chrome, overlap toolbar content, or appear over the wrong pane.
 
@@ -948,7 +948,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-032 — Canvas layout uses snapshot-assisted native panning
 
-- **Status:** Accepted for first Canvas slice; partially visible click behavior superseded by ADR-076
+- **Status:** Accepted for first Canvas slice; partially visible click behavior superseded by ADR-076; partial-visibility handling superseded by ADR-078
 - **Date:** 2026-11-19
 - **Context:** Responsively and Figma present a clean infinite canvas with a dotted backdrop and world-space pan/zoom. Figma renders the editor scene itself in WebGL; Responsively transforms DOM `<webview>` elements inside a CSS-transformed world. BrowserDeck uses native `WebContentsView`s for remote pages, which cannot be CSS-transformed or clipped by the shell, and cannot be overlaid with DOM chrome. A direct copy would either break the native security/session architecture or let pane content slide under the toolbar.
 
@@ -984,7 +984,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-033 — Canvas zoom uses device emulation and Space is a temporary Hand tool
 
-- **Status:** Accepted; zoom range and controls superseded by ADR-038
+- **Status:** Accepted; zoom range and controls superseded by ADR-038; partial-visibility consequence superseded by ADR-078
 - **Date:** 2026-11-19
 - **Context:** Canvas panning works, but users need Figma/Responsively-style temporary hand navigation and wheel zoom. Native `WebContentsView`s cannot be CSS-transformed. A naive wheel handler also moved the canvas and snapshots without hiding native views, leaving live page content at stale screen positions.
 
@@ -2270,7 +2270,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-076 — Clicking a partially visible pane does not move the camera
 
-- **Status:** Accepted
+- **Status:** Accepted; hidden-when-partially-visible rule partially superseded by ADR-078
 - **Date:** 2026-11-21
 - **Context:** ADR-032 made a primary click on a partially visible Canvas frame center it so its native view could be restored. That helped recover panes that had been panned far away, but it also meant a routine click on a pane near the workspace edge unexpectedly jumped the whole camera. The jump discarded the user's spatial context and was triggered by a plain selection click. Native views still cannot be clipped to the visible workspace, so partially visible panes must remain hidden until the camera makes them fully visible.
 
@@ -2288,9 +2288,9 @@ Record material technical decisions here. Keep entries short but include context
   - **Disable selection for partially visible panes.** Rejected; header controls, keyboard actions, and explicit navigation should still work after selecting.
 
 - **Consequences:**
-  - Clicking a partially visible pane activates it and its header controls, but page content remains non-interactive until the pane is fully visible.
+  - Clicking a pane that overlaps the top toolbar or an open menu activates it and its header controls, but page content remains non-interactive until it is clear; window-edge-clipped panes stay live per ADR-078.
   - Camera movement happens only through explicit navigation actions.
-  - A pane that was panned mostly off-screen keeps showing its snapshot and message; Fit all remains the one-click recovery path.
+  - A pane that overlaps the top toolbar or an open menu keeps showing its snapshot and message; Fit all remains the one-click recovery path.
 
 - **Evidence / verification:**
   - E2e pans a pane partly off-screen, clicks its visible area, and verifies the pane becomes active while its position and the zoom level stay unchanged; the native view remains hidden. Fit all restores the camera afterward.
@@ -2328,6 +2328,68 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e verifies plain-click select/deselect, additive click selection, Cmd/Ctrl+click toggling without a drag, and identical computed outline metrics for click- and marquee-selected panes.
   - The existing marquee, shared viewport, empty-canvas clearing, Delete, and accessibility coverage still passes.
+
+## ADR-078 — Window-edge-clipped panes stay live
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Canvas hid every pane whose content rectangle was not fully inside the workspace and showed a snapshot or paused message. Users saw panes clipped only by the left, right, or bottom window edge and expected them to work like fully visible panes. Native views cannot be clipped to a DOM rectangle, but the OS already clips views at the window edges, and the bottom Canvas bar and overview are native overlays above pane views. Disabling page load while clipped would add reload flashes and lose scroll state.
+
+- **Decision:**
+  1. Keep pages loaded. Do not destroy or defer a pane's page just because its view is clipped.
+  2. Keep a pane's native view live when its content does not overlap the top toolbar or an open Canvas menu, even if it extends past the left, right, or bottom window edge.
+  3. Preserve the pane's full native rectangle instead of shrinking it to the visible intersection, so the page viewport never reflows.
+  4. Let the OS clip left/right/bottom overflow. Keep the native bottom Canvas bar and overview above pane views.
+  5. Keep the snapshot and paused message for panes that would overlap the top toolbar or an open menu, where a live view would cover shell chrome.
+  6. Validate every live rectangle in main: finite values, minimum and maximum size, and intersection with the canvas. Oversized or fully off-canvas rectangles are rejected.
+  7. Keep the click behavior from ADR-076: selecting a paused pane does not move or zoom the camera.
+
+- **Alternatives considered:**
+  - **Do not load panes until fully visible.** Rejected; it would add reload flashes, lose scroll state, and make panning slower without reducing the native-view constraint.
+  - **Clamp native bounds to the visible slice.** Rejected; the page would reflow to the clipped size and break viewport emulation.
+  - **Use a native clipping container for all partial panes.** Deferred; a `WebContentsView` parent does not currently provide verified DOM-style clipping, and it would need a separate composition spike.
+  - **Show live views under the top toolbar.** Rejected; pane views sit above the trusted shell and would cover toolbar controls.
+
+- **Consequences:**
+  - Panes clipped only by the window edge remain interactive and keep their normal page viewport.
+  - Panes that would cover the top toolbar or an open menu still pause with a snapshot or message.
+  - Native bounds may be negative or extend past the window; validation permits that only for live rectangles that intersect the canvas and stay within the size limit.
+  - The bottom bar and overview continue to cover pane content in their corners by design.
+
+- **Evidence / verification:**
+  - Unit tests cover the live-safe rectangle rule, window-edge overflow preservation, fully off-canvas rejection, and oversized rejection.
+  - E2e pans a pane partly past the left window edge, verifies its native view stays visible, and checks that native width still matches the full DOM width. It then pans the pane under the top edge, verifies it suspends, and confirms clicking it does not move or zoom the camera.
+  - Typecheck, lint, unit tests, contrast, and the full e2e suite pass.
+
+## ADR-079 — Menus reveal only after covered native views are hidden
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Custom menus are shell DOM, but native pane views sit above the shell. Opening a pane menu used to make the menu visible in the same tick that reported its bounds, then trigger an asynchronous native-bounds update. With live panes underneath, the menu could appear for a frame or two and then be covered by page content until the intersecting views were hidden. The problem was most visible after zooming or scrolling with many panes.
+
+- **Decision:**
+  1. Keep a menu `visibility: hidden` until it has been positioned and its parent confirms native views have been synchronized.
+  2. Set the menu readiness flag to false before mounting a new menu and reset it when the menu closes.
+  3. When the menu reports its final bounds, hide the native views intersecting that rectangle, await the bounds IPC, then mark the menu ready.
+  4. Move keyboard focus into the menu only after it becomes visible.
+  5. Keep the existing rule that only native views intersecting the menu are hidden; uncovered panes stay live.
+
+- **Alternatives considered:**
+  - **Hide all native views when any menu opens.** Rejected; it would flash snapshots across the whole Canvas for an action that affects a small area.
+  - **Reveal the menu after a fixed timeout.** Rejected; timing is machine-dependent and would either delay menus unnecessarily or still race the IPC.
+  - **Use native menus.** Rejected; it would break the custom menu structure, styling, and keyboard behavior.
+  - **Render the menu above native views.** Not possible with the current shell/native composition.
+
+- **Consequences:**
+  - Menus may appear a few milliseconds later, but they never flash page content over themselves on open.
+  - Menu focus is reliable because it starts after the reveal.
+  - If bounds measurement cannot run, the reveal still completes rather than leaving an invisible menu open.
+  - The menu handshake is local to the trusted shell; the native visibility validation path is unchanged.
+
+- **Evidence / verification:**
+  - A temporary 16-pane harness reproduced a visible native view over the first rendered menu frame before the handshake and zero overlaps after it.
+  - E2e opens a pane menu over 16 live panes after zooming and verifies no visible native view intersects the menu while a covered view is hidden.
+  - Typecheck, lint, unit tests, contrast, and the full e2e suite pass.
 
 ### ADR-NNN — Title
 
