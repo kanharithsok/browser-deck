@@ -66,6 +66,24 @@ To launch the packaged BrowserDeck app with its real name and icon, run `make st
 
 The development runtime (`make dev` and `make preview`) uses the shared Electron bundle, so macOS may still label that process “Electron” in the Dock even though it now receives the BrowserDeck icon. `make start` uses `dist/mac-arm64/BrowserDeck.app` and shows the final BrowserDeck name and icon.
 
+### Install with Homebrew
+
+The release is available through the `kanharithsok/tap` tap:
+
+```bash
+brew tap kanharithsok/tap
+brew trust kanharithsok/tap
+brew install --cask browser-deck
+```
+
+Or install directly without a separate tap command:
+
+```bash
+brew install --cask kanharithsok/tap/browser-deck
+```
+
+The cask is arm64-only, requires macOS Sonoma or later, removes the download quarantine flag for this unsigned/ad-hoc build, and installs `BrowserDeck.app` into `/Applications`.
+
 ## Commands
 
 | Make target | npm script | Purpose |
@@ -91,6 +109,8 @@ The development runtime (`make dev` and `make preview`) uses the shared Electron
 `npm run package:mac` produces `dist/BrowserDeck-1.1.0-arm64.dmg`, a matching ZIP, and `dist/mac-arm64/BrowserDeck.app`. The bundle uses `com.kanharithsok.browser-deck`, is arm64-only, and is **unsigned/ad-hoc**. It is suitable for local verification, not notarized distribution. Gatekeeper may block it on other machines until it is signed with a Developer ID Application certificate and notarized.
 
 Packaging applies Electron fuses that disable `ELECTRON_RUN_AS_NODE`, Node options and inspector arguments, and `file://` extra privileges, while enabling ASAR integrity validation and load-only-from-ASAR. These controls reduce accidental local privilege paths; they do not replace code signing. See [`SECURITY.md`](./SECURITY.md) for the threat model and the full packaging checklist.
+
+The published Homebrew cask is `kanharithsok/tap/browser-deck` and points at the arm64 ZIP release asset with a pinned SHA-256 checksum.
 
 ## Shortcuts
 

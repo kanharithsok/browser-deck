@@ -143,6 +143,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.browser-deck`, `1.1.0`, `icon.icns`, developer tools.)
 - [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
 - [x] Packaged app exposes the BrowserDeck name and icon. (`CFBundleDisplayName`/`CFBundleName` are BrowserDeck, the packaged icon hash matches `build/icon.icns`, `lsappinfo` reports `BrowserDeck`, and `make start` launches the packaged executable.)
+- [x] Homebrew cask installs the published release. (`brew info --cask kanharithsok/tap/browser-deck` resolves 1.1.0; `brew fetch` verifies the pinned SHA-256; `brew install --cask` installed `/Applications/BrowserDeck.app`, and the quarantine attribute was removed.)
 - [x] Electron fuses are applied to the packaged app. (`npx electron-fuses read --app dist/mac-arm64/BrowserDeck.app`; RunAsNode/Node-options/inspector/file-protocol privileges disabled, ASAR integrity and only-load-from-ASAR enabled.)
 - [ ] Developer ID signing and notarization. (Post-MVP; blocked on Apple Developer credentials. The supported distribution is the unsigned/ad-hoc local arm64 build.)
 - [ ] Intel/universal packaging. (Current build is arm64-only by owner decision.)

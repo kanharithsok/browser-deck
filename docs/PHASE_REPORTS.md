@@ -1229,5 +1229,7 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm audit --omit=dev` | Passed: 0 production vulnerabilities. The full developer-tool audit has six moderate `minimatch` advisories in the `electron-builder` chain; they do not ship in the app runtime. |
 | Packaged identity | `CFBundleDisplayName`/`CFBundleName` are BrowserDeck; `CFBundleIdentifier=com.kanharithsok.browser-deck`; version `1.1.0`; copyright present; packaged icon matches `build/icon.icns`. Packaged launch reported `Migrated PaneFlow application data to BrowserDeck.` |
 | GitHub repository | Renamed to `kanharithsok/browser-deck`; local `origin` updated to `https://github.com/kanharithsok/browser-deck.git`. |
+| GitHub release | Published `v1.1.0` with `BrowserDeck-1.1.0-arm64.zip`, `.dmg`, and `SHA256SUMS.txt`. |
+| Homebrew cask | Added `kanharithsok/tap/browser-deck`. `brew fetch` verified SHA-256 `a74b6eeb44f773d1019f898b0c5c22f9df6c46f5fffe96eeba7feb646d46a100`; `brew install --cask` installed version 1.1.0 into `/Applications/BrowserDeck.app` with quarantine removed. |
 
 **Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real BrowserDeck identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build. A small existing browser-workspace product also uses the BrowserDeck name, so a domain/trademark check is still required before public distribution.
