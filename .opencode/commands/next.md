@@ -1,5 +1,5 @@
 ---
-description: Implement the next small, verified PaneFlow slice
+description: Implement the next small, verified BrowserDeck slice
 ---
 
 Read `AGENTS.md`, the relevant parts of `SPEC.md`, `docs/PHASE_REPORTS.md`, `docs/ARCHITECTURE.md`, and `docs/DECISIONS.md` first.

@@ -191,7 +191,7 @@ async function submitAddress(): Promise<void> {
 
   let result: ScriptResult
   try {
-    result = await window.paneflow.navigate(props.pane.id, value)
+    result = await window.browserdeck.navigate(props.pane.id, value)
   } catch {
     setAddressError('Could not navigate to that address.')
     return
@@ -224,7 +224,7 @@ async function submitAddress(): Promise<void> {
           autocapitalize="off"
           spellcheck="false"
           :placeholder="pane.url === 'about:blank' ? 'Enter an address' : ''"
-          :aria-label="`Address for device ${pane.title}`"
+          :aria-label="`Address for browser ${pane.title}`"
           :aria-invalid="addressError ? 'true' : 'false'"
           :aria-describedby="addressError ? statusId : undefined"
           @input="setAddressError(null)"
@@ -249,7 +249,7 @@ async function submitAddress(): Promise<void> {
           type="button"
           :data-preset="selectedPreset"
           :title="`Viewport preset: ${selectedPresetLabel}`"
-          :aria-label="`Viewport preset for device ${pane.title}: ${selectedPresetLabel}`"
+          :aria-label="`Viewport preset for browser ${pane.title}: ${selectedPresetLabel}`"
           aria-haspopup="menu"
           :aria-expanded="viewportMenuOpen"
           @click="openViewportMenu"

@@ -72,7 +72,7 @@ interface IpcContext {
 }
 
 const unauthorized: ScriptResult = { ok: false, error: 'Unauthorized sender.' }
-const unavailable: ScriptResult = { ok: false, error: 'Device manager is not ready.' }
+const unavailable: ScriptResult = { ok: false, error: 'Browser manager is not ready.' }
 
 function isTrustedSender(event: IpcMainInvokeEvent, context: IpcContext): boolean {
   const shell = context.getShellWebContents()
@@ -165,7 +165,7 @@ export function registerIpcHandlers(context: IpcContext): void {
     try {
       return await manager.addPane(payload)
     } catch {
-      return { ok: false, error: 'Could not create the device.' }
+      return { ok: false, error: 'Could not create the browser.' }
     }
   })
 
@@ -184,7 +184,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       try {
         return await manager.addPaneWithViewport(payload)
       } catch {
-        return { ok: false, error: 'Could not create the device.' }
+        return { ok: false, error: 'Could not create the browser.' }
       }
     }
   )
@@ -199,12 +199,12 @@ export function registerIpcHandlers(context: IpcContext): void {
     }
     const paneId = readString(payload, 100)
     if (!paneId) {
-      return { ok: false, error: 'Invalid device ID.' }
+      return { ok: false, error: 'Invalid browser ID.' }
     }
     try {
       return await manager.duplicatePane(paneId)
     } catch {
-      return { ok: false, error: 'Could not duplicate the device.' }
+      return { ok: false, error: 'Could not duplicate the browser.' }
     }
   })
 
@@ -217,7 +217,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       return unavailable
     }
     const paneId = readString(payload, 100)
-    return paneId ? manager.closePane(paneId) : { ok: false, error: 'Invalid device ID.' }
+    return paneId ? manager.closePane(paneId) : { ok: false, error: 'Invalid browser ID.' }
   })
 
   ipcMain.handle(
@@ -233,7 +233,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       const paneId = readString(paneIdInput, 100)
       const title = readString(titleInput, 400)
       if (!paneId || title === null) {
-        return { ok: false, error: 'Invalid device title.' }
+        return { ok: false, error: 'Invalid browser title.' }
       }
       return manager.renamePane(paneId, title)
     }
@@ -271,7 +271,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         return unavailable
       }
       const paneId = readString(payload, 100)
-      return paneId ? command(manager, paneId) : { ok: false, error: 'Invalid device ID.' }
+      return paneId ? command(manager, paneId) : { ok: false, error: 'Invalid browser ID.' }
     })
   }
 
@@ -309,7 +309,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const paneId = readString(paneIdInput, 100)
       if (!paneId) {
-        return { ok: false, error: 'Invalid device ID.' }
+        return { ok: false, error: 'Invalid browser ID.' }
       }
       return manager.setViewport(paneId, payload)
     }
@@ -326,7 +326,7 @@ export function registerIpcHandlers(context: IpcContext): void {
         return unavailable
       }
       const paneId = readString(payload, 100)
-      return paneId ? manager.rotateViewport(paneId) : { ok: false, error: 'Invalid device ID.' }
+      return paneId ? manager.rotateViewport(paneId) : { ok: false, error: 'Invalid browser ID.' }
     }
   )
 
@@ -338,16 +338,16 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const manager = context.getBrowserManager()
       if (!manager) {
-        return { ok: false, error: 'Device manager is not ready.' }
+        return { ok: false, error: 'Browser manager is not ready.' }
       }
       const paneId = readString(payload, 100)
       if (!paneId) {
-        return { ok: false, error: 'Invalid device ID.' }
+        return { ok: false, error: 'Invalid browser ID.' }
       }
       try {
         return await manager.captureScreenshot(paneId)
       } catch {
-        return { ok: false, error: 'Could not capture the device screenshot.' }
+        return { ok: false, error: 'Could not capture the browser screenshot.' }
       }
     }
   )
@@ -365,7 +365,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       const paneId = readString(payload, 100)
       return paneId
         ? manager.copyUrl(paneId)
-        : { ok: false, error: 'Invalid device ID.' }
+        : { ok: false, error: 'Invalid browser ID.' }
     }
   )
 
@@ -377,12 +377,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const paneId = readString(payload, 100)
       if (!paneId) {
-        return { ok: false, error: 'Invalid device ID.' }
+        return { ok: false, error: 'Invalid browser ID.' }
       }
       try {
         return await context.clearPaneSiteData(paneId)
       } catch {
-        return { ok: false, error: 'Could not clear the device data.' }
+        return { ok: false, error: 'Could not clear the browser data.' }
       }
     }
   )
@@ -399,7 +399,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const paneId = readString(payload, 100)
       if (!paneId) {
-        return { ok: false, error: 'Invalid device ID.' }
+        return { ok: false, error: 'Invalid browser ID.' }
       }
       try {
         return await manager.openExternal(paneId)
@@ -422,7 +422,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       const paneId = readString(payload, 100)
       return paneId
         ? manager.openDevTools(paneId)
-        : { ok: false, error: 'Invalid device ID.' }
+        : { ok: false, error: 'Invalid browser ID.' }
     }
   )
 
@@ -539,7 +539,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       return unavailable
     }
     const paneId = readString(payload, 100)
-    return paneId ? manager.bringPaneToFront(paneId) : { ok: false, error: 'Invalid device ID.' }
+    return paneId ? manager.bringPaneToFront(paneId) : { ok: false, error: 'Invalid browser ID.' }
   })
 
   ipcMain.handle(IPC_CHANNELS.sendPaneToBack, (event, payload: unknown): ScriptResult => {
@@ -551,7 +551,7 @@ export function registerIpcHandlers(context: IpcContext): void {
       return unavailable
     }
     const paneId = readString(payload, 100)
-    return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid device ID.' }
+    return paneId ? manager.sendPaneToBack(paneId) : { ok: false, error: 'Invalid browser ID.' }
   })
 
   ipcMain.handle(IPC_CHANNELS.setTheme, (event, payload: unknown): ScriptResult => {
@@ -573,12 +573,12 @@ export function registerIpcHandlers(context: IpcContext): void {
       }
       const manager = context.getBrowserManager()
       if (!manager) {
-        return { ok: false, error: 'Device manager is not ready.' }
+        return { ok: false, error: 'Browser manager is not ready.' }
       }
       try {
         return { ok: true, snapshots: await manager.captureSnapshots() }
       } catch {
-        return { ok: false, error: 'Could not capture device snapshots.' }
+        return { ok: false, error: 'Could not capture browser snapshots.' }
       }
     }
   )

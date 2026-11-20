@@ -144,12 +144,12 @@ button:disabled {
   }
 }
 
-body.paneflow-dragging,
-body.paneflow-dragging *,
-body.paneflow-canvas-panning,
-body.paneflow-canvas-panning *,
-body.paneflow-canvas-pane-dragging,
-body.paneflow-canvas-pane-dragging * {
+body.browserdeck-dragging,
+body.browserdeck-dragging *,
+body.browserdeck-canvas-panning,
+body.browserdeck-canvas-panning *,
+body.browserdeck-canvas-pane-dragging,
+body.browserdeck-canvas-pane-dragging * {
   cursor: grabbing !important;
   user-select: none !important;
 }

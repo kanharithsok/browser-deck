@@ -17,7 +17,8 @@ import {
   type WorkspacePaneDefinition
 } from './workspace'
 
-export const WORKSPACE_TRANSFER_FORMAT = 'paneflow-workspace'
+export const WORKSPACE_TRANSFER_FORMAT = 'browserdeck-workspace'
+export const LEGACY_WORKSPACE_TRANSFER_FORMAT = 'paneflow-workspace'
 export const WORKSPACE_TRANSFER_VERSION = 1
 export const MAX_WORKSPACE_TRANSFER_BYTES = 1_000_000
 
@@ -139,7 +140,10 @@ export function parseWorkspaceTransfer(
     return { ok: false, error: 'Workspace import must be an object.' }
   }
   const record = input as Record<string, unknown>
-  if (record.format !== WORKSPACE_TRANSFER_FORMAT || record.version !== WORKSPACE_TRANSFER_VERSION) {
+  const supportedFormat =
+    record.format === WORKSPACE_TRANSFER_FORMAT ||
+    record.format === LEGACY_WORKSPACE_TRANSFER_FORMAT
+  if (!supportedFormat || record.version !== WORKSPACE_TRANSFER_VERSION) {
     return { ok: false, error: 'Unsupported workspace import format or version.' }
   }
   if (typeof record.name !== 'string') {
@@ -150,17 +154,17 @@ export function parseWorkspaceTransfer(
     return { ok: false, error: 'Workspace import name is invalid.' }
   }
   if (!Array.isArray(record.panes) || record.panes.length > MAX_WORKSPACE_PANES) {
-    return { ok: false, error: 'Workspace import devices are invalid.' }
+    return { ok: false, error: 'Workspace import browsers are invalid.' }
   }
 
   const panes: WorkspaceTransferPane[] = []
   for (const entry of record.panes) {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      return { ok: false, error: 'Workspace import device is invalid.' }
+      return { ok: false, error: 'Workspace import browser is invalid.' }
     }
     const pane = entry as Record<string, unknown>
     if (typeof pane.url !== 'string' || !isAllowedNavigationUrl(pane.url)) {
-      return { ok: false, error: 'Workspace import device URL is invalid.' }
+      return { ok: false, error: 'Workspace import browser URL is invalid.' }
     }
     const viewport = parsePaneViewport(pane.viewport)
     if (!viewport.ok) {
@@ -202,7 +206,7 @@ export function parseWorkspaceTransfer(
   const gridOrder = validIndexOrder(layoutRecord.gridOrder, panes.length)
   const freeformOrder = validIndexOrder(layoutRecord.freeformOrder, panes.length)
   if (!gridOrder || !freeformOrder) {
-    return { ok: false, error: 'Workspace import device order is invalid.' }
+    return { ok: false, error: 'Workspace import browser order is invalid.' }
   }
 
   const freeform: Record<string, NormalizedRect> = {}
@@ -221,7 +225,7 @@ export function parseWorkspaceTransfer(
     }
     const index = Number(key)
     if (index < 0 || index >= panes.length) {
-      return { ok: false, error: 'Workspace import freeform device is invalid.' }
+      return { ok: false, error: 'Workspace import freeform browser is invalid.' }
     }
     const rect = validNormalizedRect(value)
     if (!rect) {
@@ -247,7 +251,7 @@ export function parseWorkspaceTransfer(
       }
       const index = Number(key)
       if (index < 0 || index >= panes.length) {
-        return { ok: false, error: 'Workspace import canvas device is invalid.' }
+        return { ok: false, error: 'Workspace import canvas browser is invalid.' }
       }
       if (!isValidCanvasPosition(value)) {
         return { ok: false, error: 'Workspace import canvas position is invalid.' }
@@ -276,7 +280,7 @@ export function materializeWorkspaceTransfer(
   profileIds: string[]
 ): WorkspaceData {
   if (paneIds.length !== transfer.panes.length || profileIds.length !== transfer.panes.length) {
-    throw new Error('Workspace import device mapping is invalid.')
+    throw new Error('Workspace import browser mapping is invalid.')
   }
   const panes: WorkspacePaneDefinition[] = transfer.panes.map((pane, index) => ({
     id: paneIds[index] as string,

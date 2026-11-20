@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync, readdirSync, renameSync } from 'node:fs'
 import { readFile, rm, stat } from 'node:fs/promises'
 import { join, isAbsolute } from 'node:path'
 import {
@@ -6,6 +7,7 @@ import {
   BaseWindow,
   dialog,
   Menu,
+  nativeImage,
   nativeTheme,
   screen,
   session,
@@ -110,24 +112,77 @@ let workspaceSwitching = false
 let devServerUrl: URL | null = null
 let workspaceMenuRefreshToken = 0
 
-app.setName('PaneFlow')
+const APP_ID = 'com.kanharithsok.browser-deck'
+const APP_NAME = 'BrowserDeck'
+
+app.setName(APP_NAME)
+app.setAppUserModelId(APP_ID)
 app.setAboutPanelOptions({
-  applicationName: 'PaneFlow',
+  applicationName: APP_NAME,
   applicationVersion: app.getVersion()
 })
+migrateLegacyUserData()
 registerShellScheme()
 
-const userDataOverride = process.env.PANEFLOW_USER_DATA_DIR
+function migrateLegacyUserData(): void {
+  if (process.env.BROWSERDECK_USER_DATA_DIR) {
+    return
+  }
+  const appData = app.getPath('appData')
+  const legacy = join(appData, 'PaneFlow')
+  const current = join(appData, 'BrowserDeck')
+  if (!existsSync(current) && existsSync(legacy)) {
+    try {
+      renameSync(legacy, current)
+      console.info('Migrated PaneFlow application data to BrowserDeck.')
+    } catch (error) {
+      console.warn('Could not migrate PaneFlow application data to BrowserDeck.', error)
+    }
+  }
+
+  const partitions = join(app.getPath('userData'), 'Partitions')
+  if (!existsSync(partitions)) {
+    return
+  }
+  for (const entry of readdirSync(partitions, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('paneflow-profile-')) {
+      continue
+    }
+    const nextName = `browserdeck-profile-${entry.name.slice('paneflow-profile-'.length)}`
+    const source = join(partitions, entry.name)
+    const target = join(partitions, nextName)
+    if (existsSync(target)) {
+      continue
+    }
+    try {
+      renameSync(source, target)
+    } catch (error) {
+      console.warn(`Could not migrate browser profile partition ${entry.name}.`, error)
+    }
+  }
+}
+
+function applyDevelopmentIdentity(): void {
+  if (process.platform !== 'darwin' || app.isPackaged) {
+    return
+  }
+  const icon = nativeImage.createFromPath(join(app.getAppPath(), 'build/icon.png'))
+  if (!icon.isEmpty()) {
+    app.dock?.setIcon(icon)
+  }
+}
+
+const userDataOverride = process.env.BROWSERDECK_USER_DATA_DIR
 if (userDataOverride) {
   if (!app.isPackaged && isAbsolute(userDataOverride)) {
     app.setPath('userData', userDataOverride)
   } else {
-    console.warn('Ignoring PANEFLOW_USER_DATA_DIR: only absolute paths are accepted in development.')
+    console.warn('Ignoring BROWSERDECK_USER_DATA_DIR: only absolute paths are accepted in development.')
   }
 }
 
 function readInitialUrls(): string[] {
-  const raw = process.env.PANEFLOW_START_URLS ?? ''
+  const raw = process.env.BROWSERDECK_START_URLS ?? ''
   const candidates = raw
     .split(',')
     .map((value) => value.trim())
@@ -216,13 +271,13 @@ function persistPanes(manager: BrowserManager): void {
   }
   lastPersistedPaneKey = key
   void workspaceStore.setPanes(panes).catch((error) => {
-    console.error('Could not persist the workspace devices.', error)
+    console.error('Could not persist the workspace browsers.', error)
   })
 }
 
 function toWorkspacePane(pane: PaneInitialization): WorkspacePaneDefinition {
   if (!pane.id) {
-    throw new Error('Initial devices require stable IDs.')
+    throw new Error('Initial browsers require stable IDs.')
   }
   return {
     id: pane.id,
@@ -402,8 +457,8 @@ async function exportWorkspaceTransfer(workspaceId: string): Promise<WorkspaceTr
   const safeName = workspace.name.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '')
   const result = await dialog.showSaveDialog(window, {
     title: 'Export Workspace',
-    defaultPath: `${safeName || 'workspace'}.paneflow.json`,
-    filters: [{ name: 'PaneFlow Workspace', extensions: ['json'] }],
+    defaultPath: `${safeName || 'workspace'}.browserdeck.json`,
+    filters: [{ name: 'BrowserDeck Workspace', extensions: ['json'] }],
     properties: ['createDirectory', 'showOverwriteConfirmation']
   })
   if (result.canceled || !result.filePath) {
@@ -422,7 +477,7 @@ async function importWorkspaceTransfer(): Promise<WorkspaceTransferResult> {
   }
   const result = await dialog.showOpenDialog(window, {
     title: 'Import Workspace',
-    filters: [{ name: 'PaneFlow Workspace', extensions: ['json'] }],
+    filters: [{ name: 'BrowserDeck Workspace', extensions: ['json'] }],
     properties: ['openFile']
   })
   const filePath = result.filePaths[0]
@@ -586,11 +641,11 @@ async function releaseProfileIfUnused(profileId: string): Promise<void> {
 async function clearPaneSiteData(paneId: string): Promise<ScriptResult> {
   const manager = browserManager
   if (!manager) {
-    return { ok: false, error: 'Device manager is not ready.' }
+    return { ok: false, error: 'Browser manager is not ready.' }
   }
   const profileId = manager.profileIdForPane(paneId)
   if (!profileId) {
-    return { ok: false, error: 'Device not found.' }
+    return { ok: false, error: 'Browser not found.' }
   }
   await clearProfileSession(profileId)
   return manager.reload(paneId)
@@ -791,7 +846,7 @@ function buildApplicationMenu(): void {
   ]
 
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ label: 'PaneFlow', submenu: macAppMenu }] : []),
+    ...(isMac ? [{ label: 'BrowserDeck', submenu: macAppMenu }] : []),
     { role: 'fileMenu' },
     {
       label: 'Workspace',
@@ -821,23 +876,23 @@ function buildApplicationMenu(): void {
     },
     { role: 'editMenu' },
     {
-      label: 'Device',
+      label: 'Browser',
       submenu: [
         {
           id: 'pane-add',
-          label: 'Add Device',
+          label: 'Add Browser',
           accelerator: 'CmdOrCtrl+N',
           click: () => sendCommand('add-pane')
         },
         {
           id: 'pane-duplicate',
-          label: 'Duplicate Device',
+          label: 'Duplicate Browser',
           accelerator: 'CmdOrCtrl+D',
           click: () => sendCommand('duplicate-pane')
         },
         {
           id: 'pane-close',
-          label: 'Close Device',
+          label: 'Close Browser',
           accelerator: 'CmdOrCtrl+Shift+W',
           click: () => sendCommand('close-pane')
         },
@@ -853,7 +908,7 @@ function buildApplicationMenu(): void {
         },
         {
           id: 'pane-find',
-          label: 'Find Device…',
+          label: 'Find Browser…',
           accelerator: 'CmdOrCtrl+K',
           click: () => {
             focusShell()
@@ -862,13 +917,13 @@ function buildApplicationMenu(): void {
         },
         {
           id: 'pane-reload',
-          label: 'Reload Device',
+          label: 'Reload Browser',
           accelerator: 'CmdOrCtrl+R',
           click: () => sendCommand('reload-pane')
         },
         {
           id: 'pane-reload-all',
-          label: 'Reload All Devices',
+          label: 'Reload All Browsers',
           accelerator: 'CmdOrCtrl+Alt+Shift+R',
           click: () => sendCommand('reload-all')
         }
@@ -1172,7 +1227,7 @@ async function createWindow(): Promise<void> {
     minWidth: MIN_APP_WINDOW_WIDTH,
     minHeight: MIN_APP_WINDOW_HEIGHT,
     show: false,
-    title: 'PaneFlow',
+    title: 'BrowserDeck',
     backgroundColor: windowBackgroundColor(),
     ...(process.platform === 'darwin'
       ? {
@@ -1504,7 +1559,7 @@ async function createWindow(): Promise<void> {
     applyThemePreference(store.theme(), false)
     requestMeasurement()
   } catch (error) {
-    console.error('Failed to initialize the PaneFlow window.', error)
+    console.error('Failed to initialize the BrowserDeck window.', error)
     window.destroy()
   }
 }
@@ -1521,6 +1576,7 @@ app.on('web-contents-created', (_event, contents) => {
 setBlockedActionReporter(reportBlockedAction)
 
 app.whenReady().then(async () => {
+  applyDevelopmentIdentity()
   devServerUrl = getDevServerUrl()
   const shellCsp = buildShellCsp(devServerUrl?.toString() ?? null)
 
@@ -1652,11 +1708,11 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     void createWindow().catch((error: unknown) => {
-      console.error('Failed to create a PaneFlow window.', error)
+      console.error('Failed to create a BrowserDeck window.', error)
     })
   })
 }).catch((error: unknown) => {
-  console.error('Failed to start PaneFlow.', error)
+  console.error('Failed to start BrowserDeck.', error)
   app.quit()
 })
 

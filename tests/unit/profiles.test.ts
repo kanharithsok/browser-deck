@@ -19,8 +19,8 @@ describe('profile IDs and partitions', () => {
   })
 
   it('derives a persistent partition only from the validated ID', () => {
-    expect(partitionForProfile(ID_A)).toBe(`persist:paneflow-profile-${ID_A}`)
-    expect(profilePartitionDirectoryName(ID_A)).toBe(`paneflow-profile-${ID_A}`)
+    expect(partitionForProfile(ID_A)).toBe(`persist:browserdeck-profile-${ID_A}`)
+    expect(profilePartitionDirectoryName(ID_A)).toBe(`browserdeck-profile-${ID_A}`)
     expect(() => partitionForProfile('Alice')).toThrow()
     expect(() => profilePartitionDirectoryName('../../outside')).toThrow()
   })
@@ -28,7 +28,7 @@ describe('profile IDs and partitions', () => {
   it('does not leak labels into partition names', () => {
     const partition = partitionForProfile(ID_A)
     expect(partition).not.toContain('Alice')
-    expect(partition.startsWith('persist:paneflow-profile-')).toBe(true)
+    expect(partition.startsWith('persist:browserdeck-profile-')).toBe(true)
   })
 })
 

@@ -54,7 +54,7 @@ const THEME_LABELS: Record<ThemePreference, string> = {
 }
 
 function send(action: CanvasZoomAction): void {
-  void window.paneflow.sendCanvasZoomAction(action).catch(() => undefined)
+  void window.browserdeck.sendCanvasZoomAction(action).catch(() => undefined)
 }
 
 function renderTheme(themePreference: ThemePreference): void {
@@ -114,7 +114,7 @@ appearanceButton.addEventListener('click', () => {
   send({ type: 'appearance' })
 })
 
-window.paneflow.onCanvasZoomState((state) => {
+window.browserdeck.onCanvasZoomState((state) => {
   const parsed = parseCanvasZoomState(state)
   if (parsed) {
     render(parsed)

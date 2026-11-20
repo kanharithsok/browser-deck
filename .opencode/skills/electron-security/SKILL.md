@@ -1,6 +1,6 @@
 ---
 name: electron-security
-description: Use when changing PaneFlow IPC, preload, navigation, permissions, sessions, filesystem access, persistence, or packaging.
+description: Use when changing BrowserDeck IPC, preload, navigation, permissions, sessions, filesystem access, persistence, or packaging.
 ---
 
 # Electron security
@@ -12,7 +12,7 @@ Read `SPEC.md` section 13, `AGENTS.md`, and current Electron security guidance f
 Remote websites are hostile.
 
 - `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`.
-- Never attach the application preload or expose `window.paneflow`, `require`, `process`, filesystem, shell, or environment access to remote content.
+- Never attach the application preload or expose `window.browserdeck`, `require`, `process`, filesystem, shell, or environment access to remote content.
 - Allow only `http:`, `https:`, and `about:blank`. Validate with the URL parser in `src/shared/url.ts`; reject `javascript:`, `data:`, `file:`, `chrome:`, and other custom schemes.
 - Enforce navigation policy in main on `will-navigate` and `will-redirect`, not only in the renderer.
 - Deny new windows/popups in the MVP. Do not pass remote URLs to `shell.openExternal`.
@@ -29,8 +29,8 @@ Remote websites are hostile.
 
 ## Sessions and data
 
-- Partitions are generated internally: `persist:paneflow-profile-<uuid>`. Never derive a partition from a label, URL, tenant, or other user input.
-- Do not copy cookies, tokens, credentials, page contents, or session storage into PaneFlow JSON, logs, fixtures, exports, screenshots, or Git.
+- Partitions are generated internally: `persist:browserdeck-profile-<uuid>`. Never derive a partition from a label, URL, tenant, or other user input.
+- Do not copy cookies, tokens, credentials, page contents, or session storage into BrowserDeck JSON, logs, fixtures, exports, screenshots, or Git.
 - Avoid logging full URLs that may contain sensitive query parameters.
 - Corrupt persistence files are preserved with a `.corrupt-<timestamp>` suffix and replaced with safe defaults; never silently continue with invalid data.
 - Test hook surfaces must be gated by an explicit development/test flag and unavailable in packaged builds.

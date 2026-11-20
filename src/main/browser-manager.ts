@@ -91,12 +91,12 @@ export interface PaneInitialization {
 
 function fallbackTitle(url: string): string {
   if (url === 'about:blank' || !url) {
-    return 'New device'
+    return 'New browser'
   }
   try {
-    return new URL(url).hostname || 'New device'
+    return new URL(url).hostname || 'New browser'
   } catch {
-    return 'New device'
+    return 'New browser'
   }
 }
 
@@ -123,7 +123,7 @@ export class BrowserManager {
   async initialize(panes: PaneInitialization[]): Promise<void> {
     for (const pane of panes) {
       if (pane.id !== undefined && !isValidPaneId(pane.id)) {
-        throw new Error('Invalid device ID in workspace.')
+        throw new Error('Invalid browser ID in workspace.')
       }
       const normalized = normalizeAddress(pane.url)
       this.createPane(pane.profile, normalized.ok ? normalized.url : 'about:blank', {
@@ -151,11 +151,11 @@ export class BrowserManager {
   async duplicatePane(paneId: string): Promise<ScriptResult> {
     const source = this.requirePane(paneId)
     if (!source) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     const profile = await this.profileStore.create()
     if (this.destroyed || this.window.isDestroyed()) {
-      return { ok: false, error: 'PaneFlow window is not available.' }
+      return { ok: false, error: 'BrowserDeck window is not available.' }
     }
     this.createPane(profile, source.url, {
       viewport: { ...source.viewport },
@@ -167,7 +167,7 @@ export class BrowserManager {
   renamePane(paneId: string, title: unknown): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     const parsed = parsePaneTitle(title)
@@ -206,7 +206,7 @@ export class BrowserManager {
     }
 
     if (this.destroyed || this.window.isDestroyed()) {
-      return { ok: false, error: 'PaneFlow window is not available.' }
+      return { ok: false, error: 'BrowserDeck window is not available.' }
     }
 
     this.createPane(profile, url, viewport === undefined ? {} : { viewport })
@@ -216,7 +216,7 @@ export class BrowserManager {
   closePane(paneId: string): ScriptResult {
     const record = this.panes.get(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     this.destroyPane(record)
     return { ok: true }
@@ -225,7 +225,7 @@ export class BrowserManager {
   navigate(paneId: string, address: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     if (address.length > MAX_URL_LENGTH) {
@@ -244,7 +244,7 @@ export class BrowserManager {
   back(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     const history = record.view.webContents.navigationHistory
@@ -258,7 +258,7 @@ export class BrowserManager {
   forward(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     const history = record.view.webContents.navigationHistory
@@ -272,7 +272,7 @@ export class BrowserManager {
   reload(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     if (record.pendingUrl) {
@@ -306,7 +306,7 @@ export class BrowserManager {
   bringPaneToFront(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     if (this.window.isDestroyed()) {
       return { ok: false, error: 'Window is not available.' }
@@ -321,7 +321,7 @@ export class BrowserManager {
   sendPaneToBack(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     if (this.window.isDestroyed()) {
       return { ok: false, error: 'Window is not available.' }
@@ -402,7 +402,7 @@ export class BrowserManager {
   setViewport(paneId: string, input: unknown): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     const parsed = parsePaneViewport(input)
@@ -425,12 +425,12 @@ export class BrowserManager {
   rotateViewport(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
 
     const next = toggleViewportRotation(record.viewport)
     if (!next) {
-      return { ok: false, error: 'Responsive devices do not have a fixed orientation.' }
+      return { ok: false, error: 'Responsive browsers do not have a fixed orientation.' }
     }
 
     record.viewport = next
@@ -443,7 +443,7 @@ export class BrowserManager {
   async captureScreenshot(paneId: string): Promise<PaneScreenshotResult> {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     if (record.url === 'about:blank') {
       return { ok: false, error: 'There is no page to capture yet.' }
@@ -460,7 +460,7 @@ export class BrowserManager {
         screenshotFileName(record.url, new Date())
       )
       const result = await dialog.showSaveDialog(this.window, {
-        title: 'Save device screenshot',
+        title: 'Save browser screenshot',
         buttonLabel: 'Save',
         defaultPath,
         filters: [{ name: 'PNG image', extensions: ['png'] }]
@@ -493,7 +493,6 @@ export class BrowserManager {
       panes.push({
         id: record.id,
         profileId: record.profile.id,
-        profileLabel: record.profile.label,
         title: record.customTitle ?? (record.title || fallbackTitle(record.url)),
         customTitle: record.customTitle,
         url: record.url,
@@ -630,7 +629,7 @@ export class BrowserManager {
   copyUrl(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     if (record.url === 'about:blank') {
       return { ok: false, error: 'There is no page URL to copy yet.' }
@@ -642,10 +641,10 @@ export class BrowserManager {
   async openExternal(paneId: string): Promise<ScriptResult> {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     if (record.url === 'about:blank' || !isAllowedNavigationUrl(record.url)) {
-      return { ok: false, error: 'This device has no web address to open.' }
+      return { ok: false, error: 'This browser has no web address to open.' }
     }
     await shell.openExternal(record.url)
     return { ok: true }
@@ -654,7 +653,7 @@ export class BrowserManager {
   openDevTools(paneId: string): ScriptResult {
     const record = this.requirePane(paneId)
     if (!record) {
-      return { ok: false, error: 'Device not found.' }
+      return { ok: false, error: 'Browser not found.' }
     }
     record.view.webContents.openDevTools({ mode: 'detach' })
     return { ok: true }
@@ -709,7 +708,7 @@ export class BrowserManager {
     options: { id?: string; viewport?: PaneViewport; customTitle?: string | null } = {}
   ): PaneRecord {
     if (this.destroyed || this.window.isDestroyed()) {
-      throw new Error('PaneFlow window is not available.')
+      throw new Error('BrowserDeck window is not available.')
     }
 
     const paneId = options.id ?? randomUUID()

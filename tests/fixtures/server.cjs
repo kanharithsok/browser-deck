@@ -57,7 +57,7 @@ function readBody(request) {
 }
 
 function sessionFor(request, sessions) {
-  const token = readCookie(request, 'paneflow_session')
+  const token = readCookie(request, 'browserdeck_session')
   if (!token) {
     return null
   }
@@ -69,14 +69,14 @@ function sessionFor(request, sessions) {
 function setSessionCookie(response, token) {
   response.setHeader(
     'set-cookie',
-    `paneflow_session=${encodeURIComponent(token)}; Max-Age=86400; Path=/; HttpOnly; SameSite=Lax`
+    `browserdeck_session=${encodeURIComponent(token)}; Max-Age=86400; Path=/; HttpOnly; SameSite=Lax`
   )
 }
 
 function clearSessionCookie(response) {
   response.setHeader(
     'set-cookie',
-    'paneflow_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+    'browserdeck_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
   )
 }
 
@@ -146,20 +146,20 @@ function panePage(paneName, user) {
     function refresh() {
       document.getElementById('address').textContent = location.href;
       document.getElementById('cookie').textContent = document.cookie || '(empty)';
-      const stored = localStorage.getItem('paneflow_fixture') || '(empty)';
+      const stored = localStorage.getItem('browserdeck_fixture') || '(empty)';
       document.getElementById('storage').textContent = stored;
       document.getElementById('viewport').textContent = window.innerWidth + ' × ' + window.innerHeight;
       document.getElementById('ratio').textContent = String(window.devicePixelRatio);
     }
     document.getElementById('storage-button').addEventListener('click', () => {
-      const next = Number(localStorage.getItem('paneflow_fixture') || '0') + 1;
-      localStorage.setItem('paneflow_fixture', String(next));
+      const next = Number(localStorage.getItem('browserdeck_fixture') || '0') + 1;
+      localStorage.setItem('browserdeck_fixture', String(next));
       refresh();
       output.textContent = 'localStorage set to ' + next + ' in profile for ' + paneName + '.';
     });
     document.getElementById('popup-button').addEventListener('click', () => {
-      const popup = window.open('/popup', 'paneflow-popup', 'width=420,height=320');
-      output.textContent = popup === null ? 'Popup denied by PaneFlow.' : 'Popup object returned.';
+      const popup = window.open('/popup', 'browserdeck-popup', 'width=420,height=320');
+      output.textContent = popup === null ? 'Popup denied by BrowserDeck.' : 'Popup object returned.';
     });
     document.getElementById('permission-button').addEventListener('click', async () => {
       const result = await Notification.requestPermission();
@@ -223,13 +223,13 @@ function accountPage(accountId, profileCookie) {
   </p>
   <script>
     document.getElementById('storage').textContent =
-      localStorage.getItem('paneflow_fixture') || '(empty)';
+      localStorage.getItem('browserdeck_fixture') || '(empty)';
   </script>`)
 }
 
 function homePage() {
-  return pageShell('PaneFlow fixtures', `
-  <h1>PaneFlow local fixtures</h1>
+  return pageShell('BrowserDeck fixtures', `
+  <h1>BrowserDeck local fixtures</h1>
   <p class="sub">Deterministic pages for manual checks and integration tests.</p>
   <dl>
     <dt>Cookie isolation</dt><dd>/pane/one?user=alice · /pane/two?user=bob</dd>
@@ -323,7 +323,7 @@ function createRequestHandler(sessions) {
       }
       html(
         response,
-        accountPage(session.account, readCookie(request, 'paneflow_user'))
+        accountPage(session.account, readCookie(request, 'browserdeck_user'))
       )
       return
     }
@@ -353,11 +353,11 @@ function createRequestHandler(sessions) {
       const user = sanitizeUser(url.searchParams.get('user') ?? '')
 
       if (requestedUser && user) {
-        const current = readCookie(request, 'paneflow_user')
+        const current = readCookie(request, 'browserdeck_user')
         if (current !== user) {
           response.setHeader(
             'set-cookie',
-            `paneflow_user=${encodeURIComponent(user)}; Max-Age=86400; Path=/; SameSite=Lax`
+            `browserdeck_user=${encodeURIComponent(user)}; Max-Age=86400; Path=/; SameSite=Lax`
           )
         }
       }
@@ -424,10 +424,10 @@ module.exports = { startFixtureServer }
 if (require.main === module) {
   startFixtureServer({ port: DEFAULT_PORT })
     .then((server) => {
-      console.log(`PaneFlow fixture server: ${server.url}`)
+      console.log(`BrowserDeck fixture server: ${server.url}`)
     })
     .catch((error) => {
-      console.error('Failed to start the PaneFlow fixture server.', error)
+      console.error('Failed to start the BrowserDeck fixture server.', error)
       process.exitCode = 1
     })
 }

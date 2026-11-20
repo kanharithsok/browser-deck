@@ -32,14 +32,14 @@ export interface PaneflowTestHook {
 
 /**
  * Exposes read-mostly inspection hooks for the Playwright integration test.
- * Disabled in packaged builds and unless PANEFLOW_TEST=1 is set explicitly.
+ * Disabled in packaged builds and unless BROWSERDECK_TEST=1 is set explicitly.
  */
 export function installTestHook(hook: PaneflowTestHook): void {
-  if (process.env.PANEFLOW_TEST !== '1' || app.isPackaged) {
+  if (process.env.BROWSERDECK_TEST !== '1' || app.isPackaged) {
     return
   }
 
-  Object.defineProperty(globalThis, '__paneflowTest', {
+  Object.defineProperty(globalThis, '__browserdeckTest', {
     value: hook,
     configurable: true,
     enumerable: false,

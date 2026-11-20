@@ -1,7 +1,7 @@
-# PaneFlow — Project Instructions
+# BrowserDeck — Project Instructions
 
 ## Mission
-Build PaneFlow, a minimal desktop workspace for multiple independent, interactive browser sessions. macOS is the first target; keep the architecture portable to Windows and Linux.
+Build BrowserDeck, a minimal desktop workspace for multiple independent, interactive browser sessions. macOS is the first target; keep the architecture portable to Windows and Linux.
 
 The product requirements and acceptance criteria live in `SPEC.md`. Read the relevant sections before implementing a feature. Do not create a second, conflicting specification.
 
@@ -16,7 +16,7 @@ The product requirements and acceptance criteria live in `SPEC.md`. Read the rel
 8. Keep documentation aligned with the implementation. Update `docs/PHASE_REPORTS.md` at the end of each phase.
 
 ## Product and UI direction
-- Minimal, clean, calm, and developer-focused. PaneFlow is a tool, not a marketing website.
+- Minimal, clean, calm, and developer-focused. BrowserDeck is a tool, not a marketing website.
 - The websites inside panes are the primary content. Application chrome should be compact and quiet.
 - Prefer system typography, restrained neutral surfaces, subtle separators, consistent spacing, and one restrained accent color.
 - Avoid gratuitous cards, gradients, glass effects, shadows, oversized headings, decorative illustrations, excessive badges, and unnecessary sidebars.
@@ -24,8 +24,8 @@ The product requirements and acceptance criteria live in `SPEC.md`. Read the rel
 - Support system appearance plus light/dark themes, keyboard navigation, visible focus, readable contrast, and reduced-motion preferences.
 - Provide useful empty, loading, error, disabled, and recovery states.
 - Never add a visible control that does nothing. Either implement it or clearly mark it unavailable for the current phase.
-- Load `.opencode/skills/paneflow-design-system/SKILL.md` before meaningful renderer, component, or CSS work.
-- Load `.opencode/skills/paneflow-ux-design/SKILL.md` before changing user flows, navigation, pane interactions, workspace behavior, menus, dialogs, keyboard shortcuts, or accessibility.
+- Load `.opencode/skills/browserdeck-design-system/SKILL.md` before meaningful renderer, component, or CSS work.
+- Load `.opencode/skills/browserdeck-ux-design/SKILL.md` before changing user flows, navigation, pane interactions, workspace behavior, menus, dialogs, keyboard shortcuts, or accessibility.
 - For meaningful UI work, use both skills: the design-system skill governs visual consistency; the UX skill governs interaction design and usability.
 - Load `.opencode/skills/electron-native-views/SKILL.md` before changing native browser-view composition, bounds, z-order, hit-testing, or related interactions.
 - Load `.opencode/skills/electron-security/SKILL.md` before changing IPC, preload, navigation, permissions, or packaging.

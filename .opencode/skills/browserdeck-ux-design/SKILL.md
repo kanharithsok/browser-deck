@@ -1,15 +1,15 @@
 ---
-name: PaneFlow UX Design
-description: Design and review PaneFlow user flows, workspace interactions, pane behavior, navigation, feedback, accessibility, and edge states. Use when changing how the app works, not only how it looks.
+name: BrowserDeck UX Design
+description: Design and review BrowserDeck user flows, workspace interactions, pane behavior, navigation, feedback, accessibility, and edge states. Use when changing how the app works, not only how it looks.
 ---
 
-# PaneFlow UX Design
+# BrowserDeck UX Design
 
-Use this skill when designing or changing workspace behavior, navigation, browser-pane controls, menus, dialogs, onboarding, keyboard shortcuts, accessibility, or interaction states. Pair it with `paneflow-design-system` for visual styling.
+Use this skill when designing or changing workspace behavior, navigation, browser-pane controls, menus, dialogs, onboarding, keyboard shortcuts, accessibility, or interaction states. Pair it with `browserdeck-design-system` for visual styling.
 
 ## Product context
 
-PaneFlow is a native desktop workspace for multiple independent, interactive browser sessions. Users arrange browser panes to compare websites, environments, accounts, and viewport sizes.
+BrowserDeck is a native desktop workspace for multiple independent, interactive browser sessions. Users arrange browser panes to compare websites, environments, accounts, and viewport sizes.
 
 Keep these concepts distinct and use their names consistently:
 
@@ -18,7 +18,7 @@ Keep these concepts distinct and use their names consistently:
 - **Browser profile:** the persistent browser session (cookies, storage, cache, and related data) assigned to a pane.
 - **Viewport preset:** a size and emulation configuration; it is not a promise of physical-device accuracy.
 
-Do not use “tenant” as a core product concept. PaneFlow serves many workflows beyond multi-tenant SaaS.
+Do not use “tenant” as a core product concept. BrowserDeck serves many workflows beyond multi-tenant SaaS.
 
 ## UX principles
 

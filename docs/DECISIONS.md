@@ -6,7 +6,7 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-18
-- **Context:** PaneFlow needs multiple interactive Chromium panes and usable application controls in one macOS window. `WebContentsView` is a native view outside the renderer DOM, so DOM controls cannot be assumed to draw over it or receive clicks through it. Phase 0 had to prove a composition that works with the pinned Electron version before building the full workspace.
+- **Context:** BrowserDeck needs multiple interactive Chromium panes and usable application controls in one macOS window. `WebContentsView` is a native view outside the renderer DOM, so DOM controls cannot be assumed to draw over it or receive clicks through it. Phase 0 had to prove a composition that works with the pinned Electron version before building the full workspace.
 
 - **Decision:**
   1. A `BaseWindow` hosts a trusted local shell `WebContentsView` at `(0, 0)` covering the window content area.
@@ -21,7 +21,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Alternatives considered:**
   - **DOM chrome or overlays above native views.** Rejected as a foundation. It would need proven transparency and hit-testing behavior, and the Phase 0 product only needs chrome outside browser bounds.
   - **A native chrome view per pane.** Rejected for now because it duplicates UI and increases lifecycle complexity without a proven need.
-  - **One `BrowserWindow` per browser pane.** Rejected because PaneFlow is a single flexible workspace, not a collection of independent windows.
+  - **One `BrowserWindow` per browser pane.** Rejected because BrowserDeck is a single flexible workspace, not a collection of independent windows.
   - **`iframe`, `<webview>`, or deprecated `BrowserView`.** Prohibited by the project specification and unsuitable for independent real sessions.
 
 - **Consequences:**
@@ -43,17 +43,17 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-18
-- **Context:** Phase 1 must prove that two panes can authenticate independently on the same origin and keep those sessions across restarts without leaking cookies, tokens, or credentials into PaneFlow configuration or logs. PaneFlow is a browser workspace, not an identity provider.
+- **Context:** Phase 1 must prove that two panes can authenticate independently on the same origin and keep those sessions across restarts without leaking cookies, tokens, or credentials into BrowserDeck configuration or logs. BrowserDeck is a browser workspace, not an identity provider.
 
 - **Decision:**
-  1. Websites own authentication. PaneFlow creates a separate persistent Electron partition per profile and otherwise does not mediate sign-in, passwords, tokens, or authorization.
-  2. PaneFlow never copies cookies or credentials into workspace files, profile JSON, logs, exports, fixtures, screenshots, or Git.
+  1. Websites own authentication. BrowserDeck creates a separate persistent Electron partition per profile and otherwise does not mediate sign-in, passwords, tokens, or authorization.
+  2. BrowserDeck never copies cookies or credentials into workspace files, profile JSON, logs, exports, fixtures, screenshots, or Git.
   3. The deterministic fixture provides two synthetic accounts but no passwords. A form POST creates a server-side session and sets an HttpOnly, persistent cookie in the requesting profile's jar.
   4. Session checks are server-rendered. Page JavaScript cannot read the HttpOnly session cookie, which also proves the app is not relying on a privileged page bridge.
   5. Persistence is verified by relaunching the app with the same user-data directory and opening `/account` directly in both reused profiles.
 
 - **Alternatives considered:**
-  - **Store credentials or session tokens in PaneFlow configuration.** Rejected: violates the security boundary and would leak secrets outside Electron-managed profile storage.
+  - **Store credentials or session tokens in BrowserDeck configuration.** Rejected: violates the security boundary and would leak secrets outside Electron-managed profile storage.
   - **Copy cookies between profiles to simulate sharing.** Rejected: bypasses explicit profile selection and undermines isolation.
   - **Build an application-level account vault.** Out of scope; sites already provide their own authentication.
   - **Use query-string cookies as the final proof.** Rejected as insufficient for the exit criterion; Phase 0 used query cookies only as a basic isolation check.
@@ -513,11 +513,11 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-19
-- **Context:** Phase 4 needs a runnable macOS artifact. The local machine has only an Apple Development certificate, no Developer ID Application certificate or notarization credentials. The owner selected PaneFlow 0.1.0, bundle ID `com.kanharithsok.paneflow`, arm64-only, MIT, and a generated icon. Signing/notarization must not block local verification.
+- **Context:** Phase 4 needs a runnable macOS artifact. The local machine has only an Apple Development certificate, no Developer ID Application certificate or notarization credentials. The owner selected BrowserDeck 0.1.0, bundle ID `com.kanharithsok.browser-deck`, arm64-only, MIT, and a generated icon. Signing/notarization must not block local verification.
 
 - **Decision:**
   1. Use `electron-builder` 26.18.0 with a checked-in `electron-builder.yml`.
-  2. Package PaneFlow 0.1.0 for arm64 with `com.kanharithsok.paneflow`, developer-tools category, asar, and `build/icon.icns`.
+  2. Package BrowserDeck 0.1.0 for arm64 with `com.kanharithsok.browser-deck`, developer-tools category, asar, and `build/icon.icns`.
   3. Build DMG + ZIP plus an unpacked app under ignored `dist/`.
   4. Disable signing with `identity: null` for this slice; do not claim the artifacts are signed, notarized, or safe for frictionless distribution.
   5. Keep the icon SVG source under `build/` and generate the `.icns` locally with macOS tooling.
@@ -539,7 +539,7 @@ Record material technical decisions here. Keep entries short but include context
   - `dist/` stays ignored and no release publishing/auto-update exists.
 
 - **Evidence / verification:**
-  - `npm run package:mac` produced `PaneFlow-0.1.0-arm64.dmg` (118 MB), ZIP (115 MB), and a 273 MB `.app`.
+  - `npm run package:mac` produced `BrowserDeck-0.1.0-arm64.dmg` (118 MB), ZIP (115 MB), and a 273 MB `.app`.
   - `file` reports an arm64 binary; `Info.plist` reports the expected bundle ID, version, icon, and category; `codesign` shows unsigned/ad-hoc as configured.
   - The packaged app launched, rendered the shell and panes, and quit cleanly.
 
@@ -637,7 +637,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Context:** `SPEC.md` allows workspace import/export only for configuration, never cookies/credentials, and requires fresh isolated profiles on import. Imported files are untrusted and need strict validation.
 
 - **Decision:**
-  1. Use a separate versioned `paneflow-workspace` JSON format, not the internal workspace file.
+  1. Use a separate versioned `browserdeck-workspace` JSON format, not the internal workspace file.
   2. Export only workspace name, pane URLs, viewport settings, and index-based layout. Strip pane/profile IDs, profile records, cookies, storage, session data, paths, and executable content.
   3. Export through a native Save dialog with atomic JSON writing; the default filename is sanitized.
   4. Import through a native Open dialog with a 1 MB limit and strict validation of format/version, name, URL schemes, viewport settings, pane-index order, and normalized freeform geometry.
@@ -699,8 +699,8 @@ Record material technical decisions here. Keep entries short but include context
 - **Context:** `SPEC.md` §13.2 prefers a secure custom application protocol over broad `file://` access, and Phase 4 packaging made that decision actionable. The shell CSP also allowed localhost HTTP/WebSocket sources in every build because development HMR and production shared one static policy.
 
 - **Decision:**
-  1. Register `paneflow` as a standard, secure, non-CORS scheme before app readiness. Register it as privileged only for normal fetch/stream behavior; no service workers, extensions, CSP bypass, or CORS.
-  2. Serve built renderer files through `protocol.handle('paneflow', …)` from `paneflow://shell/index.html`. Resolve only paths inside the built renderer root, reject traversal/backslash/null/ambiguous segments, set explicit MIME types, and add `nosniff`, no-referrer, no-store, and CSP headers.
+  1. Register `browserdeck` as a standard, secure, non-CORS scheme before app readiness. Register it as privileged only for normal fetch/stream behavior; no service workers, extensions, CSP bypass, or CORS.
+  2. Serve built renderer files through `protocol.handle('browserdeck', …)` from `browserdeck://shell/index.html`. Resolve only paths inside the built renderer root, reject traversal/backslash/null/ambiguous segments, set explicit MIME types, and add `nosniff`, no-referrer, no-store, and CSP headers.
   3. Build CSP in the pure `src/shared/shell.ts` module. Production uses `connect-src 'self'` with no development sources. Development adds only the exact loopback `ELECTRON_RENDERER_URL` origin and its matching `ws:`/`wss:` URL.
   4. Keep inline styles allowed because Vue binds pane geometry through inline style attributes. Never allow inline script, eval, objects, frames, forms, or base changes.
   5. Remove the static CSP meta tag so there is one authoritative, mode-correct policy.
@@ -718,7 +718,7 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Evidence / verification:**
   - Unit tests cover production/development CSP construction, malformed development URLs, trusted shell document matching, and asset path traversal/MIME handling.
-  - E2e observes `paneflow://shell/index.html`, blocks an inline script, blocks a fixture fetch from the shell, and completes the full existing browser/workspace suite.
+  - E2e observes `browserdeck://shell/index.html`, blocks an inline script, blocks a fixture fetch from the shell, and completes the full existing browser/workspace suite.
 
 ## ADR-024 — IPC sender checks include the trusted document URL
 
@@ -727,7 +727,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Context:** IPC handlers already compared the event sender `WebContents` and main frame with the shell. Shell navigation is denied, but a future regression that navigates the shell to remote content would still share the same `WebContents` and main frame. The manual checklist also had no direct cross-sender test.
 
 - **Decision:**
-  1. Validate sender `WebContents`, main frame, and document URL. Production accepts only `paneflow://shell/index.html`; development accepts only the validated loopback dev-server origin.
+  1. Validate sender `WebContents`, main frame, and document URL. Production accepts only `browserdeck://shell/index.html`; development accepts only the validated loopback dev-server origin.
   2. Return an empty default `ShellState` for unauthorized state reads rather than leaking workspace metadata.
   3. Keep payload validation in every handler; sender validation is not a substitute.
   4. Add a test-only e2e path that creates a separate node-enabled `BrowserWindow` in the same Electron process and invokes IPC directly. It must receive an empty state and `Unauthorized sender.` for a pane command.
@@ -770,13 +770,13 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - `npm run package:dir` succeeds with fuse application.
   - `electron-fuses read` reports the expected fuse states.
-  - A fresh packaged app launch with an isolated `HOME` and remote debugging reported the shell at `paneflow://shell/index.html`, proving the ASAR-backed custom protocol works with fuses enabled. See `SECURITY.md` and the Phase 4 report.
+  - A fresh packaged app launch with an isolated `HOME` and remote debugging reported the shell at `browserdeck://shell/index.html`, proving the ASAR-backed custom protocol works with fuses enabled. See `SECURITY.md` and the Phase 4 report.
 
 ## ADR-026 — macOS uses a hidden-inset title bar with the toolbar as the drag region
 
 - **Status:** Accepted
 - **Date:** 2026-11-19
-- **Context:** The default macOS title bar adds a separate 28 px chrome strip that duplicates the app identity above PaneFlow's compact toolbar. The product direction calls for quiet, minimal chrome while preserving standard macOS window controls.
+- **Context:** The default macOS title bar adds a separate 28 px chrome strip that duplicates the app identity above BrowserDeck's compact toolbar. The product direction calls for quiet, minimal chrome while preserving standard macOS window controls.
 
 - **Decision:**
   1. Set `titleBarStyle: 'hiddenInset'` on macOS and position the traffic lights at `(16, 16)` inside the 46 px toolbar.
@@ -834,7 +834,7 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-19
-- **Context:** PaneFlow exposed a per-pane `fit`/`actual` display-scale selector. The product requirement is now simpler: every pane's website should always fit its pane content, including after window, grid, freeform, or maximize resizing. Keeping `actual` as a persisted mode with no visible control would leave some panes clipped and inconsistent.
+- **Context:** BrowserDeck exposed a per-pane `fit`/`actual` display-scale selector. The product requirement is now simpler: every pane's website should always fit its pane content, including after window, grid, freeform, or maximize resizing. Keeping `actual` as a persisted mode with no visible control would leave some panes clipped and inconsistent.
 
 - **Decision:**
   1. Remove `displayScale` from `PaneViewport` and remove the header selector.
@@ -868,7 +868,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Decision:**
   1. Keep the primary Add pane button for the default responsive pane and add a compact chevron button as a split control.
   2. Open a native `Menu.popup` from the chevron with Responsive plus the existing mobile, tablet, laptop, and desktop presets. Use viewport-class labels and dimensions, not device-brand names.
-  3. Return the selected preset to the renderer; the renderer calls the typed `paneflow:add-pane-with-viewport` operation rather than creating the pane inside the menu callback.
+  3. Return the selected preset to the renderer; the renderer calls the typed `browserdeck:add-pane-with-viewport` operation rather than creating the pane inside the menu callback.
   4. Validate the viewport again in main, create a fresh browser profile, and create the pane with that viewport.
   5. Keep the existing menu and keyboard Add pane action as the responsive default.
 
@@ -918,7 +918,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-031 — Pane chrome preview modes are an app-wide temporary comparison
 
-- **Status:** Accepted for preview
+- **Status:** Superseded; the preview modes were removed for 1.0 by ADR-072.
 - **Date:** 2026-11-19
 - **Context:** The current two-row pane header is denser than the desired minimal direction. Three alternatives need comparison in the running app before choosing one: A (quiet single-row bar), B (Figma-like canvas label), and C (global browser bar). C cannot be mixed per pane because the address and navigation belong to the active pane.
 
@@ -950,7 +950,7 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted for first Canvas slice
 - **Date:** 2026-11-19
-- **Context:** Responsively and Figma present a clean infinite canvas with a dotted backdrop and world-space pan/zoom. Figma renders the editor scene itself in WebGL; Responsively transforms DOM `<webview>` elements inside a CSS-transformed world. PaneFlow uses native `WebContentsView`s for remote pages, which cannot be CSS-transformed or clipped by the shell, and cannot be overlaid with DOM chrome. A direct copy would either break the native security/session architecture or let pane content slide under the toolbar.
+- **Context:** Responsively and Figma present a clean infinite canvas with a dotted backdrop and world-space pan/zoom. Figma renders the editor scene itself in WebGL; Responsively transforms DOM `<webview>` elements inside a CSS-transformed world. BrowserDeck uses native `WebContentsView`s for remote pages, which cannot be CSS-transformed or clipped by the shell, and cannot be overlaid with DOM chrome. A direct copy would either break the native security/session architecture or let pane content slide under the toolbar.
 
 - **Decision:**
   1. Add Canvas as a third layout alongside Grid and Freeform.
@@ -992,7 +992,7 @@ Record material technical decisions here. Keep entries short but include context
   1. Holding Space while shell chrome has focus temporarily enables the Hand tool; releasing Space restores the previous manual Hand state. The Hand button remains available.
   2. In Canvas mode, wheel panning uses a short hide/measure gesture: hide native views, move the shell world, then restore fully visible native views after wheel idle. This prevents native content drift.
   3. While the Hand tool is active, wheel input zooms between 50% and 200% around the cursor. Ctrl/Cmd+wheel also zooms outside Hand mode.
-  4. Pane frames, positions, and snapshots scale in the shell. Main receives the zoom through `paneflow:set-canvas-zoom`; responsive panes use fixed 560 × 700 device emulation at that scale, while fixed/custom viewports derive their fit scale from the scaled native bounds.
+  4. Pane frames, positions, and snapshots scale in the shell. Main receives the zoom through `browserdeck:set-canvas-zoom`; responsive panes use fixed 560 × 700 device emulation at that scale, while fixed/custom viewports derive their fit scale from the scaled native bounds.
   5. A toolbar percentage resets zoom to 100% around the workspace center.
   6. Zoom and pan are viewport state, not workspace state. Pane positions remain persisted.
 
@@ -1052,7 +1052,7 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-19
-- **Context:** PaneFlow originally exposed Grid, Freeform, and Canvas modes with separate arrangements. The product direction is now a single infinite Canvas: one mental model for arranging panes, one set of controls, and one persistence path. Keeping mode controls and separate arrangements adds cognitive load and prevents the custom Canvas menu from becoming the primary workspace surface.
+- **Context:** BrowserDeck originally exposed Grid, Freeform, and Canvas modes with separate arrangements. The product direction is now a single infinite Canvas: one mental model for arranging panes, one set of controls, and one persistence path. Keeping mode controls and separate arrangements adds cognitive load and prevents the custom Canvas menu from becoming the primary workspace surface.
 
 - **Decision:**
   1. Remove the Grid/Freeform/Canvas mode switcher, grid-column selector, Freeform Tidy action, and the native grid/freeform toggle command.
@@ -1118,7 +1118,7 @@ Record material technical decisions here. Keep entries short but include context
   3. Keep the menu compact and Herdr-inspired: rounded surface, sections, monochrome icons, 32px items, muted details, checked/radio states, visible focus, shadow, and light/dark tokens.
   4. When a menu opens, measure its panel rectangle in viewport coordinates. Hide only native pane views whose content rectangles intersect the panel and show their snapshots; keep uncovered panes live. Hide the native minimap while any custom menu is open.
   5. Support ArrowUp/Down, Home/End, Enter/Space activation, Escape, Tab-to-close, and click-outside dismissal. Return focus to the trigger on close unless a dialog or pane is taking focus.
-  6. Validate the selected preset through the existing `addPaneWithViewport` path. Add a validated `paneflow:set-theme` call for the custom Appearance items.
+  6. Validate the selected preset through the existing `addPaneWithViewport` path. Add a validated `browserdeck:set-theme` call for the custom Appearance items.
   7. Keep native menus for pane actions and app-level commands; only Canvas add/context menus use the custom component.
 
 - **Alternatives considered:**
@@ -1150,7 +1150,7 @@ Record material technical decisions here. Keep entries short but include context
   2. Show zoom-out and zoom-in buttons with a 10% step and a percentage button between them. Clicking the percentage button opens the standard in-shell `AppMenu` above the bar with 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%).
   3. Extend the Canvas zoom range to 25–200%. The shell clamps every wheel, step, preset, and reset action and applies it around the workspace center for button/menu actions.
   4. Hide the canvas bar and minimap for dialogs and non-zoom/non-appearance custom menus. Keep both visible while the zoom or appearance menu is open because those menus sit above the bar and do not overlap the minimap; using a bar or minimap action closes the menu first. The menu still hides intersecting native pane views through the existing menu path.
-  5. Validate the zoom bar sender separately from the shell and minimap. State flows main → bar; actions flow bar → main → shell. Main only accepts the built `paneflow://shell/zoom.html` document or the validated development origin.
+  5. Validate the zoom bar sender separately from the shell and minimap. State flows main → bar; actions flow bar → main → shell. Main only accepts the built `browserdeck://shell/zoom.html` document or the validated development origin.
   6. Fit all panes when a workspace first appears and after switching workspaces, using a short ready/retry loop until the workspace has non-zero size. Do not refit on ordinary state updates.
   7. A primary click on empty canvas with less than 4 px of movement clears the active pane; the top toolbar stays mounted with a quiet empty state. Panning, middle-button drags, pointer cancellation, and clicks that start on a pane do not clear it. Selecting a pane, its header, or a minimap frame restores selection. The cleared state is transient.
   8. Remove the top-right percentage control and make all top-right toolbar buttons borderless.
@@ -1238,7 +1238,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Context:** The top toolbar mixed app chrome (workspace switcher, Hand, Profiles, appearance), while a separate 34 px active-pane row held the address, navigation, and viewport controls. The result felt crowded and split related controls across two rows. The user asked to clean up the top bar, move Workspace and Profiles to the menubar, move Hand and appearance to the bottom, keep Reload/Add, and put the URL bar at the top.
 
 - **Decision:**
-  1. Make the top toolbar a single stable 42 px row: PaneFlow brand, active-pane context, back/forward/reload, address, viewport selector, Fit all, Reload all, and Add pane. The context hides when the embedded active-pane region is narrower than 640 px.
+  1. Make the top toolbar a single stable 42 px row: BrowserDeck brand, active-pane context, back/forward/reload, address, viewport selector, Fit all, Reload all, and Add pane. The context hides when the embedded active-pane region is narrower than 640 px.
   2. Remove the workspace switcher and Profiles button from the toolbar. Add **Workspaces…** to the native Workspace menu and a native **Profiles → Manage Profiles…** menu. Both send shell commands that open the existing dialogs; closing a dialog returns focus to the active address input (or Add pane when no pane exists).
   3. Move Hand and appearance into the bottom canvas bar. Hand sends a validated action to the shell; appearance opens the in-shell System/Light/Dark menu above the bar. The native View → Theme menu remains.
   4. Keep Reload all and Add in the top toolbar. Fit all stays adjacent to the active-pane controls.
@@ -1357,7 +1357,7 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-20
-- **Context:** The remote policy denies popups, downloads, and permission requests, but the UI previously failed silently. Sites looked broken and users could not tell whether PaneFlow blocked the action or the website malfunctioned. The security model must remain deny-by-default.
+- **Context:** The remote policy denies popups, downloads, and permission requests, but the UI previously failed silently. Sites looked broken and users could not tell whether BrowserDeck blocked the action or the website malfunctioned. The security model must remain deny-by-default.
 
 - **Decision:**
   1. Keep all popup, download, permission, and device-access decisions denied.
@@ -1527,15 +1527,15 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted (the viewport-trigger/menu details are superseded by ADR-053)
 - **Date:** 2026-11-20
-- **Context:** The top toolbar repeated navigation already present in every pane header, the address field and viewport select were small and visually indistinct, and clicks inside the titlebar control row could start a window drag. In development the macOS application menu also said “Electron” while the toolbar repeated the PaneFlow name.
+- **Context:** The top toolbar repeated navigation already present in every pane header, the address field and viewport select were small and visually indistinct, and clicks inside the titlebar control row could start a window drag. In development the macOS application menu also said “Electron” while the toolbar repeated the BrowserDeck name.
 
 - **Decision:**
   1. Remove back, forward, and reload from the top bar; each device header remains the only navigation home.
   2. Mark the whole top navigation row as a no-drag region, and use larger controls with visible inset surfaces and pointer cursors.
   3. Center a shorter address field (max 400 px) with the viewport select in the available toolbar space. Center the URL text while idle and left-align it while editing. Keep the viewport select attached to the address field and give it a fixed default width of 184 px so changing presets never reflows the bar; step the width down at narrow toolbar sizes. Keep full preset names and CSS dimensions in the closed label, with a tooltip for any truncated text.
   4. Keep the active-device context anchored at the far left rather than attaching it to the address field. The bar reads as three stable zones: device context, address plus viewport, and Add.
-  5. Remove the visible PaneFlow brand from the toolbar and keep a visually hidden level-one heading for accessibility.
-  6. Replace the default macOS `appMenu` role with an explicit PaneFlow application menu and set the About panel name to PaneFlow.
+  5. Remove the visible BrowserDeck brand from the toolbar and keep a visually hidden level-one heading for accessibility.
+  6. Replace the default macOS `appMenu` role with an explicit BrowserDeck application menu and set the About panel name to BrowserDeck.
 
 - **Alternatives considered:**
   - **Keep navigation in both the header and top bar.** Rejected; it was redundant and consumed the space needed for a usable address field.
@@ -1551,13 +1551,13 @@ Record material technical decisions here. Keep entries short but include context
   - The address field is easier to target and visually reads as editable.
   - The viewport select stays put as presets change and remains next to the address it affects.
   - Navigation is available only where the device is, not duplicated globally.
-  - The macOS application menu identifies PaneFlow in both development and packaged runs.
+  - The macOS application menu identifies BrowserDeck in both development and packaged runs.
 
 - **Evidence / verification:**
   - E2e verifies the hidden shell heading, address focus order, bottom-bar Find/Reload actions, and absence of top-bar navigation controls.
   - E2e verifies the viewport select keeps a fixed compact width, shows the full preset label and CSS dimensions, and exposes the dimensions in its tooltip.
-  - Visual checks confirm the centered short URL field, the full-width preset label at 1280 px, the responsive selector at 720 px, and no visible PaneFlow brand in the toolbar.
-  - The running app reports the macOS application menu label as `PaneFlow`.
+  - Visual checks confirm the centered short URL field, the full-width preset label at 1280 px, the responsive selector at 720 px, and no visible BrowserDeck brand in the toolbar.
+  - The running app reports the macOS application menu label as `BrowserDeck`.
 
 ## ADR-052 — Restore the last Canvas camera and selection per workspace
 
@@ -1632,7 +1632,7 @@ Record material technical decisions here. Keep entries short but include context
 - **Context:** `Cmd+D` created a duplicate at the end of the default row, often far from the pane the user was comparing. Users also asked for `Cmd+N` as the conventional add-device shortcut and for Responsively-style arrangements that can tidy a Canvas full of frames without dragging each one.
 
 - **Decision:**
-  1. Compute duplicate placement in the renderer before invoking `paneflow:duplicate-pane`. Use the source frame's right slot when it has a clean gap; otherwise place the duplicate at the source's left edge below it and scan down past occupied frames.
+  1. Compute duplicate placement in the renderer before invoking `browserdeck:duplicate-pane`. Use the source frame's right slot when it has a clean gap; otherwise place the duplicate at the source's left edge below it and scan down past occupied frames.
   2. Keep the computed placement pending until the new pane appears in the state snapshot, then apply it before `ensureCanvasPositions` runs so the camera reveal and the saved layout both use the final position.
   3. Use `Cmd/Ctrl+N` for Add Device in the native Device menu, replacing `Cmd/Ctrl+T`. ADR-058 later changes this shortcut to open the device picker instead of creating a responsive pane immediately.
   4. Add an Arrange menu to the bottom canvas bar with Showcase layout, Horizontal row, 2 × 2 grid, and Vertical stack. Arrange rebuilds every pane position from pane order, persists the result, and fits the camera.
@@ -1661,15 +1661,15 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Status:** Accepted
 - **Date:** 2026-11-20
-- **Context:** Responsively's device header exposes the device preset, dimensions, reload, fullscreen, external open, screenshot, and close. PaneFlow's Canvas header had a title, a static size badge, and navigation/actions, while the active-pane viewport selector lived in the main top toolbar. Users asked for a clearer per-pane header, a visible drag affordance, an open-in-browser action, and a cleaner main toolbar.
+- **Context:** Responsively's device header exposes the device preset, dimensions, reload, fullscreen, external open, screenshot, and close. BrowserDeck's Canvas header had a title, a static size badge, and navigation/actions, while the active-pane viewport selector lived in the main top toolbar. Users asked for a clearer per-pane header, a visible drag affordance, an open-in-browser action, and a cleaner main toolbar.
 
 - **Decision:**
   1. Add a six-dot drag grip at the left of every Canvas pane header. The grip is decorative; the existing header drag surface remains unchanged.
   2. Replace the static viewport badge with a per-device trigger that shows the short preset name and CSS dimensions, opens the existing viewport menu for that pane, and exposes `data-preset`, `aria-haspopup`, and `aria-expanded`. Open the menu below the trigger from its left edge and let the shared window-edge clamp shift it only when it would overflow.
   3. Hide the dimensions below a 470 px header width so narrow device frames keep the preset name and all actions usable.
   4. Remove the full viewport selector from the top toolbar. Selecting Custom… from a header selects that device and opens the existing inline width/height/DPR editor in the top toolbar; a compact edit button remains while the active device has a custom viewport.
-  5. Add an Open in Browser button to the header and an Open in Browser item to the device actions menu. Route it through a validated `paneflow:open-pane-external` channel that only accepts the pane's current HTTP(S) URL, rejects `about:blank`, and calls `shell.openExternal` in main.
-  6. Keep the header on one row. Do not add synced/mirroring status because PaneFlow has no synchronized interaction feature, and do not duplicate global zoom controls or screenshot actions in the header.
+  5. Add an Open in Browser button to the header and an Open in Browser item to the device actions menu. Route it through a validated `browserdeck:open-pane-external` channel that only accepts the pane's current HTTP(S) URL, rejects `about:blank`, and calls `shell.openExternal` in main.
+  6. Keep the header on one row. Do not add synced/mirroring status because BrowserDeck has no synchronized interaction feature, and do not duplicate global zoom controls or screenshot actions in the header.
 
 - **Alternatives considered:**
   - **Two-row header.** Kept as a fallback, but not needed after moving the preset selector into the header and hiding dimensions at narrow widths.
@@ -1703,7 +1703,7 @@ Record material technical decisions here. Keep entries short but include context
   3. Hide native pane views for the duration of the marquee and draw the rectangle as shell DOM. Capture snapshots when none are available so covered panes do not flash.
   4. Convert pane frames to screen space and use the pure `canvasPaneIdsInRect` helper to select every intersecting frame. Selection replaces the previous set on each drag.
   5. Ring selected pane slots outside native bounds and show a toolbar count chip with a close action. A click without movement selects only the pane under the cursor, or clears the selection on empty canvas.
-  6. Delete/Backspace closes the selected set when focus is in shell chrome; Escape clears the selection, then exits the tool. Update the bar through a validated `paneflow:set-canvas-select-mode` channel so `aria-pressed` reflects the real state.
+  6. Delete/Backspace closes the selected set when focus is in shell chrome; Escape clears the selection, then exits the tool. Update the bar through a validated `browserdeck:set-canvas-select-mode` channel so `aria-pressed` reflects the real state.
   7. Keep selection ephemeral. It is not persisted, does not change the active pane, and clears on workspace switch or when the last selected pane closes.
 
 - **Alternatives considered:**
@@ -1762,10 +1762,10 @@ Record material technical decisions here. Keep entries short but include context
 - **Context:** `Cmd/Ctrl+N` created a responsive pane immediately, while the toolbar + button opened the viewport picker. Users expect the shortcut and the button to offer the same choice, especially when they want a preset other than Responsive.
 
 - **Decision:**
-  1. Route the native **Add Device** command to the existing in-shell Add Device menu instead of calling `paneflow:add-pane`.
+  1. Route the native **Add Device** command to the existing in-shell Add Device menu instead of calling `browserdeck:add-pane`.
   2. Anchor the menu to the toolbar + button, using its normal above/below placement and focus-return behavior.
   3. Do not create a pane until the user selects Responsive or a fixed preset.
-  4. Keep the direct `paneflow:add-pane` IPC and `window.paneflow.addPane()` API for tests and internal creation paths; only the user-facing command changes.
+  4. Keep the direct `browserdeck:add-pane` IPC and `window.browserdeck.addPane()` API for tests and internal creation paths; only the user-facing command changes.
   5. Keep `Cmd/Ctrl+N` as the menu accelerator.
 
 - **Alternatives considered:**
@@ -2008,7 +2008,7 @@ Record material technical decisions here. Keep entries short but include context
   - **Remove the description entirely.** Rejected; `aria-describedby` still explains the panel to assistive technology.
 
 - **Consequences:**
-  - Workspaces feels like the rest of PaneFlow's menus and takes less visual attention.
+  - Workspaces feels like the rest of BrowserDeck's menus and takes less visual attention.
   - The dialog remains modal and keyboard accessible.
   - Focus order now ends at **Export active** instead of a footer Close button.
   - Switching is one click; less frequent rename, duplicate, and delete actions take one more click through the row menu.
@@ -2124,6 +2124,89 @@ Record material technical decisions here. Keep entries short but include context
 - **Evidence / verification:**
   - E2e and running-app screenshots verify the opaque toolbar, workspace-owned dot backdrop, and pan-driven background position.
   - Fit all and pane drag-clamp coverage remain unchanged.
+
+## ADR-071 — BrowserDeck packaged identity comes from the app bundle
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** `make start` launched the shared Electron development runtime. macOS derives the Dock name and bundle identity from `Electron.app` before JavaScript runs, so `app.setName()` cannot make that process appear as BrowserDeck. The checked-in `build/icon.icns` and `build/icon.svg` already existed, but the runtime still showed the default Electron icon.
+
+- **Decision:**
+  1. Keep the product name **BrowserDeck**; it accurately names the pane-based workspace.
+  2. Make `make start` build the unpacked arm64 app with electron-builder and launch `dist/mac-arm64/BrowserDeck.app` through `scripts/start-packaged.mjs`.
+  3. Keep `make preview` as the faster electron-vite preview, and document that macOS may label the shared Electron runtime "Electron" in the Dock.
+  4. Set the Dock icon from `build/icon.png` and keep the app name/about metadata configured in the development runtime too.
+  5. Set the macOS bundle identity, copyright, version, and icon through `package.json` and `electron-builder.yml`.
+  6. Release as version 1.1.0.
+
+- **Alternatives considered:**
+  - **Patch `node_modules/electron/Electron.app` at development time.** Rejected; it mutates dependency-managed files and adds fragile bundle-copy work for a problem the packaged app already solves.
+  - **Accept the Electron identity for `make start`.** Rejected; it is confusing for a 1.0 build and hides the real app icon.
+  - **Rename the project.** Handled separately in ADR-073; package identity and the repo slug use `browser-deck`, while the display name stays BrowserDeck.
+
+- **Consequences:**
+  - `make start` takes longer because it packages the app before launching.
+  - Packaged launches show BrowserDeck in the Dock and menu bar with the checked-in icon.
+  - `make dev` and `make preview` remain fast development paths, with the BrowserDeck icon but the Electron runtime name.
+
+- **Evidence / verification:**
+  - Packaged `Info.plist` reports `CFBundleDisplayName=BrowserDeck`, `CFBundleName=BrowserDeck`, `CFBundleIdentifier=com.kanharithsok.browser-deck`, and version `1.1.0`.
+  - The packaged app uses the same `build/icon.icns` hash as the source.
+  - `lsappinfo` reports the running packaged process as `BrowserDeck`, and `make start` launches that executable.
+
+## ADR-072 — Remove the pane-chrome preview scaffolding
+
+- **Status:** Accepted
+- **Context:** The Canvas-only UI settled on one pane chrome. The old A/B/C preview type, localStorage key, prop, classes, and unit test remained after the comparison UI was removed.
+
+- **Decision:**
+  1. Remove `src/shared/pane-chrome.ts` and its unit test.
+  2. Remove the stored preview preference and app-wide pane-chrome state.
+  3. Always render the viewport trigger in the Canvas pane header and keep the transparent Canvas header treatment.
+  4. Remove the unused profile rename store method and legacy profile-usage styles as part of the same 1.0 cleanup.
+
+- **Alternatives considered:**
+  - **Leave the preview scaffolding for future experimentation.** Rejected; it is unused, exposes a dead preference, and increases the maintenance surface before 1.0.
+
+- **Consequences:**
+  - There is one pane-chrome implementation instead of three implied variants.
+  - The unit suite drops the obsolete preview test; the remaining behavior is covered by pane and accessibility tests.
+  - Profile metadata is now create/ensure/remove only, matching the internal session model.
+
+- **Evidence / verification:**
+  - Typecheck, lint, unit tests, and e2e pass after removal.
+  - No `pane-chrome`, `chromeStyle`, or preview storage references remain in source or tests.
+
+## ADR-073 — Rebrand PaneFlow to BrowserDeck and use “browser” in user-facing copy
+
+- **Status:** Accepted
+- **Context:** PaneFlow described the pane model, but the product is primarily a workspace of independent browser sessions. The name also collided with an existing slideshow product and a coding-agent workspace. User-facing “device” copy made the Add action sound like hardware creation rather than opening a browser.
+
+- **Decision:**
+  1. Rename the product to **BrowserDeck**; use `browser-deck` for the repository, package, app ID (`com.kanharithsok.browser-deck`), and artifact slug. The macOS display name and executable remain `BrowserDeck`.
+  2. Use **browser** consistently in user-facing copy for panes, actions, counts, empty states, menus, and accessibility labels. Keep **pane** internal; reserve **device** for viewport/emulation details such as DPR.
+  3. Bump the release to **1.1.0**.
+  4. Rename the GitHub repository to `browser-deck` and update the local `origin` URL.
+  5. Migrate `~/Library/Application Support/PaneFlow` to `BrowserDeck` and rename legacy `paneflow-profile-*` partition directories on startup.
+  6. Accept legacy `paneflow-workspace` import files while writing the new `browserdeck-workspace` format.
+  7. Keep the existing pane icon; it depicts overlapping browser panes and remains appropriate.
+
+- **Alternatives considered:**
+  - **BrowserFlow.** Rejected; already an established browser-automation product.
+  - **BrowserDeck.** Chosen by the owner; note that a small existing browser-workspace product uses the name, so a domain/trademark check is still required before public distribution.
+  - **Keep PaneFlow.** Rejected after the owner chose to update; PaneFlow also had naming collisions.
+
+- **Consequences:**
+  - App identity, data paths, protocol, bridge name, environment variables, and tests use BrowserDeck/browserdeck.
+  - Existing PaneFlow workspaces and partition folders are migrated best-effort; existing 1.0 shell localStorage is not preserved across the protocol rename.
+  - “Device” remains in technical emulation language but not in primary UI copy.
+  - The GitHub repository URL changes to `https://github.com/kanharithsok/browser-deck`.
+
+- **Evidence / verification:**
+  - Unit, typecheck, lint, and e2e suites pass after the rename.
+  - Packaged metadata reports BrowserDeck 1.1.0 with app ID `com.kanharithsok.browser-deck`.
+  - The empty-state Add Browser button opens the picker and creates a pane; covered by e2e.
+  - `gh repo view` reports `kanharithsok/browser-deck`; local `origin` matches.
 
 ### ADR-NNN — Title
 

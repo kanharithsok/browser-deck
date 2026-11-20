@@ -34,7 +34,7 @@ export function profilePartitionDirectoryName(profileId: string): string {
   if (!isValidProfileId(profileId)) {
     throw new Error('Invalid profile ID')
   }
-  return `paneflow-profile-${profileId}`
+  return `browserdeck-profile-${profileId}`
 }
 
 /**

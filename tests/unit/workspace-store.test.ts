@@ -14,7 +14,7 @@ const PROFILE_A = '33333333-3333-4333-8333-333333333333'
 const PROFILE_B = '44444444-4444-4444-8444-444444444444'
 
 async function makeDirectory(): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), 'paneflow-workspace-'))
+  const directory = await mkdtemp(join(tmpdir(), 'browserdeck-workspace-'))
   tempDirectories.push(directory)
   return directory
 }

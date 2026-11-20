@@ -1,5 +1,5 @@
 ---
-description: Run the available PaneFlow checks and report exact results
+description: Run the available BrowserDeck checks and report exact results
 ---
 
 Run the checks that actually exist in `package.json`, in this order where available:

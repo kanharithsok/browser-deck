@@ -1,5 +1,5 @@
 ---
-description: Read-only review of the current PaneFlow changes
+description: Read-only review of the current BrowserDeck changes
 ---
 
 Review the current working tree without modifying files.

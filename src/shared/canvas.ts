@@ -272,7 +272,7 @@ export function snapCanvasRect(
   }
 }
 
-/** Content size of a canvas frame, excluding PaneFlow chrome. */
+/** Content size of a canvas frame, excluding BrowserDeck chrome. */
 export function canvasContentSize(viewport: PaneViewport): Size {
   if (viewport.preset === 'responsive') {
     return { width: CANVAS_RESPONSIVE_WIDTH, height: CANVAS_RESPONSIVE_HEIGHT }

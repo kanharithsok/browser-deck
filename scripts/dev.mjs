@@ -3,7 +3,7 @@ import serverModule from '../tests/fixtures/server.cjs'
 
 const { startFixtureServer } = serverModule
 
-const fixturePort = Number(process.env.PANEFLOW_FIXTURE_PORT ?? '0')
+const fixturePort = Number(process.env.BROWSERDECK_FIXTURE_PORT ?? '0')
 const fixture = await startFixtureServer({ port: Number.isFinite(fixturePort) ? fixturePort : 0 })
 
 const startUrls = [
@@ -11,14 +11,14 @@ const startUrls = [
   `${fixture.url}/pane/two?user=bob`
 ].join(',')
 
-console.log(`PaneFlow fixtures: ${fixture.url}`)
+console.log(`BrowserDeck fixtures: ${fixture.url}`)
 console.log('Starting electron-vite development server…')
 
 const child = spawn('electron-vite', ['dev'], {
   stdio: 'inherit',
   env: {
     ...process.env,
-    PANEFLOW_START_URLS: startUrls
+    BROWSERDECK_START_URLS: startUrls
   }
 })
 

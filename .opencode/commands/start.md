@@ -1,5 +1,5 @@
 ---
-description: Start PaneFlow Phase 0 — bootstrap and native-view spike
+description: Start BrowserDeck Phase 0 — bootstrap and native-view spike
 ---
 
 Read `AGENTS.md`, `SPEC.md` (especially sections 12, 13, 17, 18, and Phase 0), and the current `docs/PHASE_REPORTS.md` before changing anything.

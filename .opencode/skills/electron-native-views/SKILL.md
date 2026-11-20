@@ -1,6 +1,6 @@
 ---
 name: electron-native-views
-description: Use when changing PaneFlow BaseWindow composition, WebContentsView panes, native bounds, z-order, focus, sessions, or pane teardown.
+description: Use when changing BrowserDeck BaseWindow composition, WebContentsView panes, native bounds, z-order, focus, sessions, or pane teardown.
 ---
 
 # Electron native views

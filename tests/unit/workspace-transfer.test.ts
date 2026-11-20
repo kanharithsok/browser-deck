@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MAX_URL_LENGTH } from '../../src/shared/url'
 import { viewportFromPreset } from '../../src/shared/viewports'
 import {
+  LEGACY_WORKSPACE_TRANSFER_FORMAT,
   WORKSPACE_TRANSFER_FORMAT,
   WORKSPACE_TRANSFER_VERSION,
   materializeWorkspaceTransfer,
@@ -87,6 +88,18 @@ describe('workspace transfer serialization', () => {
     })
     expect(JSON.stringify(transfer)).not.toContain('profileId')
     expect(JSON.stringify(transfer)).not.toContain(PROFILE_A)
+  })
+
+  it('accepts workspace exports from the former PaneFlow name', () => {
+    const legacy = {
+      ...serializeWorkspaceTransfer(workspace()),
+      format: LEGACY_WORKSPACE_TRANSFER_FORMAT
+    }
+    const parsed = parseWorkspaceTransfer(legacy)
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.transfer.format).toBe(WORKSPACE_TRANSFER_FORMAT)
+    }
   })
 
   it('round-trips through JSON and materializes fresh pane/profile IDs', () => {

@@ -1,4 +1,4 @@
-# PaneFlow developer commands. Run `make` or `make help` for a summary.
+# BrowserDeck developer commands. Run `make` or `make help` for a summary.
 
 SHELL := /bin/sh
 .DEFAULT_GOAL := help
@@ -8,12 +8,13 @@ NPM := npm
 DEPS_STAMP := node_modules/.package-lock.json
 ELECTRON_STAMP := node_modules/electron/path.txt
 
-.PHONY: help check-toolchain deps runtime install start dev build typecheck lint test test-unit test-e2e check-contrast check package package-mac package-dir clean
+.PHONY: help check-toolchain deps runtime install start preview dev build typecheck lint test test-unit test-e2e check-contrast check package package-mac package-dir clean
 
 help:
-	@echo 'PaneFlow developer commands:'
+	@echo 'BrowserDeck developer commands:'
 	@echo ''
-	@echo '  make start          Build and preview the production app'
+	@echo '  make start          Build, package, and launch BrowserDeck with its real app identity'
+	@echo '  make preview        Build and preview through the Electron dev runtime'
 	@echo '  make dev            Start the development app with fixtures'
 	@echo '  make build          Build main, preload, and renderer into out/'
 	@echo '  make check          Typecheck, lint, run unit tests, and check contrast'
@@ -34,7 +35,7 @@ help:
 check-toolchain:
 	@command -v node >/dev/null 2>&1 || { echo "error: Node.js $(NODE_MIN_MAJOR)+ is required but 'node' was not found." >&2; exit 1; }
 	@command -v $(NPM) >/dev/null 2>&1 || { echo "error: npm is required but was not found." >&2; exit 1; }
-	@node -e "const major = Number(process.versions.node.split('.')[0]); if (major < $(NODE_MIN_MAJOR)) { console.error('error: PaneFlow requires Node.js $(NODE_MIN_MAJOR) or newer; found ' + process.version + '.'); console.error('If you use nvm, run: nvm install && nvm use'); process.exit(1); }"
+	@node -e "const major = Number(process.versions.node.split('.')[0]); if (major < $(NODE_MIN_MAJOR)) { console.error('error: BrowserDeck requires Node.js $(NODE_MIN_MAJOR) or newer; found ' + process.version + '.'); console.error('If you use nvm, run: nvm install && nvm use'); process.exit(1); }"
 
 deps: check-toolchain $(DEPS_STAMP)
 
@@ -55,8 +56,11 @@ install: check-toolchain
 	@node node_modules/electron/install.js
 
 start: runtime
-	@echo '==> Starting PaneFlow'
+	@echo '==> Starting packaged BrowserDeck'
 	@$(NPM) run start
+
+preview: runtime
+	@$(NPM) run preview
 
 dev: runtime
 	@$(NPM) run dev

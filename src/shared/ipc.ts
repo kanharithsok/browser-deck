@@ -11,56 +11,56 @@ import type {
 } from './workspace'
 
 export const IPC_CHANNELS = {
-  getState: 'paneflow:get-state',
-  addPane: 'paneflow:add-pane',
-  addPaneWithViewport: 'paneflow:add-pane-with-viewport',
-  duplicatePane: 'paneflow:duplicate-pane',
-  closePane: 'paneflow:close-pane',
-  renamePane: 'paneflow:rename-pane',
-  navigate: 'paneflow:navigate',
-  back: 'paneflow:back',
-  forward: 'paneflow:forward',
-  reload: 'paneflow:reload',
-  reloadAll: 'paneflow:reload-all',
-  setPaneBounds: 'paneflow:set-pane-bounds',
-  setPaneViewport: 'paneflow:set-pane-viewport',
-  rotatePaneViewport: 'paneflow:rotate-pane-viewport',
-  capturePaneScreenshot: 'paneflow:capture-pane-screenshot',
-  copyPaneUrl: 'paneflow:copy-pane-url',
-  clearPaneSiteData: 'paneflow:clear-pane-site-data',
-  openPaneExternal: 'paneflow:open-pane-external',
-  openPaneDevTools: 'paneflow:open-pane-devtools',
-  saveWorkspaceLayout: 'paneflow:save-workspace-layout',
-  listWorkspaces: 'paneflow:list-workspaces',
-  exportWorkspace: 'paneflow:export-workspace',
-  importWorkspace: 'paneflow:import-workspace',
-  createWorkspace: 'paneflow:create-workspace',
-  renameWorkspace: 'paneflow:rename-workspace',
-  duplicateWorkspace: 'paneflow:duplicate-workspace',
-  switchWorkspace: 'paneflow:switch-workspace',
-  deleteWorkspace: 'paneflow:delete-workspace',
-  bringPaneToFront: 'paneflow:bring-pane-to-front',
-  sendPaneToBack: 'paneflow:send-pane-to-back',
-  setTheme: 'paneflow:set-theme',
-  capturePaneSnapshots: 'paneflow:capture-pane-snapshots',
-  setCanvasZoom: 'paneflow:set-canvas-zoom',
-  updateCanvasMinimap: 'paneflow:update-canvas-minimap',
-  setCanvasMinimapVisible: 'paneflow:set-canvas-minimap-visible',
-  setCanvasOverlayVisibility: 'paneflow:set-canvas-overlay-visibility',
-  canvasMinimapState: 'paneflow:canvas-minimap-state',
-  canvasMinimapAction: 'paneflow:canvas-minimap-action',
-  canvasMinimapActionRequested: 'paneflow:canvas-minimap-action-requested',
-  canvasZoomState: 'paneflow:canvas-zoom-state',
-  canvasZoomAction: 'paneflow:canvas-zoom-action',
-  canvasZoomActionRequested: 'paneflow:canvas-zoom-action-requested',
-  setCanvasHandMode: 'paneflow:set-canvas-hand-mode',
-  setCanvasSelectMode: 'paneflow:set-canvas-select-mode',
-  paneCommand: 'paneflow:pane-command',
-  paneFocused: 'paneflow:pane-focused',
-  paneNotice: 'paneflow:pane-notice',
-  paneRenameRequested: 'paneflow:pane-rename-requested',
-  stateChanged: 'paneflow:state-changed',
-  requestMeasurement: 'paneflow:request-measurement'
+  getState: 'browserdeck:get-state',
+  addPane: 'browserdeck:add-pane',
+  addPaneWithViewport: 'browserdeck:add-pane-with-viewport',
+  duplicatePane: 'browserdeck:duplicate-pane',
+  closePane: 'browserdeck:close-pane',
+  renamePane: 'browserdeck:rename-pane',
+  navigate: 'browserdeck:navigate',
+  back: 'browserdeck:back',
+  forward: 'browserdeck:forward',
+  reload: 'browserdeck:reload',
+  reloadAll: 'browserdeck:reload-all',
+  setPaneBounds: 'browserdeck:set-pane-bounds',
+  setPaneViewport: 'browserdeck:set-pane-viewport',
+  rotatePaneViewport: 'browserdeck:rotate-pane-viewport',
+  capturePaneScreenshot: 'browserdeck:capture-pane-screenshot',
+  copyPaneUrl: 'browserdeck:copy-pane-url',
+  clearPaneSiteData: 'browserdeck:clear-pane-site-data',
+  openPaneExternal: 'browserdeck:open-pane-external',
+  openPaneDevTools: 'browserdeck:open-pane-devtools',
+  saveWorkspaceLayout: 'browserdeck:save-workspace-layout',
+  listWorkspaces: 'browserdeck:list-workspaces',
+  exportWorkspace: 'browserdeck:export-workspace',
+  importWorkspace: 'browserdeck:import-workspace',
+  createWorkspace: 'browserdeck:create-workspace',
+  renameWorkspace: 'browserdeck:rename-workspace',
+  duplicateWorkspace: 'browserdeck:duplicate-workspace',
+  switchWorkspace: 'browserdeck:switch-workspace',
+  deleteWorkspace: 'browserdeck:delete-workspace',
+  bringPaneToFront: 'browserdeck:bring-pane-to-front',
+  sendPaneToBack: 'browserdeck:send-pane-to-back',
+  setTheme: 'browserdeck:set-theme',
+  capturePaneSnapshots: 'browserdeck:capture-pane-snapshots',
+  setCanvasZoom: 'browserdeck:set-canvas-zoom',
+  updateCanvasMinimap: 'browserdeck:update-canvas-minimap',
+  setCanvasMinimapVisible: 'browserdeck:set-canvas-minimap-visible',
+  setCanvasOverlayVisibility: 'browserdeck:set-canvas-overlay-visibility',
+  canvasMinimapState: 'browserdeck:canvas-minimap-state',
+  canvasMinimapAction: 'browserdeck:canvas-minimap-action',
+  canvasMinimapActionRequested: 'browserdeck:canvas-minimap-action-requested',
+  canvasZoomState: 'browserdeck:canvas-zoom-state',
+  canvasZoomAction: 'browserdeck:canvas-zoom-action',
+  canvasZoomActionRequested: 'browserdeck:canvas-zoom-action-requested',
+  setCanvasHandMode: 'browserdeck:set-canvas-hand-mode',
+  setCanvasSelectMode: 'browserdeck:set-canvas-select-mode',
+  paneCommand: 'browserdeck:pane-command',
+  paneFocused: 'browserdeck:pane-focused',
+  paneNotice: 'browserdeck:pane-notice',
+  paneRenameRequested: 'browserdeck:pane-rename-requested',
+  stateChanged: 'browserdeck:state-changed',
+  requestMeasurement: 'browserdeck:request-measurement'
 } as const
 
 export type PaneCommand =
@@ -102,7 +102,6 @@ export interface PaneBoundsUpdate {
 export interface PaneState {
   id: string
   profileId: string
-  profileLabel: string
   title: string
   customTitle: string | null
   url: string
@@ -147,7 +146,7 @@ export type PaneScreenshotResult =
   | { ok: true; canceled?: boolean; filePath?: string }
   | { ok: false; error: string }
 
-export interface PaneFlowApi {
+export interface BrowserDeckApi {
   getState(): Promise<ShellState>
   addPane(url?: string): Promise<ScriptResult>
   addPaneWithViewport(viewport: PaneViewport): Promise<ScriptResult>

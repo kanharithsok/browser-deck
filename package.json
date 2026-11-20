@@ -1,10 +1,10 @@
 {
-  "name": "paneflow",
-  "productName": "PaneFlow",
-  "version": "0.1.0",
+  "name": "browser-deck",
+  "productName": "BrowserDeck",
+  "version": "1.1.0",
   "private": true,
   "description": "Multiple real browser sessions. One flexible workspace.",
-  "author": "PaneFlow contributors",
+  "author": "BrowserDeck contributors",
   "license": "MIT",
   "main": "./out/main/index.js",
   "engines": {
@@ -13,7 +13,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "electron-vite build",
-    "start": "electron-vite preview",
+    "start": "npm run package:dir && node scripts/start-packaged.mjs",
+    "preview": "electron-vite preview",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json",
