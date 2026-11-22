@@ -194,19 +194,22 @@ opencode
 
 Useful commands:
 
-- `/start` — complete or verify Phase 0 only.
-- `/next` — implement the next small, complete vertical slice.
+- `/start` — resume a session: check state, roadmap, Git status, and the next task.
+- `/next` — implement exactly one roadmap task end-to-end.
+- `/plan` — capture or refine roadmap tasks without changing code.
+- `/status` — report project and roadmap status without changing files.
 - `/verify` — run the available checks and report exact results.
 - `/review` — request a read-only code/security/UI review.
 
-OpenCode discovers `AGENTS.md`, `.opencode/agents/`, `.opencode/skills/`, and `.opencode/commands/` automatically. Do not copy these instructions into every prompt.
+The live queue is `docs/ROADMAP.md`; `.factory/STATE.md` keeps the current focus and last verification. OpenCode discovers `AGENTS.md`, `.opencode/skills/`, and `.opencode/commands/` automatically. Do not copy these instructions into every prompt.
 
 ## Repository map
 
 ```text
 .github/              GitHub Actions CI
-.opencode/            Project agents, skills, and slash commands
-docs/                 Architecture, decisions, manual checks, phase reports
+.opencode/            Project skills and slash commands
+.factory/             Durable session state for agent sessions
+docs/                 Architecture, decisions, manual checks, phase reports, roadmap
 Makefile              Developer commands with toolchain and dependency checks
 SECURITY.md           Threat boundaries and local-distribution checklist
 scripts/              Development and packaged-launch scripts

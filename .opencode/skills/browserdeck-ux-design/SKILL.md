@@ -145,4 +145,4 @@ Before marking a meaningful UI feature complete, verify:
 - Does the interface remain calm in both light and dark appearance?
 - Is any visual element decorative rather than useful? Remove it.
 
-Use the read-only `ui-reviewer` for a meaningful completed UI slice. Provide screenshots or a runnable build when available. The reviewer must distinguish concrete usability/accessibility problems from subjective taste.
+For a meaningful completed UI slice, use the `/review` command with this skill and `browserdeck-design-system` loaded. Provide screenshots or a runnable build when available. The review must distinguish concrete usability/accessibility problems from subjective taste.

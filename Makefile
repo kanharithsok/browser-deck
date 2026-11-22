@@ -8,7 +8,7 @@ NPM := npm
 DEPS_STAMP := node_modules/.package-lock.json
 ELECTRON_STAMP := node_modules/electron/path.txt
 
-.PHONY: help check-toolchain deps runtime install start preview dev build typecheck lint test test-unit test-e2e check-contrast check package package-mac package-dir clean
+.PHONY: help check-toolchain deps runtime install start preview dev build typecheck lint test test-unit test-e2e check-contrast agent-check check package package-mac package-dir clean
 
 help:
 	@echo 'BrowserDeck developer commands:'
@@ -23,6 +23,7 @@ help:
 	@echo '  make test-unit      Run the Vitest unit tests'
 	@echo '  make test           Alias for test-unit'
 	@echo '  make check-contrast Check light/dark design-token contrast'
+	@echo '  make agent-check    Validate commands, skills, roadmap, and session state'
 	@echo '  make test-e2e       Build, then run the Playwright Electron tests'
 	@echo '  make package        Build the unpacked macOS app'
 	@echo '  make package-mac    Build the macOS DMG and ZIP'
@@ -83,7 +84,10 @@ test-e2e: runtime
 check-contrast: deps
 	@$(NPM) run check:contrast
 
-check: typecheck lint test-unit check-contrast
+agent-check:
+	@node scripts/validate-agent-config.mjs
+
+check: typecheck lint test-unit check-contrast agent-check
 
 package: package-dir
 

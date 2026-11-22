@@ -2,7 +2,7 @@
 description: Read-only review of the current BrowserDeck changes
 ---
 
-Review the current working tree without modifying files.
+Read `AGENTS.md`, `.factory/STATE.md`, and `docs/ROADMAP.md` for the active task. Review the current working tree without modifying files.
 
 Focus on:
 

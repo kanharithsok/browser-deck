@@ -1233,3 +1233,24 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Homebrew cask | Added `kanharithsok/tap/browser-deck`. `brew fetch` verified SHA-256 `a74b6eeb44f773d1019f898b0c5c22f9df6c46f5fffe96eeba7feb646d46a100`; `brew install --cask` installed version 1.1.0 into `/Applications/BrowserDeck.app` with quarantine removed. |
 
 **Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real BrowserDeck identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build. A small existing browser-workspace product also uses the BrowserDeck name, so a domain/trademark check is still required before public distribution.
+
+## Agent workflow — Lightweight roadmap and session state
+
+**Date:** 2026-11-22
+
+**Status:** Implemented.
+
+**Change:** Added a lightweight local agent workflow: `docs/ROADMAP.md` as the live dependency-aware queue, `.factory/STATE.md` as the one-screen session state, `/plan` and `/status` commands, upgraded `/start` and `/next` to use the roadmap and state, and `scripts/validate-agent-config.mjs` with `make agent-check`. The existing `docs/PHASE_REPORTS.md` remains the detailed evidence log; no second work log was added. No application code, dependencies, packaging, or runtime behavior changed.
+
+**Files changed:** `AGENTS.md`, `README.md`, `Makefile`, `package.json`, `.github/workflows/ci.yml`, `.opencode/commands/start.md`, `.opencode/commands/next.md`, `.opencode/commands/review.md`, `.opencode/commands/verify.md`, `.opencode/commands/plan.md` (new), `.opencode/commands/status.md` (new), `.opencode/skills/browserdeck-ux-design/SKILL.md`, `.factory/STATE.md` (new), `docs/ROADMAP.md` (new), `scripts/validate-agent-config.mjs` (new), and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make agent-check` | Passed: required files, command frontmatter, four skill files, 18 roadmap tasks, and state references. |
+| `make check` | Passed: typecheck, lint, 176 unit tests, all light/dark contrast pairs, and `make agent-check`. |
+| `npm run build` | Passed: main 158.13 kB, preload 9.31 kB, renderer JS 358.96 kB, shell CSS 31.58 kB. |
+| `npm run test:e2e` | Not run — no native-view, IPC, session, or workspace behavior changed. |
+
+**Known behavior / limitations:** The roadmap is seeded from existing known limitations and post-MVP follow-ups; `/plan` must keep it current. Manual VoiceOver and profiling tasks still require a human-run pass. The current checkout is `dev` at 1.1.0; `main` contains the later 1.2.0 work, so confirm the target branch before publishing.
+
+**Next:** BD-004 — distinguish HTTP from HTTPS in the pane address bar.
