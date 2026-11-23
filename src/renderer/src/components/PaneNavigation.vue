@@ -343,8 +343,30 @@ async function submitAddress(): Promise<void> {
           @input="viewportError = null"
         />
       </label>
-      <button class="custom-apply" type="button" @click="applyCustomViewport">Apply</button>
-      <button class="custom-cancel" type="button" @click="cancelCustomViewport">Cancel</button>
+      <button
+        class="custom-apply"
+        type="button"
+        aria-label="Apply"
+        title="Apply custom viewport"
+        @click="applyCustomViewport"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m3.5 8.5 3 3 6-7" />
+        </svg>
+        <span class="custom-action-label">Apply</span>
+      </button>
+      <button
+        class="custom-cancel"
+        type="button"
+        aria-label="Cancel"
+        title="Cancel custom viewport"
+        @click="cancelCustomViewport"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+        <span class="custom-action-label">Cancel</span>
+      </button>
       <span v-if="viewportError" class="viewport-error" role="alert">{{ viewportError }}</span>
     </div>
   </div>
@@ -594,6 +616,10 @@ async function submitAddress(): Promise<void> {
 
 .custom-apply,
 .custom-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   height: 22px;
   padding: 0 7px;
   border: 1px solid var(--border-strong);
@@ -601,6 +627,18 @@ async function submitAddress(): Promise<void> {
   background: var(--surface-raised);
   color: var(--text);
   font-size: 10.5px;
+}
+
+.custom-apply svg,
+.custom-cancel svg {
+  display: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .custom-apply:hover,
@@ -614,6 +652,36 @@ async function submitAddress(): Promise<void> {
   color: var(--danger);
   font-size: 10.5px;
   line-height: 1.4;
+}
+
+@container (max-width: 400px) {
+  .viewport-custom-inline {
+    gap: 3px;
+  }
+
+  .viewport-custom-inline .custom-field input {
+    width: 42px;
+  }
+
+  .viewport-custom-inline .custom-field input[aria-label='Custom device scale factor'] {
+    width: 34px;
+  }
+
+  .custom-apply,
+  .custom-cancel {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .custom-action-label {
+    display: none;
+  }
+
+  .custom-apply svg,
+  .custom-cancel svg {
+    display: block;
+  }
 }
 
 @container (max-width: 480px) {

@@ -30,14 +30,14 @@ signing, credentials, or a destructive action, make the gate explicit.
 
 ## Next
 
-### BD-006 — Keep the pane header usable at the minimum window width
+### BD-007 — Resolve or explicitly accept the developer-toolchain audit advisories
 - Status: NEXT
 - Priority: P2
 - Depends: none
-- Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`.
-- Scope: Adjust the two-row pane header, address field, and viewport controls so they remain usable at the minimum supported window and pane widths without clipped or overlapping controls.
-- Done when: minimum-width checks show no overlap or clipping; focus order remains address, Add, viewport, reload, open, actions, close; light/dark and 320 px pane widths pass.
-- Verify: `make check`; targeted Playwright at minimum window and pane sizes; manual light/dark check.
+- Source: `README.md` known limitations; `npm audit` output.
+- Scope: Re-check the moderate `minimatch` advisories in the `electron-builder` and `@electron/universal` chain; upgrade when a non-breaking fix exists, otherwise document the risk and the next review trigger.
+- Done when: the dependency tree is re-checked, a documented decision exists, and the runtime audit remains clean.
+- Verify: `npm audit --omit=dev`; full `npm audit`; `make check`; `npm run package:dir` if packaging tooling changes.
 
 ## Ready
 
@@ -49,15 +49,6 @@ signing, credentials, or a destructive action, make the gate explicit.
 - Scope: Run a multi-hour soak with loaded third-party pages; sample CPU and memory per process; profile drag, resize, zoom, pan, and scrolling; record leaks or regressions.
 - Done when: a repeatable profiling procedure and dated results exist, and confirmed leaks have a follow-up task.
 - Verify: documented profiling commands in `docs/MANUAL_CHECKS.md`; repeatable run with recorded process counts and working set.
-
-### BD-007 — Resolve or explicitly accept the developer-toolchain audit advisories
-- Status: READY
-- Priority: P2
-- Depends: none
-- Source: `README.md` known limitations; `npm audit` output.
-- Scope: Re-check the moderate `minimatch` advisories in the `electron-builder` and `@electron/universal` chain; upgrade when a non-breaking fix exists, otherwise document the risk and the next review trigger.
-- Done when: the dependency tree is re-checked, a documented decision exists, and the runtime audit remains clean.
-- Verify: `npm audit --omit=dev`; full `npm audit`; `make check`; `npm run package:dir` if packaging tooling changes.
 
 ### BD-008 — Make workspace import/export session behavior explicit
 - Status: READY
@@ -200,3 +191,13 @@ task block; do not renumber it.
 - Done when: the pane is removed safely, a visible notice explains what happened, and no orphaned view, `webContents`, or listener remains; tests cover normal close versus self-close.
 - Verify: `make check`; targeted unit or e2e test; `npm run test:e2e`.
 - Evidence: 2026-11-23 — `make check` passed with 187 unit tests; `npm run test:e2e` passed 4 Playwright tests in 22.5 s; the targeted self-close run passed. See "Post-MVP — Self-closed pane notice" in `docs/PHASE_REPORTS.md`.
+
+### BD-006 — Keep the pane header usable at the minimum window width
+- Status: DONE
+- Priority: P2
+- Depends: none
+- Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`.
+- Scope: Adjust the two-row pane header, address field, and viewport controls so they remain usable at the minimum supported window and pane widths without clipped or overlapping controls.
+- Done when: minimum-width checks show no overlap or clipping; focus order remains address, Add, viewport, reload, open, actions, close; light/dark and 320 px pane widths pass.
+- Verify: `make check`; targeted Playwright at minimum window and pane sizes; manual light/dark check.
+- Evidence: 2026-11-23 — 720 × 520 window / 320 px pane e2e passed with no header or editor overflow, preserved focus order, and light/dark checks; `make check` passed 187 unit tests; `npm run test:e2e` passed 5 tests in 23.0 s. See "Post-MVP — Minimum-width pane header" in `docs/PHASE_REPORTS.md`.

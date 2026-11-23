@@ -1421,3 +1421,23 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 385.93 kB, shell CSS 36.53 kB. |
 
 **Known behavior / limitations:** The notice auto-dismisses after eight seconds and is replaced by a newer self-close notice; it does not queue multiple messages. The title is truncated at 120 characters. The notice does not imply that the page can be restored. The owner deprioritized the manual VoiceOver audit, so BD-002 is recorded as blocked rather than removed from the roadmap.
+
+## Post-MVP — Minimum-width pane header
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-006 complete.
+
+**Change:** Fixed the inline custom-viewport editor overflow at a 320 px pane. Before the change, the editor needed 357 px inside a 299 px row and pushed **Cancel** outside the header. The compact state now narrows the W/H/DPR fields, uses icon-only Apply/Cancel buttons with accessible names and tooltips, and keeps the whole editor inside the address row. At 360 px and below, the header also hides the redundant `Load failed` status because the error panel already carries the failure; this gives the browser title usable room instead of collapsing it to `b…`. The 720 × 520 minimum window and 320 px pane are covered by a dedicated e2e check for header/row/editor overflow, control containment, focus order, and light/dark rendering.
+
+**Files changed:** `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Targeted Playwright layout test | Passed: 1 test in 1.4 s at 720 × 520 with a 320 px pane. Verifies zero header/editor overflow, every button inside the header, a non-truncated title width, preserved focus order, and light/dark rendering. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 5 Playwright tests in 23.0 s. |
+| `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 386.63 kB, shell CSS 37.47 kB. |
+| Running-app visual check | 320 px light/dark screenshots inspected. The compact editor shows `Custom W/H/DPR`, check/cancel icons, and the security warning without overflow; the title remains readable. |
+
+**Known behavior / limitations:** The compact editor applies at 400 px and below; wider panes keep the text Apply/Cancel layout. Very long page titles still truncate, but they retain usable width. The header `Load failed` text is hidden at 360 px and below because the error panel remains visible.

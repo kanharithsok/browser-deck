@@ -78,7 +78,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
 - [x] Custom menus do not flash page content over their opening frames. (The menu stays hidden while positioning, reports bounds, and waits for intersecting native views to hide before reveal. E2e opens a pane menu over 16 live panes after zooming and verifies no visible native view intersects it.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
-- [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame; the address bar uses the full second row.)
+- [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame. The 720 × 520 window / 320 px pane run also verifies no header or editor overflow, a readable title, preserved focus order, and light/dark rendering.)
 - [x] Canvas pans an infinite dotted workspace and hides native views during the gesture. (E2e pans, verifies all native views hide, and verifies visible bounds realign afterward.)
 - [x] Canvas snapshots cover native views during panning. (E2e waits for two `.pane-snapshot` images before panning; the image stays behind native views at rest.)
 - [x] Dragging a pane header moves only that pane; dragging empty canvas pans the world. (E2e drags a label and verifies the other frame and canvas background position do not move.)
@@ -130,7 +130,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] Custom menu keyboard behavior. (Accessibility e2e opens the **+** menu, uses ArrowDown to focus Responsive, and closes with Escape.)
 - [x] Contrast audit across defined light/dark token pairs. (`npm run check:contrast` verifies 13 pairs per theme; full control/state screenshot audit remains.)
 - [x] Reduced-motion behavior. (Global media rule disables animations/transitions/smooth scrolling when requested.)
-- [ ] Narrow-window and minimum-pane-width control usability. (Manual review at the 720 px minimum window.)
+- [x] Narrow-window and minimum-pane-width control usability. (720 × 520 window and 320 px pane e2e plus light/dark screenshots, 2026-11-23.)
 - [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
 
 ## Performance and lifecycle
