@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppMenu from './components/AppMenu.vue'
 import PaneCard from './components/PaneCard.vue'
 import type { AppMenuIcon, AppMenuModel } from './menu'
+import { MAX_BULK_BROWSERS, parseBulkUrlInput } from '../../shared/bulk'
 import {
   CANVAS_GAP,
   CANVAS_NEAR_GAP,
@@ -34,10 +35,12 @@ import type {
   ShellState
 } from '../../shared/ipc'
 import {
+  RESPONSIVE_VIEWPORT,
   VIEWPORT_CATEGORY_LABELS,
   VIEWPORT_PRESETS,
   findViewportPreset,
   isViewportPresetId,
+  parsePaneViewport,
   viewportContentSize,
   viewportFromPreset,
   type PaneViewport,
@@ -66,7 +69,7 @@ import {
   GRID_MAX_COLUMNS,
   GRID_MIN_COLUMNS,
   bringToFront,
-  isRectFullyVisible,
+  isRectSafeForLiveView,
   layoutGrid,
   moveRect,
   normalizedToRect,
@@ -132,6 +135,7 @@ interface CanvasPaneDragState {
   startX: number
   startY: number
   base: CanvasPosition
+  moved: boolean
 }
 
 interface PendingDuplicatePlacement {
@@ -165,6 +169,7 @@ const isCanvasPaneDragging = ref(false)
 const canvasDrag = ref<CanvasDragState | null>(null)
 const canvasPaneDrag = ref<CanvasPaneDragState | null>(null)
 const selectionToolActive = ref(false)
+const temporarySelectMode = ref(false)
 const selectedPaneIds = ref<ReadonlySet<string>>(new Set())
 const marqueeRect = ref<Rect | null>(null)
 const isMarqueeSelecting = ref(false)
@@ -188,6 +193,7 @@ const appMenuMode = ref<
   | 'viewport'
   | 'clear-site-data'
   | 'workspace'
+  | 'selection'
   | null
 >(null)
 const paneMenuPaneId = ref<string | null>(null)
@@ -206,6 +212,8 @@ const appMenuAnchor = ref<{
   align: 'start'
 })
 const appMenuBounds = ref<Rect | null>(null)
+const appMenuReady = ref(true)
+let appMenuGeneration = 0
 let appMenuReturnFocus: HTMLElement | null = null
 const guides = ref<SnapGuides>({ vertical: [], horizontal: [] })
 const proximityGuides = ref<SnapGuides>({ vertical: [], horizontal: [] })
@@ -226,6 +234,56 @@ const workspacesDialogEl = ref<HTMLElement | null>(null)
 const currentWorkspaceId = ref<string | null>(null)
 const themePreference = ref<ThemePreference>('system')
 const resolvedTheme = ref<'light' | 'dark'>('light')
+const bulkDialogOpen = ref(false)
+const bulkDialogEl = ref<HTMLElement | null>(null)
+const bulkTextarea = ref<HTMLTextAreaElement | null>(null)
+const bulkUrlsText = ref('')
+const bulkError = ref<string | null>(null)
+const bulkBusy = ref(false)
+const bulkViewportPreset = ref<ViewportPresetId>('responsive')
+const bulkCustomViewport = ref<PaneViewport | null>(null)
+let bulkReturnFocus: HTMLElement | null = null
+const LAST_BULK_VIEWPORT_KEY = 'browserdeck.lastBulkViewport'
+
+function readLastBulkViewport(): PaneViewport | null {
+  try {
+    const raw = localStorage.getItem(LAST_BULK_VIEWPORT_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = parsePaneViewport(JSON.parse(raw))
+    return parsed.ok ? parsed.viewport : null
+  } catch {
+    return null
+  }
+}
+
+function persistBulkViewport(viewport: PaneViewport): void {
+  try {
+    localStorage.setItem(LAST_BULK_VIEWPORT_KEY, JSON.stringify(viewport))
+  } catch {
+    // A blocked storage API should not prevent opening browsers.
+  }
+}
+
+const bulkParseResult = computed(() => parseBulkUrlInput(bulkUrlsText.value))
+const bulkUrlCount = computed(() =>
+  bulkParseResult.value.ok ? bulkParseResult.value.urls.length : 0
+)
+const bulkSelectedViewport = computed<PaneViewport>(() =>
+  bulkViewportPreset.value === 'custom' && bulkCustomViewport.value
+    ? bulkCustomViewport.value
+    : viewportFromPreset(bulkViewportPreset.value)
+)
+
+const bulkSubmitLabel = computed(() => {
+  if (bulkBusy.value) {
+    return 'Opening…'
+  }
+  const count = bulkUrlCount.value
+  return count === 0 ? 'Open browsers' : `Open ${count} ${count === 1 ? 'browser' : 'browsers'}`
+})
+
 
 interface DragState {
   kind: 'reorder' | 'move' | 'resize'
@@ -281,6 +339,9 @@ const activePane = computed(
 )
 
 const canvasHandActive = computed(() => canvasHandMode.value || spaceHandMode.value)
+const selectionModeActive = computed(
+  () => (selectionToolActive.value || temporarySelectMode.value) && !canvasHandActive.value
+)
 
 const defaultCanvasLayout = computed(() => defaultCanvasPositions(orderedPanes.value))
 
@@ -498,7 +559,18 @@ const addPaneMenuModel = computed<AppMenuModel>(() => ({
         icon: presetIcon(category),
         detail: `${preset.width} × ${preset.height}`
       }))
-    }))
+    })),
+    {
+      items: [
+        {
+          id: 'bulk:open',
+          label: 'Open multiple browsers…',
+          icon: 'add',
+          separatorBefore: true,
+          detail: 'URLs'
+        }
+      ]
+    }
   ]
 }))
 
@@ -826,6 +898,77 @@ const clearSiteDataMenuModel = computed<AppMenuModel>(() => {
   }
 })
 
+const selectionPanes = computed(() =>
+  orderedPanes.value.filter((pane) => selectedPaneIds.value.has(pane.id))
+)
+
+const selectionViewport = computed<PaneViewport | null>(() => {
+  const selected = selectionPanes.value
+  if (selected.length === 0) {
+    return null
+  }
+  const first = selected[0]?.viewport
+  if (!first) {
+    return null
+  }
+  const same = selected.every(
+    (pane) =>
+      pane.viewport.preset === first.preset &&
+      pane.viewport.width === first.width &&
+      pane.viewport.height === first.height &&
+      pane.viewport.deviceScaleFactor === first.deviceScaleFactor &&
+      pane.viewport.rotated === first.rotated
+  )
+  return same ? first : null
+})
+
+const selectionViewportLabel = computed(() => {
+  const viewport = selectionViewport.value
+  if (!viewport) {
+    return 'Viewport'
+  }
+  if (viewport.preset === 'responsive') {
+    return 'Responsive'
+  }
+  if (viewport.preset === 'custom') {
+    return 'Custom'
+  }
+  return findViewportPreset(viewport.preset)?.label.split(' — ')[0] ?? viewport.preset
+})
+
+const selectionMenuModel = computed<AppMenuModel>(() => {
+  const selected = selectionPanes.value
+  const selectedPreset = selectionViewport.value?.preset
+  return {
+    label: `Viewport for ${selected.length} selected ${selected.length === 1 ? 'browser' : 'browsers'}`,
+    sections: [
+      {
+        items: [
+          {
+            id: 'selection:viewport:responsive',
+            label: 'Responsive',
+            icon: 'responsive',
+            detail: 'Full size',
+            kind: 'radio',
+            checked: selectedPreset === 'responsive'
+          }
+        ]
+      },
+      ...PRESET_CATEGORIES.map(({ category, label, presets }) => ({
+        label,
+        items: presets.map((preset) => ({
+          id: `selection:viewport:${preset.id}`,
+          label: presetLabel(preset),
+          icon: presetIcon(category),
+          detail: `${preset.width} × ${preset.height}`,
+          kind: 'radio' as const,
+          checked: selectedPreset === preset.id
+        }))
+      }))
+    ]
+  }
+})
+
 const workspaceMenuModel = computed<AppMenuModel>(() => {
   const workspace = workspaces.value.find((entry) => entry.id === workspaceMenuId.value)
   const unavailable = !workspace || workspaceBusy.value
@@ -1025,12 +1168,18 @@ function selectPane(paneId: string | null): void {
 }
 
 function clearPaneSelection(): void {
-  if (activePaneId.value === null) {
-    return
+  const hadActive = activePaneId.value !== null
+  const hadSelected = selectedPaneIds.value.size > 0
+  if (hadActive) {
+    blurActiveShellControl()
+    selectPane(null)
   }
-  blurActiveShellControl()
-  selectPane(null)
-  void nextTick(scheduleMeasure)
+  if (hadSelected) {
+    selectedPaneIds.value = new Set()
+  }
+  if (hadActive || hadSelected) {
+    void nextTick(scheduleMeasure)
+  }
 }
 
 function recoverFocus(): void {
@@ -1441,7 +1590,8 @@ function beginCanvasPaneDrag(event: PointerEvent, paneId: string): void {
     paneId,
     startX: event.clientX,
     startY: event.clientY,
-    base: { x: frame.x, y: frame.y }
+    base: { x: frame.x, y: frame.y },
+    moved: false
   }
   isCanvasPaneDragging.value = true
   document.body.classList.add('browserdeck-canvas-pane-dragging')
@@ -1458,6 +1608,12 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
     return
   }
   event.preventDefault()
+  if (
+    Math.abs(event.clientX - drag.startX) > 3 ||
+    Math.abs(event.clientY - drag.startY) > 3
+  ) {
+    drag.moved = true
+  }
   const frame = canvasFrames.value.get(drag.paneId)
   if (!frame) {
     return
@@ -1517,10 +1673,12 @@ function onCanvasPanePointerMove(event: PointerEvent): void {
   }
 }
 
-function finishCanvasPaneDrag(): void {
-  if (!canvasPaneDrag.value) {
+function finishCanvasPaneDrag(event?: PointerEvent): void {
+  const drag = canvasPaneDrag.value
+  if (!drag) {
     return
   }
+  const toggleSelection = !drag.moved && event?.type !== 'pointercancel'
   canvasPaneDrag.value = null
   isCanvasPaneDragging.value = false
   clearCanvasGuides()
@@ -1528,6 +1686,9 @@ function finishCanvasPaneDrag(): void {
   window.removeEventListener('pointermove', onCanvasPanePointerMove)
   window.removeEventListener('pointerup', finishCanvasPaneDrag)
   window.removeEventListener('pointercancel', finishCanvasPaneDrag)
+  if (toggleSelection) {
+    togglePaneSelection(drag.paneId)
+  }
   void nextTick(async () => {
     await measurePanes()
     await saveWorkspaceLayout()
@@ -1536,6 +1697,9 @@ function finishCanvasPaneDrag(): void {
 }
 
 function setCanvasHandMode(active: boolean): void {
+  if (active) {
+    temporarySelectMode.value = false
+  }
   if (active && selectionToolActive.value) {
     selectionToolActive.value = false
     clearSelectedPanes()
@@ -1559,6 +1723,30 @@ function clearSelectedPanes(): void {
   if (selectedPaneIds.value.size > 0) {
     selectedPaneIds.value = new Set()
   }
+}
+
+function togglePaneSelection(paneId: string): void {
+  const next = new Set(selectedPaneIds.value)
+  if (next.has(paneId)) {
+    next.delete(paneId)
+    selectedPaneIds.value = next
+    if (activePaneId.value === paneId) {
+      selectPane([...next].at(-1) ?? null)
+    }
+  } else {
+    next.add(paneId)
+    selectedPaneIds.value = next
+    if (activePaneId.value !== paneId) {
+      selectPane(paneId)
+    }
+  }
+  void nextTick(scheduleMeasure)
+}
+
+function selectOnlyPane(paneId: string): void {
+  selectedPaneIds.value = new Set([paneId])
+  selectPane(paneId)
+  void nextTick(scheduleMeasure)
 }
 
 function setSelectionToolActive(active: boolean): void {
@@ -1608,7 +1796,7 @@ function normalizedMarqueeRect(endX: number, endY: number): Rect | null {
 }
 
 function beginMarqueeSelection(event: PointerEvent, anchorPaneId: string | null): void {
-  if (marqueeDrag !== null || !selectionToolActive.value) {
+  if (marqueeDrag !== null || !selectionModeActive.value) {
     return
   }
   event.preventDefault()
@@ -1633,7 +1821,6 @@ function beginMarqueeSelection(event: PointerEvent, anchorPaneId: string | null)
     width: 0,
     height: 0
   }
-  selectedPaneIds.value = new Set()
   isMarqueeSelecting.value = true
   document.body.classList.add('browserdeck-canvas-selecting')
   syncCanvasMinimapVisibility()
@@ -1652,11 +1839,17 @@ function onMarqueePointerMove(event: PointerEvent): void {
     return
   }
   event.preventDefault()
-  if (
+  const moved =
     Math.abs(event.clientX - drag.startX) > 2 ||
     Math.abs(event.clientY - drag.startY) > 2
-  ) {
+  if (!drag.moved && !moved) {
+    return
+  }
+  if (!drag.moved) {
     drag.moved = true
+    // A real marquee replaces the existing selection. A simple click toggles
+    // the pane under the pointer instead.
+    selectedPaneIds.value = new Set()
   }
   const rect = normalizedMarqueeRect(event.clientX, event.clientY)
   if (!rect) {
@@ -1699,7 +1892,17 @@ function finishMarqueeSelection(event?: PointerEvent): void {
   if (cancelled) {
     clearSelectedPanes()
   } else if (!moved) {
-    selectedPaneIds.value = anchorPaneId ? new Set([anchorPaneId]) : new Set()
+    if (anchorPaneId) {
+      togglePaneSelection(anchorPaneId)
+    } else {
+      // Clicking empty canvas clears the active browser too, matching the
+      // normal Canvas selection behavior.
+      clearSelectedPanes()
+      selectPane(null)
+    }
+  } else if (selectedPaneIds.value.size === 0) {
+    // A marquee that ends over empty canvas clears the active browser as well.
+    selectPane(null)
   }
 
   syncCanvasMinimapVisibility()
@@ -2074,6 +2277,7 @@ function syncCanvasMinimapVisibility(): void {
   const baseVisible =
     layoutMode.value === 'canvas' &&
     !workspacesOpen.value &&
+    !bulkDialogOpen.value &&
     !devicePaletteOpen.value &&
     !isMarqueeSelecting.value
   let minimapVisible = baseVisible
@@ -2134,22 +2338,6 @@ function onCanvasMinimapAction(action: CanvasMinimapAction): void {
   fitCanvasToPanes()
 }
 
-function centerCanvasPane(paneId: string): void {
-  const frame = canvasFrames.value.get(paneId)
-  if (!frame) {
-    return
-  }
-  const viewport = canvasViewportRect()
-  const screenWidth = frame.width * canvasZoom.value
-  const screenHeight = frame.height * canvasZoom.value
-  canvasPan.value = {
-    x: Math.round(viewport.centerX - screenWidth / 2) - frame.x * canvasZoom.value,
-    y: Math.round(viewport.centerY - screenHeight / 2) - frame.y * canvasZoom.value
-  }
-  selectPane(paneId)
-  void nextTick(scheduleMeasure)
-}
-
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
@@ -2180,6 +2368,7 @@ function onCanvasSpaceDown(event: KeyboardEvent): void {
   if (
     layoutMode.value !== 'canvas' ||
     workspacesOpen.value ||
+    bulkDialogOpen.value ||
     devicePaletteOpen.value ||
     isEditableTarget(event.target)
   ) {
@@ -2197,8 +2386,41 @@ function onCanvasSpaceUp(event: KeyboardEvent): void {
   setSpaceHandMode(false)
 }
 
+const selectModifierKey = navigator.platform.startsWith('Mac') ? 'Meta' : 'Control'
+
+function onCanvasSelectDown(event: KeyboardEvent): void {
+  if (
+    event.key !== selectModifierKey ||
+    event.repeat ||
+    event.defaultPrevented ||
+    event.isComposing ||
+    layoutMode.value !== 'canvas' ||
+    workspacesOpen.value ||
+    bulkDialogOpen.value ||
+    devicePaletteOpen.value ||
+    appMenuMode.value !== null ||
+    isEditableTarget(event.target) ||
+    canvasHandActive.value
+  ) {
+    return
+  }
+  if (!temporarySelectMode.value) {
+    temporarySelectMode.value = true
+    void nextTick(scheduleMeasure)
+  }
+}
+
+function onCanvasSelectUp(event: KeyboardEvent): void {
+  if (event.key !== selectModifierKey || !temporarySelectMode.value) {
+    return
+  }
+  temporarySelectMode.value = false
+  void nextTick(scheduleMeasure)
+}
+
 function onWindowBlur(): void {
   setSpaceHandMode(false)
+  temporarySelectMode.value = false
 }
 
 function isResizeHandle(value: string | undefined): value is ResizeHandle {
@@ -2361,6 +2583,7 @@ function applyState(state: ShellState): void {
   if (workspaceChanged) {
     pendingDuplicatePlacement = null
     selectionToolActive.value = false
+    temporarySelectMode.value = false
     selectedPaneIds.value = new Set()
     cancelMarqueeSelection()
     clearCanvasGuides()
@@ -2493,9 +2716,15 @@ function applyState(state: ShellState): void {
     } else if (removedPane && document.activeElement === document.body) {
       recoverFocus()
     }
-    scheduleMeasure()
     if (workspaceChanged) {
-      requestAnimationFrame(() => restoreCanvasViewWhenReady())
+      // Let the first camera fit decide the frame sizes before native views are
+      // measured and their first navigation starts.
+      requestAnimationFrame(() => {
+        restoreCanvasViewWhenReady()
+        scheduleMeasure()
+      })
+    } else {
+      scheduleMeasure()
     }
   })
 }
@@ -2541,11 +2770,12 @@ async function openAppMenu(
     | 'pane'
     | 'viewport'
     | 'clear-site-data'
-    | 'workspace',
+    | 'workspace'
+    | 'selection',
   anchor: { x: number; y: number; align: 'start' | 'end' | 'center' },
   returnFocus: Element | null
 ): Promise<void> {
-  if (workspacesOpen.value && mode !== 'workspace') {
+  if (bulkDialogOpen.value || (workspacesOpen.value && mode !== 'workspace')) {
     return
   }
   if (mode !== 'pane' && mode !== 'viewport' && mode !== 'clear-site-data') {
@@ -2556,6 +2786,8 @@ async function openAppMenu(
   appMenuReturnFocus = returnFocus instanceof HTMLElement ? returnFocus : null
   appMenuAnchor.value = anchor
   appMenuBounds.value = null
+  appMenuReady.value = false
+  appMenuGeneration += 1
   appMenuMode.value = mode
   syncCanvasMinimapVisibility()
   void nextTick(scheduleMeasure)
@@ -2576,7 +2808,7 @@ function openAddMenuFromCommand(): void {
 }
 
 async function openAddMenuAt(button: HTMLElement): Promise<void> {
-  if (addingPane.value) {
+  if (addingPane.value || bulkDialogOpen.value) {
     return
   }
   const rect = button.getBoundingClientRect()
@@ -2590,6 +2822,124 @@ async function openAddMenuAt(button: HTMLElement): Promise<void> {
     },
     button
   )
+}
+
+function openBulkDialog(): void {
+  if (bulkDialogOpen.value) {
+    return
+  }
+  const activeElement = document.activeElement
+  bulkReturnFocus =
+    activeElement instanceof HTMLElement && !activeElement.closest('.app-menu')
+      ? activeElement
+      : document.querySelector<HTMLElement>('.toolbar .add-pane-button')
+  const source = activePane.value?.viewport ?? readLastBulkViewport() ?? RESPONSIVE_VIEWPORT
+  bulkUrlsText.value = ''
+  bulkError.value = null
+  bulkBusy.value = false
+  bulkViewportPreset.value = source.preset
+  bulkCustomViewport.value = source.preset === 'custom' ? { ...source } : null
+  bulkDialogOpen.value = true
+  void nextTick(() => {
+    bulkTextarea.value?.focus()
+    scheduleMeasure()
+    syncCanvasMinimapVisibility()
+  })
+}
+
+function closeBulkDialog(restoreFocus = true): void {
+  if (bulkBusy.value) {
+    return
+  }
+  bulkDialogOpen.value = false
+  bulkError.value = null
+  const target = bulkReturnFocus
+  bulkReturnFocus = null
+  void nextTick(() => {
+    scheduleMeasure()
+    syncCanvasMinimapVisibility()
+    if (restoreFocus) {
+      target?.focus()
+    }
+  })
+}
+
+function onBulkDialogKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeBulkDialog()
+    return
+  }
+  if (event.key !== 'Tab') {
+    return
+  }
+  const dialog = bulkDialogEl.value
+  if (!dialog) {
+    return
+  }
+  const focusable = Array.from(
+    dialog.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), textarea, select, input, [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => !element.hidden)
+  if (focusable.length === 0) {
+    event.preventDefault()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
+  }
+}
+
+async function createBulkBrowsers(): Promise<void> {
+  if (bulkBusy.value) {
+    return
+  }
+  const parsed = bulkParseResult.value
+  if (!parsed.ok) {
+    bulkError.value = parsed.error
+    return
+  }
+  bulkBusy.value = true
+  bulkError.value = null
+  const viewport = bulkSelectedViewport.value
+  let created = 0
+  try {
+    for (const url of parsed.urls) {
+      const result = await window.browserdeck.addPaneWithViewport(viewport, url)
+      if (!result.ok) {
+        if (created > 0) {
+          bulkUrlsText.value = parsed.urls.slice(created).join('\n')
+        }
+        bulkError.value =
+          created > 0
+            ? `Added ${created} of ${parsed.urls.length} browsers. ${result.error}`
+            : result.error
+        return
+      }
+      created += 1
+    }
+    persistBulkViewport(viewport)
+    bulkBusy.value = false
+    closeBulkDialog()
+    const state = await window.browserdeck.getState()
+    applyState(state)
+    await nextTick()
+    fitCanvasToPanes()
+  } catch {
+    bulkError.value =
+      created > 0
+        ? `Added ${created} of ${parsed.urls.length} browsers. Could not add the next browser.`
+        : 'Could not open the browsers.'
+  } finally {
+    bulkBusy.value = false
+  }
 }
 
 async function openClearSiteDataConfirm(paneId: string): Promise<void> {
@@ -2637,6 +2987,59 @@ async function openWorkspaceMenu(workspace: WorkspaceSummary, trigger: HTMLEleme
   )
 }
 
+function openSelectionMenu(event: MouseEvent): void {
+  const trigger = event.currentTarget
+  if (!(trigger instanceof HTMLElement) || selectedPaneIds.value.size === 0) {
+    return
+  }
+  const rect = trigger.getBoundingClientRect()
+  void openAppMenu(
+    'selection',
+    { x: rect.left, y: rect.bottom + 6, align: 'start' },
+    trigger
+  )
+}
+
+async function setSelectedViewport(preset: ViewportPresetId): Promise<void> {
+  if (preset === 'custom') {
+    return
+  }
+  const ids = [...selectedPaneIds.value]
+  if (ids.length === 0) {
+    return
+  }
+  const viewport = viewportFromPreset(preset)
+  actionError.value = null
+  try {
+    const results = await Promise.all(
+      ids.map((paneId) => window.browserdeck.setPaneViewport(paneId, viewport))
+    )
+    const failure = results.find((result) => !result.ok)
+    if (failure && !failure.ok) {
+      actionError.value = failure.error
+    }
+  } catch {
+    actionError.value = 'Could not change the selected browser viewports.'
+  }
+}
+
+async function reloadSelectedBrowsers(): Promise<void> {
+  const ids = [...selectedPaneIds.value]
+  if (ids.length === 0) {
+    return
+  }
+  actionError.value = null
+  try {
+    const results = await Promise.all(ids.map((paneId) => window.browserdeck.reload(paneId)))
+    const failure = results.find((result) => !result.ok)
+    if (failure && !failure.ok) {
+      actionError.value = failure.error
+    }
+  } catch {
+    actionError.value = 'Could not reload the selected browsers.'
+  }
+}
+
 function onWorkspaceMenuClick(workspace: WorkspaceSummary, event: MouseEvent): void {
   const trigger = event.currentTarget
   if (trigger instanceof HTMLElement) {
@@ -2650,6 +3053,8 @@ function closeAppMenu(restoreFocus = true): void {
   }
   appMenuMode.value = null
   appMenuBounds.value = null
+  appMenuReady.value = true
+  appMenuGeneration += 1
   paneMenuPaneId.value = null
   workspaceMenuId.value = null
   const target = appMenuReturnFocus
@@ -2664,9 +3069,19 @@ function closeAppMenu(restoreFocus = true): void {
 }
 
 function onAppMenuBounds(bounds: Rect): void {
+  const generation = appMenuGeneration
   appMenuBounds.value = bounds
   syncCanvasMinimapVisibility()
-  void nextTick(scheduleMeasure)
+  void nextTick(async () => {
+    try {
+      await measurePanes()
+    } catch {
+      // Reveal the menu even if native bounds could not be synchronized.
+    }
+    if (appMenuMode.value !== null && generation === appMenuGeneration) {
+      appMenuReady.value = true
+    }
+  })
 }
 
 async function applyMenuTheme(theme: ThemePreference): Promise<void> {
@@ -2819,6 +3234,21 @@ function onAppMenuSelect(id: string): void {
       void duplicateWorkspace(workspace)
     } else if (action === 'delete') {
       requestWorkspaceDelete(workspace)
+    }
+    return
+  }
+
+  if (id === 'bulk:open') {
+    closeAppMenu(false)
+    openBulkDialog()
+    return
+  }
+
+  if (id.startsWith('selection:viewport:')) {
+    const preset = id.slice('selection:viewport:'.length)
+    closeAppMenu()
+    if (isViewportPresetId(preset)) {
+      void setSelectedViewport(preset)
     }
     return
   }
@@ -3009,7 +3439,7 @@ function ensureDevicePaletteSelectionVisible(): void {
 }
 
 function openDevicePalette(): void {
-  if (workspacesOpen.value || appMenuMode.value !== null) {
+  if (workspacesOpen.value || bulkDialogOpen.value || appMenuMode.value !== null) {
     return
   }
   if (devicePaletteOpen.value) {
@@ -3115,7 +3545,7 @@ async function refreshWorkspaces(): Promise<void> {
 }
 
 function openWorkspaces(): void {
-  if (workspacesOpen.value) {
+  if (workspacesOpen.value || bulkDialogOpen.value) {
     return
   }
   workspacesOpen.value = true
@@ -3426,6 +3856,7 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
     event.isComposing ||
     event.repeat ||
     workspacesOpen.value ||
+    bulkDialogOpen.value ||
     devicePaletteOpen.value ||
     appMenuMode.value !== null
   ) {
@@ -3437,14 +3868,17 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
   if (isTextEntryTarget(event.target)) {
     return
   }
-  if (event.key === 'Escape' && selectionToolActive.value) {
-    event.preventDefault()
+  if (event.key === 'Escape') {
     if (selectedPaneIds.value.size > 0) {
-      clearSelectedPanes()
-    } else {
-      setSelectionToolActive(false)
+      event.preventDefault()
+      clearPaneSelection()
+      return
     }
-    return
+    if (selectionToolActive.value) {
+      event.preventDefault()
+      setSelectionToolActive(false)
+      return
+    }
   }
   if (event.key !== 'Delete' && event.key !== 'Backspace') {
     return
@@ -3722,7 +4156,7 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     const interactive = target.closest(
       'button, a, input, select, textarea, form, [role="button"]'
     )
-    if (selectionToolActive.value) {
+    if (selectionModeActive.value) {
       if (event.button !== 0 || interactive) {
         return
       }
@@ -3741,14 +4175,15 @@ function onWorkspacePointerDown(event: PointerEvent): void {
     if (!canvasPaneId) {
       return
     }
-    selectPane(canvasPaneId)
-    if (target.closest('.pane-header') && !interactive) {
+    if (interactive || event.button !== 0) {
+      selectOnlyPane(canvasPaneId)
+      return
+    }
+    if (target.closest('.pane-header')) {
       beginCanvasPaneDrag(event, canvasPaneId)
       return
     }
-    if (suspendedPaneIds.value.has(canvasPaneId)) {
-      centerCanvasPane(canvasPaneId)
-    }
+    togglePaneSelection(canvasPaneId)
     return
   }
 
@@ -3880,6 +4315,7 @@ async function measurePanes(): Promise<void> {
     const nativeViewsHidden =
       isDragging.value ||
       workspacesOpen.value ||
+      bulkDialogOpen.value ||
       devicePaletteOpen.value ||
       isCanvasPanning.value ||
       isCanvasPaneDragging.value ||
@@ -3888,7 +4324,7 @@ async function measurePanes(): Promise<void> {
       menuCovers
     const visible =
       !nativeViewsHidden &&
-      isRectFullyVisible(rect, workspaceRect)
+      isRectSafeForLiveView(rect, workspaceRect)
     if (!visible && !nativeViewsHidden) {
       suspended.add(paneId)
     }
@@ -4099,6 +4535,8 @@ onMounted(async () => {
   window.addEventListener('keydown', onGlobalKeyDown)
   window.addEventListener('keydown', onCanvasSpaceDown)
   window.addEventListener('keyup', onCanvasSpaceUp)
+  window.addEventListener('keydown', onCanvasSelectDown)
+  window.addEventListener('keyup', onCanvasSelectUp)
   window.addEventListener('blur', onWindowBlur)
   window.addEventListener('beforeunload', flushCanvasView)
   readWorkspaceSize()
@@ -4149,6 +4587,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointercancel', finishMarqueeSelection)
   window.removeEventListener('keydown', onCanvasSpaceDown)
   window.removeEventListener('keyup', onCanvasSpaceUp)
+  window.removeEventListener('keydown', onCanvasSelectDown)
+  window.removeEventListener('keyup', onCanvasSelectUp)
   window.removeEventListener('blur', onWindowBlur)
   window.removeEventListener('beforeunload', flushCanvasView)
   document.body.classList.remove('browserdeck-dragging')
@@ -4197,14 +4637,29 @@ onBeforeUnmount(() => {
       >
         <span class="selection-count">{{ selectedPaneIds.size }} selected</span>
         <button
-          class="icon-button selection-close"
+          class="selection-viewport"
           type="button"
-          :title="`Close ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'} (Delete)`"
-          :aria-label="`Close ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}`"
-          @click="closeSelectedPanes"
+          :title="`Viewport for ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}`"
+          :aria-label="`Viewport for ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}: ${selectionViewportLabel}`"
+          aria-haspopup="menu"
+          :aria-expanded="appMenuMode === 'selection'"
+          @click="openSelectionMenu"
+        >
+          {{ selectionViewportLabel }}
+          <svg viewBox="0 0 12 12" aria-hidden="true">
+            <path d="m3 4.5 3 3 3-3" />
+          </svg>
+        </button>
+        <button
+          class="icon-button selection-reload"
+          type="button"
+          :title="`Reload ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}`"
+          :aria-label="`Reload ${selectedPaneIds.size} selected browser${selectedPaneIds.size === 1 ? '' : 's'}`"
+          @click="reloadSelectedBrowsers"
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="M4 4l8 8M12 4l-8 8" />
+            <path d="M12.6 6.3A5 5 0 1 0 13 8" />
+            <path d="M12.8 3.3v3.2H9.6" />
           </svg>
         </button>
       </div>
@@ -4240,7 +4695,7 @@ onBeforeUnmount(() => {
         'workspace-canvas': layoutMode === 'canvas',
         'canvas-panning': isCanvasPanning,
         'canvas-hand': canvasHandActive,
-        'canvas-select': selectionToolActive && !canvasHandActive
+        'canvas-select': selectionModeActive
       }"
       :style="canvasWorkspaceStyle"
       aria-label="Browser workspace"
@@ -4337,8 +4792,122 @@ onBeforeUnmount(() => {
           </svg>
           <span>Add browser</span>
         </button>
+        <button class="bulk-link" type="button" @click="openBulkDialog">
+          Open multiple browsers…
+        </button>
       </div>
     </main>
+
+    <div
+      v-if="bulkDialogOpen"
+      class="modal-backdrop bulk-backdrop"
+      @click.self="closeBulkDialog()"
+    >
+      <section
+        ref="bulkDialogEl"
+        class="bulk-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bulk-title"
+        aria-describedby="bulk-description"
+        tabindex="-1"
+        @keydown="onBulkDialogKeydown"
+      >
+        <header class="bulk-header">
+          <div>
+            <h2 id="bulk-title" class="bulk-title">Open multiple browsers</h2>
+            <p id="bulk-description" class="bulk-description">
+              One URL per line. Each browser gets its own isolated session.
+            </p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            title="Close multiple browsers"
+            aria-label="Close multiple browsers"
+            :disabled="bulkBusy"
+            @click="closeBulkDialog()"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </header>
+
+        <form class="bulk-form" @submit.prevent="createBulkBrowsers">
+          <label class="sr-only" for="bulk-urls">URLs, one per line</label>
+          <textarea
+            id="bulk-urls"
+            ref="bulkTextarea"
+            v-model="bulkUrlsText"
+            class="bulk-textarea"
+            rows="8"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            placeholder="https://example.com&#10;https://example.org"
+            :disabled="bulkBusy"
+            @input="bulkError = null"
+          ></textarea>
+
+          <div class="bulk-viewport-row">
+            <label for="bulk-viewport">Default viewport</label>
+            <select
+              id="bulk-viewport"
+              v-model="bulkViewportPreset"
+              class="bulk-select"
+              :disabled="bulkBusy"
+            >
+              <option value="responsive">Responsive</option>
+              <optgroup
+                v-for="group in PRESET_CATEGORIES"
+                :key="group.category"
+                :label="group.label"
+              >
+                <option
+                  v-for="preset in group.presets"
+                  :key="preset.id"
+                  :value="preset.id"
+                >
+                  {{ presetLabel(preset) }} · {{ preset.width }} × {{ preset.height }}
+                </option>
+              </optgroup>
+              <option v-if="bulkCustomViewport" value="custom">
+                Custom · {{ bulkCustomViewport.width }} × {{ bulkCustomViewport.height }}
+              </option>
+            </select>
+          </div>
+
+          <p class="bulk-hint">
+            Starts from the selected browser's viewport. Up to {{ MAX_BULK_BROWSERS }} URLs at once.
+          </p>
+          <p v-if="bulkError" class="bulk-error" role="alert">{{ bulkError }}</p>
+
+          <footer class="bulk-footer">
+            <span class="bulk-count">
+              {{ bulkUrlCount }} {{ bulkUrlCount === 1 ? 'browser' : 'browsers' }}
+            </span>
+            <div class="bulk-actions">
+              <button
+                class="text-button"
+                type="button"
+                :disabled="bulkBusy"
+                @click="closeBulkDialog()"
+              >
+                Cancel
+              </button>
+              <button
+                class="toolbar-button primary"
+                type="submit"
+                :disabled="bulkBusy || bulkUrlCount === 0"
+              >
+                {{ bulkSubmitLabel }}
+              </button>
+            </div>
+          </footer>
+        </form>
+      </section>
+    </div>
 
     <div
       v-if="workspacesOpen"
@@ -4661,16 +5230,21 @@ onBeforeUnmount(() => {
                       ? clearSiteDataMenuModel
                       : appMenuMode === 'workspace'
                         ? workspaceMenuModel
-                        : canvasMenuModel
+                        : appMenuMode === 'selection'
+                          ? selectionMenuModel
+                          : canvasMenuModel
       "
       :anchor="appMenuAnchor"
       :placement="isBottomBarMenu() ? 'above' : 'below'"
+      :ready="appMenuReady"
       :width="
         isBottomBarMenu()
           ? CANVAS_ZOOM_MENU_WIDTH
           : appMenuMode === 'workspace'
             ? 176
-            : undefined
+            : appMenuMode === 'selection'
+              ? 260
+              : undefined
       "
       @select="onAppMenuSelect"
       @close="closeAppMenu()"
@@ -4773,13 +5347,39 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.selection-close {
+.selection-viewport {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.selection-viewport:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.selection-viewport svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.selection-reload {
   width: 24px;
   height: 24px;
   color: inherit;
 }
 
-.selection-close svg {
+.selection-reload svg {
   width: 12px;
   height: 12px;
   fill: none;
@@ -4788,7 +5388,7 @@ onBeforeUnmount(() => {
   stroke-linecap: round;
 }
 
-.selection-close:hover:not(:disabled) {
+.selection-reload:hover:not(:disabled) {
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
@@ -4932,15 +5532,10 @@ onBeforeUnmount(() => {
   position: absolute;
 }
 
-.pane-slot-active {
+.pane-slot-active,
+.pane-slot-selected {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
-}
-
-.pane-slot-selected {
-  border-radius: 11px;
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .pane-slot-dragging {
@@ -5018,6 +5613,18 @@ onBeforeUnmount(() => {
   line-height: 1.5;
 }
 
+.bulk-link {
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.bulk-link:hover {
+  background: var(--surface-inset);
+  color: var(--text);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -5027,6 +5634,175 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 24px;
   background: rgba(18, 18, 17, 0.35);
+}
+
+.bulk-backdrop {
+  background: rgba(18, 18, 17, 0.28);
+}
+
+.bulk-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(680px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme='dark'] .bulk-dialog {
+  box-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.46),
+    0 2px 10px rgba(0, 0, 0, 0.36);
+}
+
+.bulk-dialog:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.bulk-header {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bulk-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+
+.bulk-description {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.bulk-header .icon-button {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.bulk-header .icon-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.bulk-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+}
+
+.bulk-textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.bulk-textarea:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.bulk-viewport-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.bulk-select {
+  flex: 1;
+  min-width: 180px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
+.bulk-hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.bulk-error {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.bulk-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.bulk-count {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bulk-actions .text-button {
+  padding: 3px 7px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.bulk-actions .text-button:hover:not(:disabled) {
+  background: var(--surface-inset);
+  color: var(--text);
 }
 
 .device-palette-backdrop {

@@ -322,6 +322,57 @@ async function evaluateInPane<T>(
   }, { id: webContentsId, script }) as Promise<T>
 }
 
+async function dragPaneWithMouseInput(
+  app: ElectronApplication,
+  paneId: string,
+  start: { x: number; y: number },
+  end: { x: number; y: number }
+): Promise<void> {
+  const view = (await getViewStates(app)).find((state) => state.paneId === paneId)
+  if (!view) {
+    throw new Error('Pane native view is unavailable')
+  }
+  const fromX = Math.round(view.rect.width * start.x)
+  const fromY = Math.round(view.rect.height * start.y)
+  const toX = Math.round(view.rect.width * end.x)
+  const toY = Math.round(view.rect.height * end.y)
+
+  await app.evaluate(async ({ webContents }, args) => {
+    const hook = (globalThis as typeof globalThis & { __browserdeckTest?: TestHook }).__browserdeckTest
+    const webContentsId = hook?.webContentsId(args.paneId) ?? null
+    const target = webContentsId === null ? undefined : webContents.fromId(webContentsId)
+    if (!target || target.isDestroyed()) {
+      throw new Error('Pane page is not available')
+    }
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    target.sendInputEvent({
+      type: 'mouseDown',
+      x: args.fromX,
+      y: args.fromY,
+      button: 'left',
+      clickCount: 1
+    })
+    await wait(30)
+    for (let step = 1; step <= 12; step += 1) {
+      target.sendInputEvent({
+        type: 'mouseMove',
+        x: Math.round(args.fromX + ((args.toX - args.fromX) * step) / 12),
+        y: Math.round(args.fromY + ((args.toY - args.fromY) * step) / 12),
+        button: 'left',
+        modifiers: []
+      })
+      await wait(30)
+    }
+    target.sendInputEvent({
+      type: 'mouseUp',
+      x: args.toX,
+      y: args.toY,
+      button: 'left',
+      clickCount: 1
+    })
+  }, { paneId, fromX, fromY, toX, toY })
+}
+
 async function writeIndexedDbProbe(page: Page, value: string): Promise<void> {
   await page.evaluate(async (probe) => {
     await new Promise<void>((resolve, reject) => {
@@ -481,12 +532,24 @@ async function readPaneCardRects(
 
 async function focusPane(page: Page, paneId: string): Promise<void> {
   const card = page.locator(`.pane-card[data-pane-id="${paneId}"]`)
-  await card.locator('.pane-title').click()
+  if ((await card.getAttribute('aria-current')) !== 'true') {
+    // Clicking interactive header chrome activates the pane without toggling
+    // its selection, unlike a plain click on the pane title.
+    await card.locator('.address-input').click()
+  }
   await expect(card).toHaveAttribute('aria-current', 'true')
 }
 
-function rectsAlign(domRects: DomPaneRect[], nativeBounds: Array<{ paneId: string; rect: PaneViewRect }>): boolean {
-  if (domRects.length !== nativeBounds.length) {
+function viewRectsOverlap(a: PaneViewRect, b: PaneViewRect): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  )
+}
+
+function rectsAlign(domRects: DomPaneRect[], nativeBounds: Array<{ paneId: string; rect: PaneViewRect }>): boolean {  if (domRects.length !== nativeBounds.length) {
     return false
   }
 
@@ -671,6 +734,25 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
 
     // Local storage isolation (same origin, different persistent partitions)
     // using a real click inside the native browser view.
+    // Native page pointer events must remain real browser interactions.
+    const selectableHeading = alicePage.locator('h1').first()
+    const selectionBox = await selectableHeading.boundingBox()
+    if (!selectionBox) {
+      throw new Error('Native selection heading is unavailable')
+    }
+    await alicePage.mouse.move(selectionBox.x + 2, selectionBox.y + selectionBox.height / 2)
+    await alicePage.mouse.down()
+    await alicePage.mouse.move(
+      selectionBox.x + selectionBox.width - 2,
+      selectionBox.y + selectionBox.height / 2,
+      { steps: 8 }
+    )
+    await alicePage.mouse.up()
+    expect(await alicePage.evaluate(() => window.getSelection()?.toString() ?? '')).toContain(
+      'Pane one'
+    )
+    await alicePage.evaluate(() => window.getSelection()?.removeAllRanges())
+
     await alicePage.locator('#storage-button').click()
     await expect
       .poll(() => alicePage.evaluate(() => localStorage.getItem('browserdeck_fixture')))
@@ -730,6 +812,12 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       width: window.innerWidth,
       height: window.innerHeight
     }))
+    const aliceInitialViewport = await alicePage.evaluate(
+      () =>
+        (window as unknown as {
+          __browserdeckInitialViewport?: { width: number; height: number; dpr: number }
+        }).__browserdeckInitialViewport ?? null
+    )
     const aliceZoom = await shellPage
       .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
       .evaluate((element) => Number(getComputedStyle(element).getPropertyValue('--pane-zoom')))
@@ -741,6 +829,11 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(
       Math.abs(aliceViewport.height * aliceZoom - (aliceDomRect?.rect.height ?? 0))
     ).toBeLessThanOrEqual(1)
+    // The first document must already see the fitted frame, not a 0x0 or
+    // pre-fit viewport that later reflows when the camera changes.
+    expect(aliceInitialViewport).not.toBeNull()
+    expect(aliceInitialViewport?.width).toBe(aliceViewport.width)
+    expect(aliceInitialViewport?.height).toBe(aliceViewport.height)
 
     // Canvas is the only workspace layout now. There is no Grid/Freeform
     // switcher and no grid-column control.
@@ -1159,6 +1252,79 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     const resetEmulation = await getEmulationState(app, alicePaneId as string)
     expect(resetEmulation?.enabled).toBe(false)
 
+    // A pane clipped only by a window edge stays live. Its full native bounds
+    // are preserved so the page viewport does not reflow.
+    await fitAllDevices(app as ElectronApplication)
+    await waitForVisibleAlignedBounds(app)
+    const pinnedCard = await firstCanvasCard.boundingBox()
+    const pinnedWorkspace = await shellPage.locator('.workspace').boundingBox()
+    if (!pinnedCard || !pinnedWorkspace) {
+      throw new Error('Partially visible pane bounds are unavailable')
+    }
+    const panAway =
+      pinnedCard.x - (pinnedWorkspace.x - pinnedCard.width + 64)
+    await shellPage.mouse.move(pinnedWorkspace.x + 6, pinnedWorkspace.y + 6)
+    await shellPage.mouse.wheel(panAway, 0)
+    await waitForVisibleAlignedBounds(app)
+    await expect
+      .poll(async () =>
+        (await getViewStates(app as ElectronApplication)).some(
+          (state) => state.paneId === alicePaneId && state.visible
+        )
+      )
+      .toBe(true)
+    const edgeClippedState = (await getViewStates(app as ElectronApplication)).find(
+      (state) => state.paneId === alicePaneId
+    )
+    const edgeClippedDom = (await readDomPaneRects(app as ElectronApplication)).find(
+      (entry) => entry.paneId === alicePaneId
+    )
+    if (!edgeClippedState || !edgeClippedDom) {
+      throw new Error('Edge-clipped pane geometry is unavailable')
+    }
+    expect(edgeClippedState.rect.x).toBeLessThan(pinnedWorkspace.x)
+    expect(Math.abs(edgeClippedState.rect.width - edgeClippedDom.rect.width)).toBeLessThanOrEqual(
+      1
+    )
+    await expect(
+      shellPage.locator(`.pane-card[data-pane-id="${alicePaneId}"] .pane-message`)
+    ).toHaveCount(0)
+
+    // A pane that would overlap the top toolbar must stay suspended. Clicking
+    // it selects it without moving or zooming the camera.
+    await shellPage.mouse.move(
+      pinnedWorkspace.x + pinnedWorkspace.width - 8,
+      pinnedWorkspace.y + 8
+    )
+    await shellPage.mouse.wheel(0, 140)
+    await expect
+      .poll(async () =>
+        (await getViewStates(app as ElectronApplication)).some(
+          (state) => state.paneId === alicePaneId && !state.visible
+        )
+      )
+      .toBe(true)
+    const partiallyVisibleCard = await firstCanvasCard.boundingBox()
+    const partiallyVisibleWorkspace = await shellPage.locator('.workspace').boundingBox()
+    const zoomBeforePaneClick = await zoomPage.locator('#value').textContent()
+    if (!partiallyVisibleCard || !partiallyVisibleWorkspace) {
+      throw new Error('Partially visible pane click bounds are unavailable')
+    }
+    await shellPage.mouse.click(
+      partiallyVisibleWorkspace.x + 32,
+      partiallyVisibleWorkspace.y + 140
+    )
+    await expect(shellPage.locator('.pane-card-active')).toHaveAttribute(
+      'data-pane-id',
+      alicePaneId as string
+    )
+    const unpinnedCard = await firstCanvasCard.boundingBox()
+    expect(unpinnedCard?.x).toBeCloseTo(partiallyVisibleCard.x, 0)
+    expect(unpinnedCard?.y).toBeCloseTo(partiallyVisibleCard.y, 0)
+    expect(await zoomPage.locator('#value').textContent()).toBe(zoomBeforePaneClick)
+    await fitAllDevices(app as ElectronApplication)
+    await waitForVisibleAlignedBounds(app)
+
     // Wheel panning must hide native views for the gesture and restore them at
     // the new screen positions; otherwise a moved pane's live content drifts.
     const beforeWheelPan = await firstCanvasCard.boundingBox()
@@ -1260,13 +1426,16 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect
       .poll(async () => (await getViewStates(app as ElectronApplication)).some((state) => !state.visible))
       .toBe(true)
-    await expect(addMenu.getByRole('menuitem')).toHaveCount(16)
+    await expect(addMenu.getByRole('menuitem')).toHaveCount(17)
     await expect(addMenu.locator('.app-menu-section')).toHaveText([
       'Start with viewport',
       'Phone viewports',
       'Tablet viewports',
       'Desktop viewports'
     ])
+    await expect(
+      addMenu.getByRole('menuitem', { name: 'Open multiple browsers…' })
+    ).toBeVisible()
     for (const name of [
       'Generic phone',
       'iPhone 15 Pro Max',
@@ -1605,6 +1774,29 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     expect(mobileFitEmulation?.enabled).toBe(true)
     expect(mobileFitEmulation?.scale).toBeGreaterThan(0)
     expect(mobileFitEmulation?.scale).toBeLessThanOrEqual(1)
+
+    // Phone/tablet panes translate mouse drags into touch scrolling, matching
+    // Chromium's device emulation instead of letting the Canvas capture them.
+    await alicePage.evaluate(() => {
+      const spacer = document.createElement('div')
+      spacer.dataset.scrollProbe = 'true'
+      spacer.style.height = '2000px'
+      document.body.appendChild(spacer)
+      window.scrollTo(0, 0)
+    })
+    await dragPaneWithMouseInput(
+      app as ElectronApplication,
+      alicePaneId as string,
+      { x: 0.5, y: 0.8 },
+      { x: 0.5, y: 0.2 }
+    )
+    await expect
+      .poll(() => alicePage.evaluate(() => window.scrollY), { timeout: 5_000 })
+      .toBeGreaterThan(0)
+    await alicePage.evaluate(() => {
+      document.querySelector('[data-scroll-probe]')?.remove()
+      window.scrollTo(0, 0)
+    })
 
     // A second pane can hold a different emulated viewport at the same time.
     await fitAllDevices(app as ElectronApplication)
@@ -2228,6 +2420,26 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'window resize to propagate to the shell'
     )
     await waitForAlignedBounds(app)
+    const resizedAliceDomRect = (await readDomPaneRects(app)).find(
+      (entry) => entry.paneId === alicePaneId
+    )
+    const resizedAliceViewport = await alicePage.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight
+    }))
+    const resizedAliceZoom = await shellPage
+      .locator(`.pane-card[data-pane-id="${alicePaneId}"]`)
+      .evaluate((element) => Number(getComputedStyle(element).getPropertyValue('--pane-zoom')))
+    expect(resizedAliceDomRect).toBeTruthy()
+    expect(resizedAliceZoom).toBeGreaterThan(0)
+    expect(
+      Math.abs(resizedAliceViewport.width * resizedAliceZoom - (resizedAliceDomRect?.rect.width ?? 0))
+    ).toBeLessThanOrEqual(1)
+    expect(
+      Math.abs(
+        resizedAliceViewport.height * resizedAliceZoom - (resizedAliceDomRect?.rect.height ?? 0)
+      )
+    ).toBeLessThanOrEqual(1)
 
     // Phase 1 exit criterion: two profiles authenticate independently on the
     // same local origin, with a HttpOnly persistent session per profile.
@@ -2938,13 +3150,37 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       .click()
     const emptyAddMenu = restartShell.getByRole('menu', { name: 'Add browser' })
     await expect(emptyAddMenu).toBeVisible()
-    await emptyAddMenu.getByRole('menuitem', { name: 'Responsive' }).click()
+    await restartShell.keyboard.press('Escape')
+    await expect(emptyAddMenu).toHaveCount(0)
+
+    await restartShell.getByRole('button', { name: 'Open multiple browsers…' }).click()
+    const bulkDialog = restartShell.getByRole('dialog', { name: 'Open multiple browsers' })
+    await expect(bulkDialog).toBeVisible()
+    await bulkDialog.getByLabel('URLs, one per line').fill(
+      [
+        `${fixture.url}/pane/one?user=alice`,
+        `${fixture.url}/pane/two?user=bob`,
+        `${fixture.url}/login`
+      ].join('\n')
+    )
+    await bulkDialog.getByLabel('Default viewport').selectOption('iphone-se')
+    await bulkDialog.getByRole('button', { name: 'Open 3 browsers' }).click()
     const populatedSecond = await waitFor(
       () => getSnapshot(restartApp),
-      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
-      'pane in the second workspace'
+      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 3,
+      'bulk browsers in the second workspace'
     )
-    const secondPane = populatedSecond.panes[0]
+    expect(new Set(populatedSecond.panes.map((pane) => pane.profileId)).size).toBe(3)
+    expect(populatedSecond.panes.every((pane) => pane.viewport.preset === 'iphone-se')).toBe(true)
+    for (const pane of populatedSecond.panes.slice(1)) {
+      await shellEvaluate(restartApp, `window.browserdeck.closePane(${JSON.stringify(pane.id)})`)
+    }
+    const populatedSecondOne = await waitFor(
+      () => getSnapshot(restartApp),
+      (state) => state.workspace.name === 'Second Workspace' && state.panes.length === 1,
+      'single browser after bulk creation'
+    )
+    const secondPane = populatedSecondOne.panes[0]
     expect(secondPane).toBeTruthy()
 
     await clickAppMenuCommand(restartApp, 'workspace-manage')
@@ -3179,10 +3415,69 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     if (!firstStressBox || !secondStressBox) {
       throw new Error('Stress pane bounds are unavailable')
     }
-    const selectTool = restartZoomPage.getByRole('button', { name: 'Select browsers' })
-    await expect(selectTool).toHaveAttribute('aria-pressed', 'false')
-    await selectTool.click()
-    await expect(selectTool).toHaveAttribute('aria-pressed', 'true')
+    const selectModifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+    const stressWorkspace = await restartShell.locator('.workspace').boundingBox()
+    if (!stressWorkspace) {
+      throw new Error('Stress workspace bounds are unavailable')
+    }
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+
+    const readSelectionFrame = (card: typeof firstStressCard) =>
+      card.evaluate((element) => {
+        const slot = element.parentElement
+        if (!slot) {
+          return null
+        }
+        const style = getComputedStyle(slot)
+        return {
+          outlineWidth: style.outlineWidth,
+          outlineStyle: style.outlineStyle,
+          outlineColor: style.outlineColor,
+          outlineOffset: style.outlineOffset,
+          borderRadius: style.borderRadius
+        }
+      })
+
+    // A plain click toggles a pane in and out of the same selection used by
+    // Cmd/Ctrl and the Select tool. No drag is required, and the selection can
+    // grow by clicking another pane.
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(1)
+    const normalSelectionFrame = await readSelectionFrame(firstStressCard)
+    expect(normalSelectionFrame?.borderRadius).toBe('0px')
+    await secondStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
+    await secondStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(0)
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+
+    // The persistent Select tool and temporary Cmd/Ctrl Select use the same
+    // click/empty-canvas semantics. The X close action is gone from the
+    // selection toolbar.
+    const selectButton = restartZoomPage.getByRole('button', {
+      name: 'Select browsers'
+    })
+    await selectButton.click()
+    await expect(selectButton).toHaveAttribute('aria-pressed', 'true')
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(1)
+    await expect(restartShell.locator('.selection-close')).toHaveCount(0)
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(0)
+    await selectButton.click()
+    await expect(selectButton).toHaveAttribute('aria-pressed', 'false')
+    await expect(restartShell.locator('.workspace')).not.toHaveClass(/canvas-select/)
+
+    await restartShell.keyboard.down(selectModifier)
     await expect(restartShell.locator('.workspace')).toHaveClass(/canvas-select/)
     await restartShell.mouse.move(firstStressBox.x - 8, firstStressBox.y + 12)
     await restartShell.mouse.down()
@@ -3194,6 +3489,53 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await restartShell.mouse.up()
     await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
     await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
+    expect(await readSelectionFrame(secondStressCard)).toEqual(normalSelectionFrame)
+
+    // Cmd/Ctrl+click toggles a pane without dragging, just like a plain click.
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('1 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(1)
+    await firstStressCard.locator('.pane-title').click()
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
+
+    // Still holding Cmd/Ctrl: clicking empty canvas clears the temporary
+    // selection the same way a normal empty-canvas click does.
+    await restartShell.mouse.click(stressWorkspace.x + 8, stressWorkspace.y + 8)
+    await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(0)
+    await expect(restartShell.locator('.pane-card-active')).toHaveCount(0)
+
+    await restartShell.mouse.move(firstStressBox.x - 8, firstStressBox.y + 12)
+    await restartShell.mouse.down()
+    await restartShell.mouse.move(
+      secondStressBox.x + secondStressBox.width + 8,
+      secondStressBox.y + secondStressBox.height + 8,
+      { steps: 8 }
+    )
+    await restartShell.mouse.up()
+    await restartShell.keyboard.up(selectModifier)
+    await expect(restartShell.locator('.workspace')).not.toHaveClass(/canvas-select/)
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
+    await expect(restartShell.locator('.pane-slot-selected')).toHaveCount(2)
+    await restartShell.locator('.selection-viewport').click()
+    const selectionViewportMenu = restartShell.getByRole('menu', {
+      name: 'Viewport for 2 selected browsers'
+    })
+    await expect(selectionViewportMenu).toBeVisible()
+    await expect(
+      selectionViewportMenu.locator('[data-menu-item-id="selection:close"]')
+    ).toHaveCount(0)
+    await selectionViewportMenu.locator('[data-menu-item-id="selection:viewport:iphone-se"]').click()
+    await waitFor(
+      () => getSnapshot(restartApp),
+      (state) =>
+        stressTargets.every(
+          (pane) => state.panes.find((entry) => entry.id === pane.id)?.viewport.preset === 'iphone-se'
+        ),
+      'selected browser viewport update'
+    )
+    await expect(restartShell.locator('.selection-summary')).toContainText('2 selected')
     await restartShell.keyboard.press('Delete')
     await waitFor(
       () => getSnapshot(restartApp),
@@ -3203,8 +3545,9 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'marquee multi-delete'
     )
     await expect(restartShell.locator('.selection-summary')).toHaveCount(0)
-    await selectTool.click()
-    await expect(selectTool).toHaveAttribute('aria-pressed', 'false')
+    await expect(
+      restartZoomPage.getByRole('button', { name: 'Select browsers' })
+    ).toHaveAttribute('aria-pressed', 'false')
 
     // Restore the four-pane stress workspace expected by the leak cycles.
     for (let count = 3; count <= 4; count += 1) {
@@ -3347,6 +3690,133 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
     await expect(
       restartShell.locator(`.pane-card[data-pane-id="${secondPaneId}"]`)
     ).toHaveAttribute('aria-current', 'true')
+  } finally {
+    if (app) {
+      await app.close().catch(() => undefined)
+    }
+    if (fixture) {
+      await fixture.close().catch(() => undefined)
+    }
+    if (userDataDir) {
+      await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+})
+
+test('Canvas menus hide covered native views with many panes', async () => {
+  test.setTimeout(120_000)
+
+  let fixture: FixtureServer | null = null
+  let userDataDir = ''
+  let app: ElectronApplication | null = null
+
+  try {
+    fixture = await startFixtureServer()
+    userDataDir = await mkdtemp(join(tmpdir(), 'browserdeck-menu-reveal-'))
+    const fixtureUrl = fixture.url
+    const urls = Array.from(
+      { length: 16 },
+      (_, index) => `${fixtureUrl}/pane/one?user=menu-${index}`
+    )
+    app = await launchApp(userDataDir, urls.slice(0, 2).join(','))
+
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) => state.panes.length === 2,
+      'initial menu-reveal panes'
+    )
+    const shellPage = await waitFor(
+      async () =>
+        (app as ElectronApplication)
+          .windows()
+          .find((page) => isShellPage(page.url())) ?? null,
+      (page) => page !== null,
+      'menu-reveal shell'
+    )
+    if (!shellPage) {
+      throw new Error('Menu-reveal shell is unavailable')
+    }
+    await shellPage.evaluate(async (remaining) => {
+      const bridge = (
+        window as unknown as { browserdeck: { addPane(url: string): Promise<unknown> } }
+      ).browserdeck
+      for (const url of remaining) {
+        await bridge.addPane(url)
+      }
+    }, urls.slice(2))
+
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.length === urls.length && state.panes.every((pane) => !pane.isLoading),
+      'menu-reveal panes to load'
+    )
+    const minimapPage = await waitFor(
+      async () =>
+        (app as ElectronApplication)
+          .windows()
+          .find((page) => page.url() === SHELL_MINIMAP_URL) ?? null,
+      (page) => page !== null,
+      'menu-reveal overview'
+    )
+    if (!minimapPage) {
+      throw new Error('Menu-reveal overview is unavailable')
+    }
+    await minimapPage.getByRole('button', { name: 'Fit all browsers' }).click()
+    await waitForVisibleAlignedBounds(app as ElectronApplication)
+    const zoomPage = await waitFor(
+      async () =>
+        (app as ElectronApplication)
+          .windows()
+          .find((page) => page.url() === SHELL_ZOOM_URL) ?? null,
+      (page) => page !== null,
+      'menu-reveal zoom bar'
+    )
+    if (!zoomPage) {
+      throw new Error('Menu-reveal zoom bar is unavailable')
+    }
+    // Menus are most likely to race a camera settle after a zoom.
+    await zoomPage.getByRole('button', { name: 'Zoom in' }).click()
+    await delay(40)
+    await zoomPage.getByRole('button', { name: 'Zoom in' }).click()
+    await delay(40)
+
+    const cardIndex = await shellPage.evaluate(() => {
+      const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
+      if (!workspace) {
+        return -1
+      }
+      return Array.from(document.querySelectorAll('.pane-card')).findIndex((element) => {
+        const rect = element.getBoundingClientRect()
+        return (
+          rect.top >= workspace.top &&
+          rect.top < workspace.bottom - 80 &&
+          rect.left < workspace.right - 40 &&
+          rect.right > workspace.left + 40
+        )
+      })
+    })
+    expect(cardIndex).toBeGreaterThanOrEqual(0)
+    const card = shellPage.locator('.pane-card').nth(cardIndex)
+    const menu = shellPage.getByRole('menu', { name: 'Browser actions' })
+
+    await card.getByRole('button', { name: 'Browser actions' }).click()
+    await expect(menu).toBeVisible()
+    const menuBox = await menu.boundingBox()
+    if (!menuBox) {
+      throw new Error('Menu-reveal bounds are unavailable')
+    }
+    const viewStates = await getViewStates(app as ElectronApplication)
+    expect(
+      viewStates.some((state) => state.visible && viewRectsOverlap(state.rect, menuBox))
+    ).toBe(false)
+    expect(
+      viewStates.some((state) => !state.visible && viewRectsOverlap(state.rect, menuBox))
+    ).toBe(true)
+
+    await shellPage.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+    await waitForVisibleAlignedBounds(app as ElectronApplication)
   } finally {
     if (app) {
       await app.close().catch(() => undefined)

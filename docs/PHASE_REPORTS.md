@@ -1234,6 +1234,115 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 
 **Known behavior / limitations:** The development runtime still uses Electron’s bundle, so macOS may label that process “Electron” in the Dock; use `make start` for the real BrowserDeck identity. Packaging on `make start` takes longer than the old preview. The app remains an unsigned, arm64-only local build. A small existing browser-workspace product also uses the BrowserDeck name, so a domain/trademark check is still required before public distribution.
 
+## BrowserDeck 1.2.0 — Bulk URL opening and selected-browser controls
+
+**Date:** 2026-11-20
+
+**Status:** Implemented in source; not yet published to Homebrew.
+
+**Change:** Added **Open multiple browsers…** to the Add browser menu and empty state. The dialog accepts one URL per line, validates the whole batch before creation, caps at 50 browsers, and uses the selected browser's viewport (or the last batch viewport) as the default. Each URL creates an independent profile through the existing validated viewport path. Added common selected-browser actions to the top toolbar: a shared viewport menu and Reload selected. Close the selected set with Delete; no close control is shown in the selection toolbar or menu. Both the persistent Select tool and temporary Cmd/Ctrl Select clear the active browser and selection when empty canvas is clicked. Holding Cmd on macOS or Ctrl on Windows/Linux temporarily activates Select while shell chrome has focus, mirroring hold-Space Hand. Phone/tablet panes now translate mouse drags into touch scrolling. The shell also fits or restores the camera before sending a new pane's first bounds, so the first document loads at its fitted viewport instead of a 0×0 or pre-fit size. Added native text-selection coverage to ensure page pointer drags remain browser-native.
+
+**Files changed:** `src/shared/bulk.ts` (new), `src/shared/ipc.ts`, `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `tests/unit/bulk.test.ts` (new), `tests/e2e/browser-panes.spec.ts`, `tests/fixtures/server.cjs`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-056 updated, ADR-074/075), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 179 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 19.1 s, including native text selection, bulk creation, persistent and temporary selection, empty-canvas clearing, shared viewport changes, touch-drag scrolling, first-document viewport sizing, resize alignment, and cleanup. |
+| `npm run build` | Passed: main 158.33 kB, preload 9.32 kB, renderer JS 381.46 kB, shell CSS 35.66 kB. |
+| `npm run package:dir` | Passed: BrowserDeck 1.2.0 arm64 app with the final selection and viewport changes; fuses applied and signing skipped as expected. |
+
+**Known behavior / limitations:** Bulk creation is sequential and can take a moment for large batches. The temporary Cmd/Ctrl Select tool is active only while shell chrome has focus; native page content keeps native browser behavior. Phone/tablet mouse-to-touch scrolling is enabled only for mobile viewport behavior, so desktop panes keep native text selection and click-drag interactions. A hidden `WebContentsView` reports a 0×0 viewport, so panes stay visible while a non-emulated page loads; only emulated reloads hide the old surface until emulation is reapplied. Homebrew still installs the published 1.1.0 until a 1.2.0 release and cask update are published. The selected-browser viewport menu normalizes all selected browsers to one preset; it does not preserve mixed viewports.
+
+## Canvas interaction fix — Selecting partially visible panes keeps the camera in place
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** A primary click on a partially visible Canvas pane now selects it in place instead of centering the camera. The pane keeps its snapshot and hidden-browser message until an explicit camera action brings it fully into view. The message now directs the user to pan the canvas or use Fit all. Selecting a pane, its header, or a minimap frame still restores selection; minimap frame focus, device-palette focus, Fit all, and regular panning remain explicit navigation paths. Camera and selection persistence are unchanged. Native views still cannot be clipped to the visible workspace, so a partially visible pane remains non-interactive until it is fully visible.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-032/068 status notes, ADR-076 added), and `docs/MANUAL_CHECKS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 179 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 21.8 s. New coverage pans a pane partly off-screen, clicks its visible area, verifies it becomes active with unchanged position and zoom, and restores the camera with Fit all. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.33 kB, preload 9.32 kB, renderer JS 380.85 kB, shell CSS 35.66 kB. |
+
+**Known behavior / limitations:** Clicking a partially visible pane does not make its page interactive; the user must bring the pane fully into view with Fit all, the overview, Cmd/Ctrl+K, or canvas panning. Panes that are panned mostly off-screen continue to show a snapshot and a hidden-browser message until then.
+
+## Canvas selection — Click and Cmd/Ctrl+click share one toggle selection
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Plain click, Cmd/Ctrl+click, and a click in the persistent Select tool now toggle a pane in the same multi-selection without requiring a drag. Clicking an unselected pane adds it; clicking a selected pane removes it and moves or clears the active pane appropriately. Header drags still move the pane and leave selection unchanged. Marquee drags still replace the selection with every intersecting pane. Selected and active pane slots now use the same plain click frame: a 1 px accent outline with a 1 px offset and no corner radius. Clicking interactive pane chrome (address, buttons, menus) normalizes the selection to that pane instead of toggling it, preventing stale multi-selection from affecting later actions. Escape clears the selection and active pane even when the persistent Select tool is off; a second press exits the tool when applicable.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-056 status note, ADR-077 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 179 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 20.5 s. New coverage verifies plain-click select/deselect, additive click selection, Cmd/Ctrl+click toggling without a drag, identical click/marquee selection-frame metrics, and the existing marquee/delete flow. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.33 kB, preload 9.32 kB, renderer JS 381.99 kB, shell CSS 35.58 kB. |
+
+**Known behavior / limitations:** Native page content receives its own clicks, so click-to-toggle applies to pane chrome and snapshots rather than the live website surface. Clicking any interactive pane control resets the selection to that pane, which intentionally clears a broader marquee selection. A single click now shows the selection toolbar with a one-browser count.
+
+## Canvas visibility — Window-edge-clipped panes stay live
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Panes clipped only by the left, right, or bottom window edge now keep their live native views instead of switching to a paused snapshot. Their full native rectangle is preserved, so the page viewport and emulation do not reflow; the OS clips the overflow and the native bottom bar and overview stay above pane views. Panes that would overlap the top toolbar or an open Canvas menu still pause with a snapshot or message, and selecting one still leaves the camera untouched. The suspended message now reads “Browser paused while partly off-screen” with “Pan or use Fit all to make it fully visible.” Main validates live bounds with minimum/maximum sizes and requires canvas intersection, while allowing negative or past-edge coordinates only when the pane is at least partly visible. Snapshot capture remains in place for panning and menu-covered panes.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/layout.ts`, `src/shared/geometry.ts`, `tests/unit/layout.test.ts`, `tests/unit/geometry.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-005/032/033/076 status notes, ADR-078 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 184 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 2 Playwright tests in 21.4 s. New coverage pans a pane past the left window edge, verifies the native view stays visible with its full DOM width, then pans it under the top edge and verifies it suspends without moving the camera on click. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.91 kB, preload 9.32 kB, renderer JS 382.24 kB, shell CSS 35.58 kB. |
+
+**Known behavior / limitations:** True clipping under the top toolbar and open shell menus still requires a native-container spike, so those panes remain paused. Panes extending under the bottom bar or overview are live, but those native overlays cover their corners by design. Very large panes are still limited by the validated live-rectangle size cap.
+
+## Canvas menus — Reveal only after covered native views are hidden
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Custom menus no longer flash live page content over themselves while opening. A menu stays hidden until it has been positioned and the shell has hidden the native pane views intersecting its bounds. The shell awaits the native-bounds IPC before marking the menu ready and moving focus into it. Uncovered panes remain live, and opening a menu still only affects panes under that menu. Closing or failing to measure a menu always clears the waiting state, so an invisible menu cannot remain open indefinitely.
+
+**Files changed:** `src/renderer/src/App.vue`, `src/renderer/src/components/AppMenu.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `SPEC.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-079 added), `docs/MANUAL_CHECKS.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 184 unit tests, and all light/dark contrast pairs. |
+| `npm run test:e2e` | Passed: 3 Playwright tests in 22.3 s. New coverage loads 16 live fixture panes, zooms, opens a pane menu, and verifies no visible native view intersects the revealed menu while a covered view is hidden. |
+| `npm run build` | Passed as part of `npm run test:e2e`: main 158.91 kB, preload 9.32 kB, renderer JS 382.90 kB, shell CSS 35.58 kB. |
+
+**Known behavior / limitations:** Menu reveal now waits for one native-bounds round trip, so it can appear a few milliseconds later on a busy Canvas. The fix is specific to custom shell menus; native application menus are unchanged. The 16-pane repro was also confirmed with a temporary instrumented harness before and after the handshake.
+
+## Documentation — README screenshots
+
+**Date:** 2026-11-21
+
+**Status:** Implemented.
+
+**Change:** Added two screenshots to the README, captured from the running Electron app with native pane content included. The dark-theme hero shows six iPhone 15 Pro panes in a horizontal row; the light-theme shot shows responsive, tablet, and phone viewports together. The overview is collapsed in both shots so it does not cover pane content. Capture provenance and demo URLs are documented in `docs/screenshots/README.md`.
+
+**Files changed:** `README.md`, `docs/screenshots/canvas-dark.png`, `docs/screenshots/canvas-light-mixed-viewports.png`, `docs/screenshots/README.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Image dimensions | Both screenshots are 1680 px wide; the dark hero is 1680 × 760 and the mixed-viewport shot is 1680 × 1000. |
+| Native content | Captured the actual `BrowserDeck` window through `desktopCapturer`; all pane content and app chrome are present. |
+| README links | Both relative image paths resolve from the repository root. |
+
+**Known behavior / limitations:** The screenshots use locally served demo sites, so the address bars show `localhost:5173`. The sites are illustrative demo content, not bundled with BrowserDeck.
+
 ## Agent workflow — Lightweight roadmap and session state
 
 **Date:** 2026-11-22
@@ -1251,6 +1360,24 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed: main 158.13 kB, preload 9.31 kB, renderer JS 358.96 kB, shell CSS 31.58 kB. |
 | `npm run test:e2e` | Not run — no native-view, IPC, session, or workspace behavior changed. |
 
-**Known behavior / limitations:** The roadmap is seeded from existing known limitations and post-MVP follow-ups; `/plan` must keep it current. Manual VoiceOver and profiling tasks still require a human-run pass. The current checkout is `dev` at 1.1.0; `main` contains the later 1.2.0 work, so confirm the target branch before publishing.
+**Known behavior / limitations:** The roadmap is seeded from existing known limitations and post-MVP follow-ups; `/plan` must keep it current. Manual VoiceOver and profiling tasks still require a human-run pass. At the time, the checkout was `dev` at 1.1.0 and `main` contained the later 1.2.0 work; the branches were merged on 2026-11-23.
 
 **Next:** BD-004 — distinguish HTTP from HTTPS in the pane address bar.
+
+## Branch integration — Merge main 1.2.0 into dev
+
+**Date:** 2026-11-23
+
+**Status:** Complete.
+
+**Change:** Merged `main` (`cac3e26`, BrowserDeck 1.2.0) into `dev` (`7cd15b9`, 1.1.0 plus the agent workflow). The merge brings bulk URL opening, shared selected-browser viewport/reload actions, click and Cmd/Ctrl+click selection toggling, touch-drag scrolling for mobile presets, first-document fitted sizing, window-edge-clipped live panes, the Canvas menu reveal handshake, README screenshots, and ADR-074–079 into `dev`. The `dev` roadmap, session state, `/plan` and `/status` commands, validator, and `check:agent` script remain in place. The only conflict was `docs/PHASE_REPORTS.md`; both histories were kept, with the 1.2.0 entries before the agent-workflow entry. Package version is now 1.2.0.
+
+**Files changed by the merge:** `README.md`, `SPEC.md`, `.github/FUNDING.yml`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/MANUAL_CHECKS.md`, `docs/PHASE_REPORTS.md`, `docs/screenshots/`, `package.json`, `package-lock.json`, `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/AppMenu.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/bulk.ts` (new), `src/shared/geometry.ts`, `src/shared/ipc.ts`, `src/shared/layout.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/fixtures/server.cjs`, `tests/unit/bulk.test.ts` (new), `tests/unit/geometry.test.ts`, and `tests/unit/layout.test.ts`. The merge commit also updates `.factory/STATE.md` and `docs/ROADMAP.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 184 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run build` | Passed: main 158.91 kB, preload 9.32 kB, renderer JS 382.90 kB, shell CSS 35.58 kB. |
+| `npm run test:e2e` | Passed: 3 Playwright tests in 31.9 s. Covers the accessibility/axe audit, the main native/auth/Canvas/persistence path, and the many-pane Canvas menu/native-view handshake. |
+
+**Known behavior / limitations:** The merge commit is local to `dev` and has not been pushed to `origin/dev`. Version 1.2.0 is not published; the Homebrew cask still points at 1.1.0 until `BD-001` is approved and completed. `BD-004` remains the next eligible slice.

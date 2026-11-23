@@ -72,7 +72,11 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Phone/tablet presets use mobile browser behavior. (A running-app probe at iPhone SE reports 375 × 667, no classic scrollbar, 5 touch points, `hover: none`, and `pointer: coarse`; switching back to Responsive clears the override.)
 - [x] The pane header shows viewport class and resolution. (E2e verifies `Phone` and `390 × 844` in the second header row; the side labels hide when the custom viewport editor opens.)
 - [x] The **+** add menu creates a pane with the selected browser preset. (E2e opens the custom menu, selects iPhone 15 Pro, and verifies the new pane's viewport.)
+- [x] Multiple URLs can be opened at once with a shared viewport. (E2e opens the empty-state bulk dialog, enters three fixture URLs, selects iPhone SE, verifies three distinct profiles all using that viewport, and cleans up two browsers.)
+- [x] Selected browsers expose common topbar actions and clear from empty canvas. (E2e exercises both the persistent Select tool and Cmd/Ctrl Select, checks plain-click and Cmd/Ctrl-click toggling, checks that no X close action remains in the selection UI, applies iPhone SE through the selection viewport menu, clicks empty canvas to clear the active browser and frames, and closes the selected set with Delete.)
+- [x] Native page pointer interactions remain browser-native. (E2e drag-selects heading text inside a live pane and verifies the DOM selection.)
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
+- [x] Custom menus do not flash page content over their opening frames. (The menu stays hidden while positioning, reports bounds, and waits for intersecting native views to hide before reveal. E2e opens a pane menu over 16 live panes after zooming and verifies no visible native view intersects it.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
 - [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame; the address bar uses the full second row.)
 - [x] Canvas pans an infinite dotted workspace and hides native views during the gesture. (E2e pans, verifies all native views hide, and verifies visible bounds realign afterward.)
@@ -96,9 +100,10 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] Canvas overview is always visible in Canvas, shows every pane and the current viewport, and Fit all brings all panes back. (E2e enters Canvas without opening anything, verifies the native panel at the bottom-right, both frame buttons and the viewport outline, clicks Fit all, and asserts both cards fit inside the workspace, keep clearance above the native bottom bar, and align their native bounds.)
 - [x] Canvas overview collapses and expands, recenters from empty map space, and hides while a custom menu or dialog is open. (E2e checks the native view height changes, the map hides/restores, the workspace background recenters, and the panel hides during menus.)
 - [x] Canvas overview frame selection and focus return. (E2e clicks a minimap frame, verifies the pane centers and becomes active, and checks the shell regains keyboard focus; the panel was also exercised visually at desktop and minimum-window widths.)
-- [ ] Canvas zoom at levels where frames no longer fit. (Implemented as snapshot preview; visual review of very high zoom and partially visible frames remains manual.)
+- [x] Panes clipped only by the left, right, or bottom window edge stay live. (E2e pans a pane partly past the left window edge, verifies its native view stays visible, and checks the native bounds keep the full DOM width so the page viewport does not reflow.)
+- [x] Canvas zoom at levels where frames no longer fit. (Left/right/bottom edge clipping now stays live; visual review of very high zoom remains manual.)
 - [ ] Spacebar while a website page has focus. (Intentionally not intercepted to preserve typing/scrolling; expected to work only when shell chrome has focus.)
-- [ ] Partially visible canvas pane centers and restores live view when clicked. (Implemented; manual visual pass outstanding.)
+- [x] Clicking a pane that overlaps the top toolbar or an open menu selects it without moving the camera; its native view stays hidden until an explicit camera action brings it clear. (E2e pans a pane partly off-screen, clicks its visible area, and verifies the pane activates while its position and zoom stay unchanged; Fit all restores the camera.)
 - [ ] Device bezels. (Not implemented.)
 - [ ] Fill/crop display mode for panes whose aspect ratio differs from the viewport preset. (Not implemented; fixed viewports letterbox to keep the full viewport visible.)
 - [ ] Optional per-pane user-agent override. (Not implemented.)
@@ -140,7 +145,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Packaging
 
 - [x] `npm run package:mac` builds an arm64 DMG, ZIP, and `.app`. (Artifacts produced under `dist/`.)
-- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.browser-deck`, `1.1.0`, `icon.icns`, developer tools.)
+- [x] Bundle ID, version, icon, and category are correct. (`com.kanharithsok.browser-deck`, `1.2.0`, `icon.icns`, developer tools.)
 - [x] Packaged app launches and renders the shell and panes. (Manual launch and screenshot.)
 - [x] Packaged app exposes the BrowserDeck name and icon. (`CFBundleDisplayName`/`CFBundleName` are BrowserDeck, the packaged icon hash matches `build/icon.icns`, `lsappinfo` reports `BrowserDeck`, and `make start` launches the packaged executable.)
 - [x] Homebrew cask installs the published release. (`brew info --cask kanharithsok/tap/browser-deck` resolves 1.1.0; `brew fetch` verifies the pinned SHA-256; `brew install --cask` installed `/Applications/BrowserDeck.app`, and the quarantine attribute was removed.)
@@ -197,10 +202,12 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Post-MVP — Marquee multi-select
 
 - [x] The bottom canvas bar has a Select tool with a pressed state. (E2e verifies its accessible name, tooltip, `aria-pressed` transition, and the `canvas-select` workspace cursor state.)
+- [x] A plain click and Cmd/Ctrl+click toggle a pane without dragging. (E2e clicks a title on and off, adds a second pane by clicking it, and confirms the same toggling while Cmd/Ctrl is held.)
+- [x] Click and marquee selections use the plain normal-click frame. (E2e computes the outline width, style, color, offset, and radius for a clicked pane and a marquee-selected pane, requires them to match, and confirms the radius is `0px`.)
 - [x] Dragging a marquee selects every intersecting pane. (E2e creates four stress panes, fits them, drags around two, and verifies two selected rings plus a `2 selected` toolbar chip.)
 - [x] Delete closes the selected set. (E2e presses Delete and verifies only the two selected pane IDs disappear; the remaining workspace and later leak cycles stay intact.)
-- [x] The marquee is visible and native pages do not cover it. (Native views are hidden during the gesture by the existing visibility path; selected rings are drawn on pane slots outside native bounds.)
-- [x] Escape clears the selection and a second press exits the tool. (Implemented in the trusted shell key handler; covered by the marquee flow and manual check.)
+- [x] The marquee is visible and native pages do not cover it. (Native views are hidden during the gesture by the existing visibility path; selected frames are drawn on pane slots outside native bounds.)
+- [x] Escape clears the selection and active browser, and a second press exits the tool. (Implemented in the trusted shell key handler; covered by the marquee flow and manual check.)
 - [x] Select and Hand are mutually exclusive. (Toolbar state is validated through `browserdeck:set-canvas-select-mode`; activating one clears the other.)
 
 ## Post-MVP — Preset user agents

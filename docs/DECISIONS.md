@@ -131,7 +131,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-005 — Native-aware scrolling shows only fully visible panes
 
-- **Status:** Accepted
+- **Status:** Accepted for the legacy grid; Canvas partial visibility superseded by ADR-078
 - **Date:** 2026-11-18
 - **Context:** Grid rows can exceed the workspace height. DOM scrolling clips pane cards, but native `WebContentsView`s are outside the DOM and cannot be clipped by the shell's overflow. Leaving off-screen views visible could cover chrome, overlap toolbar content, or appear over the wrong pane.
 
@@ -948,7 +948,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-032 — Canvas layout uses snapshot-assisted native panning
 
-- **Status:** Accepted for first Canvas slice
+- **Status:** Accepted for first Canvas slice; partially visible click behavior superseded by ADR-076; partial-visibility handling superseded by ADR-078
 - **Date:** 2026-11-19
 - **Context:** Responsively and Figma present a clean infinite canvas with a dotted backdrop and world-space pan/zoom. Figma renders the editor scene itself in WebGL; Responsively transforms DOM `<webview>` elements inside a CSS-transformed world. BrowserDeck uses native `WebContentsView`s for remote pages, which cannot be CSS-transformed or clipped by the shell, and cannot be overlaid with DOM chrome. A direct copy would either break the native security/session architecture or let pane content slide under the toolbar.
 
@@ -984,7 +984,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-033 — Canvas zoom uses device emulation and Space is a temporary Hand tool
 
-- **Status:** Accepted; zoom range and controls superseded by ADR-038
+- **Status:** Accepted; zoom range and controls superseded by ADR-038; partial-visibility consequence superseded by ADR-078
 - **Date:** 2026-11-19
 - **Context:** Canvas panning works, but users need Figma/Responsively-style temporary hand navigation and wheel zoom. Native `WebContentsView`s cannot be CSS-transformed. A naive wheel handler also moved the canvas and snapshots without hiding native views, leaving live page content at stale screen positions.
 
@@ -1693,7 +1693,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-056 — Marquee Select tool for bulk pane cleanup
 
-- **Status:** Accepted
+- **Status:** Accepted; selection-toolbar close placement superseded by ADR-075; click/marquee semantics extended by ADR-077
 - **Date:** 2026-11-20
 - **Context:** Workspaces with many panes require repeated close actions. Users asked for a marquee-selection tool in the bottom Canvas bar so they can drag around several panes and delete them together. Canvas panes are native views, so the shell cannot draw a selection rectangle over live page content, and normal Canvas dragging already owns empty-canvas panning and pane-header moves.
 
@@ -1702,9 +1702,9 @@ Record material technical decisions here. Keep entries short but include context
   2. While Select is active, a primary drag from empty canvas or pane chrome starts a marquee instead of panning or moving a pane. Interactive controls keep normal behavior.
   3. Hide native pane views for the duration of the marquee and draw the rectangle as shell DOM. Capture snapshots when none are available so covered panes do not flash.
   4. Convert pane frames to screen space and use the pure `canvasPaneIdsInRect` helper to select every intersecting frame. Selection replaces the previous set on each drag.
-  5. Ring selected pane slots outside native bounds and show a toolbar count chip with a close action. A click without movement selects only the pane under the cursor, or clears the selection on empty canvas.
+  5. Ring selected pane slots outside native bounds and show a toolbar count chip. A click without movement selects only the pane under the cursor, or clears the selection on empty canvas.
   6. Delete/Backspace closes the selected set when focus is in shell chrome; Escape clears the selection, then exits the tool. Update the bar through a validated `browserdeck:set-canvas-select-mode` channel so `aria-pressed` reflects the real state.
-  7. Keep selection ephemeral. It is not persisted, does not change the active pane, and clears on workspace switch or when the last selected pane closes.
+  7. Keep the selection set ephemeral. It is not persisted and clears on workspace switch or when the last selected pane closes.
 
 - **Alternatives considered:**
   - **Shift-click to build a selection.** Deferred; marquee is the requested path, and click/Shift semantics can be added later without changing the model.
@@ -2048,7 +2048,7 @@ Record material technical decisions here. Keep entries short but include context
 
 ## ADR-068 — Fit all keeps panes clear of the bottom Canvas bar
 
-- **Status:** Accepted
+- **Status:** Accepted; partially visible pane centering superseded by ADR-076
 - **Date:** 2026-11-20
 - **Context:** Fit all centered panes inside the whole workspace rectangle. The native bottom Canvas bar overlays the bottom 52 DIP of that rectangle, so tall or newly added panes could be centered partly behind the bar's buttons.
 
@@ -2150,7 +2150,7 @@ Record material technical decisions here. Keep entries short but include context
   - `make dev` and `make preview` remain fast development paths, with the BrowserDeck icon but the Electron runtime name.
 
 - **Evidence / verification:**
-  - Packaged `Info.plist` reports `CFBundleDisplayName=BrowserDeck`, `CFBundleName=BrowserDeck`, `CFBundleIdentifier=com.kanharithsok.browser-deck`, and version `1.1.0`.
+  - Packaged `Info.plist` reports `CFBundleDisplayName=BrowserDeck`, `CFBundleName=BrowserDeck`, `CFBundleIdentifier=com.kanharithsok.browser-deck`, and version `1.2.0`.
   - The packaged app uses the same `build/icon.icns` hash as the source.
   - `lsappinfo` reports the running packaged process as `BrowserDeck`, and `make start` launches that executable.
 
@@ -2204,9 +2204,192 @@ Record material technical decisions here. Keep entries short but include context
 
 - **Evidence / verification:**
   - Unit, typecheck, lint, and e2e suites pass after the rename.
-  - Packaged metadata reports BrowserDeck 1.1.0 with app ID `com.kanharithsok.browser-deck`.
+  - Packaged metadata reports BrowserDeck 1.2.0 with app ID `com.kanharithsok.browser-deck`.
   - The empty-state Add Browser button opens the picker and creates a pane; covered by e2e.
   - `gh repo view` reports `kanharithsok/browser-deck`; local `origin` matches.
+
+## ADR-074 — Bulk URL entry opens multiple independent browsers
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Opening more than a handful of browsers required one Add browser action per URL. Users comparing many routes, accounts, or environments needed a batch path, and each new browser still needed an explicit viewport choice.
+
+- **Decision:**
+  1. Add **Open multiple browsers…** to the Add browser menu and the empty state.
+  2. Accept one URL per line, ignore blank lines, validate all URLs before creating anything, and cap a batch at 50.
+  3. Default the batch viewport to the selected browser's viewport; otherwise use the last batch viewport stored in shell localStorage, then Responsive. The dialog can override it with any fixed preset or a custom viewport inherited from the selected browser.
+  4. Create each browser through the existing validated `addPaneWithViewport(viewport, url)` path so each receives its own profile and native view.
+  5. On a partial failure, remove already-created lines from the textarea and keep the dialog open so retry does not duplicate browsers.
+  6. Hide native views while the dialog is open and fit the camera to all browsers after a successful batch.
+
+- **Alternatives considered:**
+  - **Paste multiple URLs into the address bar.** Rejected; an address input represents one navigation, and multiline behavior would be surprising.
+  - **Create browsers one by one from JavaScript with no dialog.** Rejected; no preview of the count, default viewport, or invalid lines.
+  - **Use a native sheet.** Rejected; the in-shell dialog matches the menu language and can validate immediately before IPC.
+
+- **Consequences:**
+  - Ten or more URLs can be opened in one action without repetitive address entry.
+  - The selected browser's viewport becomes the natural default for the batch.
+  - Bulk creation is sequential IPC; a large batch may take a moment and the button shows an opening state.
+  - The maximum batch is 50 to protect the Canvas and renderer responsiveness.
+
+- **Evidence / verification:**
+  - Unit tests cover line normalization, invalid-line reporting without echoing the URL, empty input, and the batch cap.
+  - E2E opens three URLs from the empty state, selects iPhone SE as the shared viewport, verifies three distinct profiles and viewports, and closes two browsers.
+
+## ADR-075 — Selected browsers expose common actions in the top toolbar
+
+- **Status:** Accepted
+- **Date:** 2026-11-20
+- **Context:** Marquee selection showed only a count and a close action. Changing the viewport for several selected browsers required editing each one separately, and there was no visible way to reload the selected set.
+
+- **Decision:**
+  1. Keep the selected count in the top toolbar.
+  2. Add a viewport trigger that opens the full preset catalog for every selected browser, with the shared preset checked when all selected browsers match.
+  3. Add visible Reload selected. Close the selected set with Delete/Backspace; do not put a close action in the selection toolbar or menu.
+  4. Show “Viewport” when the selection has mixed presets; applying a preset normalizes the set.
+  5. Add a temporary Select mode: hold Cmd on macOS or Ctrl on Windows/Linux while shell chrome has focus, mirroring the existing hold-Space Hand tool. Remote page content keeps native browser input behavior.
+  6. Keep the persistent bottom-bar Select tool as the non-modifier path. Both tools clear the selection on an empty-canvas click, including the active browser.
+  7. Remove the `selection-close` X control and do not replace it with another selection close action; Delete remains the bulk-close shortcut.
+
+- **Alternatives considered:**
+  - **Keep a visible X close action in the selection toolbar.** Rejected; it made accidental bulk deletion too easy and the user asked to remove it.
+  - **Put all actions behind a single overflow menu.** Rejected; the common viewport and reload actions should stay visible.
+  - **Apply viewport changes through a renderer-only mutation.** Rejected; main must validate every viewport.
+  - **Intercept modifier keys over native page content.** Rejected; native views receive those events, so the temporary Select tool is scoped to shell chrome.
+
+- **Consequences:**
+  - Multi-selection supports the most common batch changes without opening each browser.
+  - The top toolbar grows only while a marquee selection exists.
+  - A mixed viewport selection shows no checked preset until the user chooses one.
+  - Holding Cmd/Ctrl does not affect Cmd-click, text selection, or other native page behavior.
+
+- **Evidence / verification:**
+  - E2E exercises the persistent and temporary Select tools, verifies the crosshair state, checks that empty canvas clears both the selection and active browser, confirms the selection toolbar has no X close control, applies iPhone SE to two selected browsers through the topbar menu, and closes the selected set with Delete.
+  - Accessibility coverage continues to exercise the persistent Select button in the native bottom bar.
+
+## ADR-076 — Clicking a partially visible pane does not move the camera
+
+- **Status:** Accepted; hidden-when-partially-visible rule partially superseded by ADR-078
+- **Date:** 2026-11-21
+- **Context:** ADR-032 made a primary click on a partially visible Canvas frame center it so its native view could be restored. That helped recover panes that had been panned far away, but it also meant a routine click on a pane near the workspace edge unexpectedly jumped the whole camera. The jump discarded the user's spatial context and was triggered by a plain selection click. Native views still cannot be clipped to the visible workspace, so partially visible panes must remain hidden until the camera makes them fully visible.
+
+- **Decision:**
+  1. A primary click on a partially visible or suspended pane selects it in place. The camera pan and zoom do not change.
+  2. The pane keeps its snapshot and hidden-browser message; its native view is restored only after an explicit camera action makes the pane fully visible.
+  3. Fit all, overview frame focus, device-palette focus, and regular Canvas panning remain the explicit navigation paths that can bring a pane fully into view.
+  4. The suspended-pane message points to panning or Fit all instead of telling the user that selecting will bring it into view.
+  5. Keep the selection and camera persistence behavior unchanged.
+
+- **Alternatives considered:**
+  - **Keep centering on click.** Rejected after user feedback; a selection click must not relocate the workspace.
+  - **Reveal-pan the minimum amount on click.** Rejected; it still moves the camera during selection and would make every edge click feel like a navigation action.
+  - **Keep partially visible native views live.** Rejected; native views cannot be clipped to the workspace, so they would cover chrome or Canvas overlays.
+  - **Disable selection for partially visible panes.** Rejected; header controls, keyboard actions, and explicit navigation should still work after selecting.
+
+- **Consequences:**
+  - Clicking a pane that overlaps the top toolbar or an open menu activates it and its header controls, but page content remains non-interactive until it is clear; window-edge-clipped panes stay live per ADR-078.
+  - Camera movement happens only through explicit navigation actions.
+  - A pane that overlaps the top toolbar or an open menu keeps showing its snapshot and message; Fit all remains the one-click recovery path.
+
+- **Evidence / verification:**
+  - E2e pans a pane partly off-screen, clicks its visible area, and verifies the pane becomes active while its position and the zoom level stay unchanged; the native view remains hidden. Fit all restores the camera afterward.
+  - Unit, typecheck, lint, build, and the full e2e suite pass.
+
+## ADR-077 — Plain click and Cmd/Ctrl+click share one toggle selection
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Normal Canvas clicks selected one active pane with a thin frame, while Cmd/Ctrl+drag marquee selections used a heavier rounded frame and required a drag or a replacing click. The two selection paths therefore looked and behaved differently. Users asked for one frame and for click-to-toggle without dragging.
+
+- **Decision:**
+  1. A plain click on pane chrome toggles that pane in the multi-selection. Cmd/Ctrl+click and a click in the persistent Select tool use the same toggle path.
+  2. Clicking an already selected pane removes it. If it was active, the active pane moves to the last remaining selected pane or clears.
+  3. Clicking an unselected pane adds it without clearing the other selected panes.
+  4. A pane header click toggles only when the pointer does not move. Dragging still moves the pane and leaves selection unchanged.
+  5. A marquee drag replaces the selection with every intersecting pane; a no-drag click toggles instead of replacing.
+  6. Active and selected pane slots use the same plain 1 px accent outline and 1 px offset as the original click selection, with no corner radius.
+  7. Clicking interactive pane chrome selects only that pane, replacing the selection without toggling, so controls do not leave stale multi-selection behind.
+  8. Clicking empty canvas clears the selection and active pane. Escape clears both even when the persistent Select tool is off, then exits the tool on the next press when applicable.
+
+- **Alternatives considered:**
+  - **Keep plain click as single active selection.** Rejected; users asked for normal select and Cmd/Select to behave the same.
+  - **Keep the heavier 2 px selected frame.** Rejected; the normal click frame should be the shared visual.
+  - **Require a drag or Cmd/Ctrl to change selection.** Rejected; click-to-toggle is the requested path.
+  - **Toggle from interactive controls.** Rejected; clicking an address, button, or menu should not remove the pane from a selection the user is editing.
+
+- **Consequences:**
+  - A single click can show the selection toolbar with a one-browser count.
+  - Repeated clicks toggle panes on and off, and Delete then targets that visible selected set.
+  - Clicking a pane control normalizes the selection to that pane.
+  - Active and selected states are visually identical; selection count and the toolbar actions communicate the difference.
+  - Native page content still receives its own clicks, so toggling applies to shell pane chrome and snapshots.
+
+- **Evidence / verification:**
+  - E2e verifies plain-click select/deselect, additive click selection, Cmd/Ctrl+click toggling without a drag, and identical computed outline metrics for click- and marquee-selected panes.
+  - The existing marquee, shared viewport, empty-canvas clearing, Delete, and accessibility coverage still passes.
+
+## ADR-078 — Window-edge-clipped panes stay live
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Canvas hid every pane whose content rectangle was not fully inside the workspace and showed a snapshot or paused message. Users saw panes clipped only by the left, right, or bottom window edge and expected them to work like fully visible panes. Native views cannot be clipped to a DOM rectangle, but the OS already clips views at the window edges, and the bottom Canvas bar and overview are native overlays above pane views. Disabling page load while clipped would add reload flashes and lose scroll state.
+
+- **Decision:**
+  1. Keep pages loaded. Do not destroy or defer a pane's page just because its view is clipped.
+  2. Keep a pane's native view live when its content does not overlap the top toolbar or an open Canvas menu, even if it extends past the left, right, or bottom window edge.
+  3. Preserve the pane's full native rectangle instead of shrinking it to the visible intersection, so the page viewport never reflows.
+  4. Let the OS clip left/right/bottom overflow. Keep the native bottom Canvas bar and overview above pane views.
+  5. Keep the snapshot and paused message for panes that would overlap the top toolbar or an open menu, where a live view would cover shell chrome.
+  6. Validate every live rectangle in main: finite values, minimum and maximum size, and intersection with the canvas. Oversized or fully off-canvas rectangles are rejected.
+  7. Keep the click behavior from ADR-076: selecting a paused pane does not move or zoom the camera.
+
+- **Alternatives considered:**
+  - **Do not load panes until fully visible.** Rejected; it would add reload flashes, lose scroll state, and make panning slower without reducing the native-view constraint.
+  - **Clamp native bounds to the visible slice.** Rejected; the page would reflow to the clipped size and break viewport emulation.
+  - **Use a native clipping container for all partial panes.** Deferred; a `WebContentsView` parent does not currently provide verified DOM-style clipping, and it would need a separate composition spike.
+  - **Show live views under the top toolbar.** Rejected; pane views sit above the trusted shell and would cover toolbar controls.
+
+- **Consequences:**
+  - Panes clipped only by the window edge remain interactive and keep their normal page viewport.
+  - Panes that would cover the top toolbar or an open menu still pause with a snapshot or message.
+  - Native bounds may be negative or extend past the window; validation permits that only for live rectangles that intersect the canvas and stay within the size limit.
+  - The bottom bar and overview continue to cover pane content in their corners by design.
+
+- **Evidence / verification:**
+  - Unit tests cover the live-safe rectangle rule, window-edge overflow preservation, fully off-canvas rejection, and oversized rejection.
+  - E2e pans a pane partly past the left window edge, verifies its native view stays visible, and checks that native width still matches the full DOM width. It then pans the pane under the top edge, verifies it suspends, and confirms clicking it does not move or zoom the camera.
+  - Typecheck, lint, unit tests, contrast, and the full e2e suite pass.
+
+## ADR-079 — Menus reveal only after covered native views are hidden
+
+- **Status:** Accepted
+- **Date:** 2026-11-21
+- **Context:** Custom menus are shell DOM, but native pane views sit above the shell. Opening a pane menu used to make the menu visible in the same tick that reported its bounds, then trigger an asynchronous native-bounds update. With live panes underneath, the menu could appear for a frame or two and then be covered by page content until the intersecting views were hidden. The problem was most visible after zooming or scrolling with many panes.
+
+- **Decision:**
+  1. Keep a menu `visibility: hidden` until it has been positioned and its parent confirms native views have been synchronized.
+  2. Set the menu readiness flag to false before mounting a new menu and reset it when the menu closes.
+  3. When the menu reports its final bounds, hide the native views intersecting that rectangle, await the bounds IPC, then mark the menu ready.
+  4. Move keyboard focus into the menu only after it becomes visible.
+  5. Keep the existing rule that only native views intersecting the menu are hidden; uncovered panes stay live.
+
+- **Alternatives considered:**
+  - **Hide all native views when any menu opens.** Rejected; it would flash snapshots across the whole Canvas for an action that affects a small area.
+  - **Reveal the menu after a fixed timeout.** Rejected; timing is machine-dependent and would either delay menus unnecessarily or still race the IPC.
+  - **Use native menus.** Rejected; it would break the custom menu structure, styling, and keyboard behavior.
+  - **Render the menu above native views.** Not possible with the current shell/native composition.
+
+- **Consequences:**
+  - Menus may appear a few milliseconds later, but they never flash page content over themselves on open.
+  - Menu focus is reliable because it starts after the reveal.
+  - If bounds measurement cannot run, the reveal still completes rather than leaving an invisible menu open.
+  - The menu handshake is local to the trusted shell; the native visibility validation path is unchanged.
+
+- **Evidence / verification:**
+  - A temporary 16-pane harness reproduced a visible native view over the first rendered menu frame before the handshake and zero overlaps after it.
+  - E2e opens a pane menu over 16 live panes after zooming and verifies no visible native view intersects the menu while a covered view is hidden.
+  - Typecheck, lint, unit tests, contrast, and the full e2e suite pass.
 
 ### ADR-NNN — Title
 

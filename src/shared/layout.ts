@@ -532,3 +532,31 @@ export function isRectFullyVisible(
     rect.y + rect.height <= viewport.y + viewport.height + tolerance
   )
 }
+
+/**
+ * Native pane views may extend past the left, right, or bottom window edge:
+ * the OS clips those sides, and native Canvas overlays sit above pane views.
+ * They may not extend above the workspace top, where the DOM toolbar would be
+ * covered, and at least part of the rect must intersect the workspace.
+ */
+export function isRectSafeForLiveView(
+  rect: Rect,
+  viewport: Rect,
+  tolerance = 0.5
+): boolean {
+  if (
+    !isValidRect(rect) ||
+    !isValidRect(viewport) ||
+    !isFiniteNumber(tolerance) ||
+    tolerance < 0
+  ) {
+    return false
+  }
+
+  return (
+    rect.y >= viewport.y - tolerance &&
+    rect.x < viewport.x + viewport.width &&
+    rect.x + rect.width > viewport.x &&
+    rect.y < viewport.y + viewport.height
+  )
+}

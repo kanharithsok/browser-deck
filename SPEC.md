@@ -191,6 +191,8 @@ Closing a pane destroys its active native view and `webContents`. When a pane cl
 Use standard platform conventions and document the final shortcuts. At minimum, plan for:
 
 - Open the Add browser picker (`Cmd/Ctrl+N`); do not create a pane until the user chooses a viewport or preset.
+- Allow a multiline bulk URL entry from the Add menu or empty state, with a shared default viewport inherited from the selected browser.
+- Hold `Cmd` (macOS) or `Ctrl` (Windows/Linux) while shell chrome has focus to activate the Select tool temporarily; holding Space activates Hand.
 - Duplicate selected pane (`Cmd/Ctrl+D`); the duplicate is placed beside the source, or directly below it when the adjacent slot is occupied.
 - Close selected pane, including `Delete`/`Backspace` from shell chrome.
 - Find a browser by name, host, profile, or viewport (`Cmd/Ctrl+K`).
@@ -226,7 +228,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - The Add browser item switches the menu to the browser picker without opening a separate modal.
 - Menus must support keyboard arrows, Enter/Space activation, Escape dismissal, click-outside dismissal, checked/radio states, and visible focus.
 - Keep the menu compact and visually quiet. Icons are optional but must not reduce legibility.
-- Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live.
+- Because native pane views sit above the shell, hide only the native views that intersect an open menu and show their snapshots; keep uncovered panes live. Do not reveal a menu until the native views it intersects have been hidden, so page content cannot flash over the opening menu.
 - Keep the bottom canvas bar and overview visible when an open menu does not intersect them. Hide only the overlay a menu actually covers. The zoom, Arrange, and appearance menus always keep both visible, and a bar or overview action closes the menu.
 
 ### 7.4 Canvas mode
@@ -235,13 +237,13 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Pan by dragging empty canvas; provide a Hand tool for panning from anywhere. Holding Space temporarily enables the Hand tool. Support trackpad/wheel panning while the Hand tool is not active.
 - While the Hand tool is active, use the mouse wheel to zoom between 25% and 200% around the cursor; Ctrl/Cmd+wheel also zooms outside Hand mode. Show a bottom-center canvas bar with Hand, Select, zoom-out and zoom-in buttons, a percentage menu containing 25%, 50%, 75%, 100%, 125%, 150%, 200%, Fit all, and Reset (100%), find-device, reload-all, Arrange, and appearance. Keep this bar and the overview visible while its zoom, Arrange, or appearance menu is open. Arrange offers Showcase (compact, centered rows), Horizontal row, 2 × 2 grid, and Vertical stack, preserves pane order, and fits the camera to the result. Canvas zoom scales the whole pane as a unit (frame, header chrome, and page content) while the declared viewport stays fixed; do not reflow or change the page's CSS viewport dimensions.
 - Fit all panes when a workspace first appears and after switching workspaces. Do not fit again on ordinary pane-state updates.
-- Clicking empty canvas with the primary button and without dragging clears the active pane. Interacting with a pane, its header, or the minimap restores selection.
+- Clicking empty canvas with the primary button and without dragging clears the active browser and any marquee selection. Interacting with a pane, its header, or the minimap restores selection.
 - Keep the minimal top toolbar mounted at a stable height in Canvas. The workspace keeps a quiet empty state when no pane is selected, so selecting or clearing a pane never moves or resizes the Canvas.
 - Drag a pane's header/label area to move only that pane in world space. Website content remains interactive; dragging content must not move the pane or the canvas. Do not allow a drag to place the pane header above the top workspace inset.
 - While dragging a pane, snap its left, center, or right edge to neighboring pane edges/centers, and similarly on the vertical axis. Show visible alignment guides for active snaps. The snap threshold should feel constant in screen pixels at every zoom.
-- Keep pages live as native views when their content rectangle is fully inside the workspace and outside an open menu.
+- Keep pages live as native views when their content does not overlap the top toolbar or an open menu. Live views may extend past the left, right, or bottom window edge and be clipped there without reflowing the page; the native bottom Canvas bar and overview remain above them.
 - While panning, replace native views with captured snapshots so content does not slide under chrome or clip at workspace edges.
-- Partially visible panes may remain as snapshots until the user selects them; selecting one should bring it fully into view.
+- Panes that would overlap the top toolbar or an open menu remain snapshots until an explicit camera action brings them clear. Clicking such a pane selects it without moving or zooming the camera; Fit all, overview focus, device-palette focus, and regular panning remain the explicit paths.
 - Provide a persistent Canvas overview/minimap in the bottom-right showing every pane and the current viewport. It must be visible whenever Canvas mode is active, without a reveal action. Selecting a pane centers and focuses it; selecting empty map space recenters the viewport there.
 - Keep the minimap compact and adaptive: shrink it on narrow windows, and let it collapse to a header and expand again. It must remain reachable while collapsed.
 - Implement the minimap as a trusted native overlay rather than relying on DOM stacking above native views. Pane content outside the minimap rectangle must remain live and interactive.
@@ -249,7 +251,7 @@ Grid and Freeform are no longer selectable. Existing workspace files that refere
 - Keep the top toolbar limited to Add and draggable space. Each browser header owns its address bar, viewport preset trigger with the short preset name, viewport class and resolution, back, forward, reload, open-in-browser, and close. Custom viewport editing happens in that pane's address row.
 - Give pane headers a visible drag grip. Keep the one-row header compact and hide non-essential metadata at narrow frame widths.
 - Provide the + browser menu and right-click canvas context menu described in §7.3.
-- Provide a Select tool in the bottom canvas bar. While active, dragging a marquee across the Canvas selects every pane whose frame intersects it. Give selected panes a visible ring and show the selected count with a close action. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
+- Provide a Select tool in the bottom canvas bar and a temporary hold-`Cmd`/`Ctrl` mode while shell chrome has focus. Selected panes use the same thin accent frame as the active pane. Dragging a marquee across the Canvas selects every pane whose frame intersects it. A click without dragging, with or without `Cmd`/`Ctrl`, toggles that pane in the selection, so panes can be selected or deselected without a drag. Show the selected count in the top toolbar with common actions: a viewport menu applying one preset to every selected browser and Reload selected. Clicking empty canvas clears the active browser and selection. `Delete`/`Backspace` closes the selected set; `Escape` clears it, then exits the persistent tool on the next press. Selecting must not run while Hand mode is active, and Hand mode must turn Select off.
 - Persist canvas positions and the last Canvas camera (pan and zoom) plus the active-browser selection per workspace. Restore that view when the workspace is reopened or switched; only fit when the workspace has no saved camera.
 - Viewport bezels and pane frame resizing are not required.
 

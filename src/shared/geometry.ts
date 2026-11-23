@@ -8,6 +8,7 @@ export interface CanvasSize {
 export const MIN_PANE_VIEW_WIDTH = 80
 export const MIN_PANE_VIEW_HEIGHT = 60
 const MAX_PANE_COUNT = 200
+const MAX_LIVE_PANE_VIEW_DIMENSION = 16384
 
 export type PaneBoundsResult =
   | { ok: true; updates: PaneBoundsUpdate[] }
@@ -46,10 +47,56 @@ export function sanitizeRect(rect: PaneViewRect, canvas: CanvasSize): PaneViewRe
 }
 
 /**
+ * Validates a live pane rectangle that may extend past the window edges. The
+ * full rectangle is preserved so the page viewport does not reflow; the OS and
+ * native Canvas overlays handle clipping on the allowed sides. The rectangle
+ * must still intersect the canvas and stay within a sane maximum size.
+ */
+export function sanitizeLiveRect(
+  rect: PaneViewRect,
+  canvas: CanvasSize
+): PaneViewRect | null {
+  if (
+    !finiteNumber(rect.x) ||
+    !finiteNumber(rect.y) ||
+    !finiteNumber(rect.width) ||
+    !finiteNumber(rect.height) ||
+    rect.width <= 0 ||
+    rect.height <= 0
+  ) {
+    return null
+  }
+
+  const rounded = {
+    x: Math.round(rect.x),
+    y: Math.round(rect.y),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height)
+  }
+  if (
+    rounded.width > MAX_LIVE_PANE_VIEW_DIMENSION ||
+    rounded.height > MAX_LIVE_PANE_VIEW_DIMENSION
+  ) {
+    return null
+  }
+  if (
+    rounded.x >= canvas.width ||
+    rounded.y >= canvas.height ||
+    rounded.x + rounded.width <= 0 ||
+    rounded.y + rounded.height <= 0
+  ) {
+    return null
+  }
+
+  return rounded
+}
+
+/**
  * Validates pane rectangles reported by the trusted shell before they are
  * applied to native views. Unknown pane IDs, duplicates, non-finite values, and
- * rectangles outside the reported canvas are rejected. Valid rectangles are
- * clamped to the canvas.
+ * rectangles that miss the reported canvas are rejected. Live rectangles may
+ * extend past the canvas edges so the OS can clip them without reflowing the
+ * page; hidden rectangles keep their full off-canvas geometry.
  */
 export function parsePaneBounds(
   input: unknown,
@@ -89,7 +136,7 @@ export function parsePaneBounds(
     }
 
     if (item.visible) {
-      const rect = sanitizeRect(rawRect, canvas)
+      const rect = sanitizeLiveRect(rawRect, canvas)
       if (!rect) {
         return { ok: false, error: 'Invalid browser bounds rectangle.' }
       }

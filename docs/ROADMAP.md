@@ -5,7 +5,7 @@ source of truth; `docs/DECISIONS.md` holds accepted ADRs; `docs/PHASE_REPORTS.md
 is the detailed evidence log. This file records only what is next, ready,
 blocked, or worth keeping as an idea.
 
-- Last reviewed: 2026-11-22
+- Last reviewed: 2026-11-23
 - Selection rule: `/next` takes the single `NEXT` task. If none is marked, it
   takes the first `READY` task by priority. `BLOCKED` and `IDEA` tasks are not
   eligible until `/plan` promotes them.
