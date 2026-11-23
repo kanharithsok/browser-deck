@@ -205,3 +205,13 @@ task block; do not renumber it.
 - Done when: the dialog and README state both caveats, no secret-bearing example is added, and the docs remain aligned.
 - Verify: `make check`; manual dialog copy check; README link check.
 - Evidence: 2026-11-23 — Workspaces dialog and README state both caveats; accessibility e2e asserts the visible note and dialog description; light/dark dialog screenshots inspected; all 11 local README links resolve. `make check` passed 187 unit tests, `npm run test:e2e` passed 5 tests in 23.0 s. See "Workspace transfer copy — session and URL caveats" in `docs/PHASE_REPORTS.md`.
+
+### BD-019 — Add GitHub Star and Sponsor toolbar actions
+- Status: DONE
+- Priority: P3
+- Depends: none
+- Source: owner request; `README.md` toolbar description; `SPEC.md` §6.
+- Scope: Add restrained Star and Sponsor icon actions left of Add, backed by a fixed trusted-link allowlist and main-process external open. Do not show star counts, OAuth state, or background requests.
+- Done when: both actions open only their fixed GitHub URLs; arbitrary targets are rejected; accessible names and tooltips exist; the toolbar fits at 720 px; no fake starred state is shown.
+- Verify: `make check`; `npm run test:e2e`; `npm run build`; light/dark and minimum-window toolbar screenshots.
+- Evidence: 2026-11-23 — fixed-link unit tests, stubbed external-open e2e, accessibility names/tab order, and 720 px toolbar containment passed. `make check` passed 189 unit tests; `npm run test:e2e` passed 5 tests in 23.4 s; build main 160.08 kB, preload 9.78 kB, renderer 388.49 kB, CSS 37.74 kB.

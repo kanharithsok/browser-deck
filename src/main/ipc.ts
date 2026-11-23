@@ -1,5 +1,6 @@
-import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import type { CanvasSize } from '../shared/geometry'
+import { PROJECT_LINKS, isProjectLink } from '../shared/links'
 import {
   IPC_CHANNELS,
   type CanvasOverlayVisibility,
@@ -408,6 +409,24 @@ export function registerIpcHandlers(context: IpcContext): void {
         return await manager.openExternal(paneId)
       } catch {
         return { ok: false, error: 'Could not open the browser.' }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.openProjectLink,
+    async (event, payload: unknown): Promise<ScriptResult> => {
+      if (!isTrustedSender(event, context)) {
+        return unauthorized
+      }
+      if (!isProjectLink(payload)) {
+        return { ok: false, error: 'Invalid project link.' }
+      }
+      try {
+        await shell.openExternal(PROJECT_LINKS[payload])
+        return { ok: true }
+      } catch {
+        return { ok: false, error: 'Could not open the link.' }
       }
     }
   )

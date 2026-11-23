@@ -1483,3 +1483,23 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Dialog visual check | Light, dark, and 720 × 520 minimum-window screenshots inspected; the note wraps cleanly and stays above the import/export actions. |
 
 **Known behavior / limitations:** The note is informational and does not block export. Native Save/Open dialogs remain outside the automated e2e path. The export format still includes pane URLs and therefore their query strings; the copy warns users rather than stripping URLs. No example URL or secret is included in the dialog or docs.
+
+## Post-MVP — GitHub Star and Sponsor toolbar actions
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-019 complete.
+
+**Change:** Added two quiet icon actions to the top-right toolbar: **Star BrowserDeck on GitHub** and **Sponsor BrowserDeck**, in that order before Add. Both use accessible names and tooltips. The renderer can request only `repository` or `sponsor`; `src/shared/links.ts` maps those targets to fixed HTTPS URLs, and main validates the trusted shell sender and target before calling `shell.openExternal`. No arbitrary URL crosses the bridge, no star count or OAuth state is shown, and no network request occurs before a click. Add remains the far-right primary action. This supersedes the earlier Add-only toolbar copy in the README; the toolbar now groups Star, Sponsor, and Add at the right.
+
+**Files changed:** `src/shared/links.ts` (new), `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/ipc.ts`, `src/renderer/src/App.vue`, `tests/unit/links.test.ts` (new), `tests/e2e/browser-panes.spec.ts`, `tests/e2e/accessibility.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (ADR-081), `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npx vitest run tests/unit/links.test.ts` | Passed: 2 tests covering the exact fixed URLs and rejection of arbitrary/unknown targets. |
+| `make check` | Passed: typecheck, lint, 189 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check` (one expected no-`NEXT` warning). |
+| `npm run test:e2e` | Passed: 5 Playwright tests in 23.4 s. Stubs `shell.openExternal`, verifies both fixed URLs, rejects an arbitrary URL in main, and checks accessible names and Star → Sponsor → Add tab order. |
+| `npm run build` | Passed: main 160.08 kB, preload 9.78 kB, renderer JS 388.49 kB, shell CSS 37.74 kB. |
+| Toolbar visual check | Light and dark screenshots at 1280 px and 720 × 520 inspected. The star, heart, and plus icons stay grouped at the far right with no overflow; the 720 px toolbar reports `scrollWidth === clientWidth`. |
+
+**Known behavior / limitations:** Changing the repository or sponsor URL requires an app update. Clicking either action opens the system browser; BrowserDeck does not authenticate with GitHub or know whether the user starred the project. There is intentionally no star count, filled-star state, or background request.

@@ -46,6 +46,8 @@ const api: BrowserDeckApi = {
     ipcRenderer.invoke(IPC_CHANNELS.openPaneExternal, paneId),
   openPaneDevTools: (paneId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.openPaneDevTools, paneId),
+  openProjectLink: (target) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openProjectLink, target),
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
     ipcRenderer.invoke(IPC_CHANNELS.saveWorkspaceLayout, layout),
   listWorkspaces: () => ipcRenderer.invoke(IPC_CHANNELS.listWorkspaces),

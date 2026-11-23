@@ -1,3 +1,4 @@
+import type { ProjectLink } from './links'
 import type {
   CanvasMinimapAction,
   CanvasMinimapState
@@ -30,6 +31,7 @@ export const IPC_CHANNELS = {
   clearPaneSiteData: 'browserdeck:clear-pane-site-data',
   openPaneExternal: 'browserdeck:open-pane-external',
   openPaneDevTools: 'browserdeck:open-pane-devtools',
+  openProjectLink: 'browserdeck:open-project-link',
   saveWorkspaceLayout: 'browserdeck:save-workspace-layout',
   listWorkspaces: 'browserdeck:list-workspaces',
   exportWorkspace: 'browserdeck:export-workspace',
@@ -171,6 +173,7 @@ export interface BrowserDeckApi {
   clearPaneSiteData(paneId: string): Promise<ScriptResult>
   openPaneExternal(paneId: string): Promise<ScriptResult>
   openPaneDevTools(paneId: string): Promise<ScriptResult>
+  openProjectLink(target: ProjectLink): Promise<ScriptResult>
   saveWorkspaceLayout(layout: WorkspaceLayout): Promise<ScriptResult>
   listWorkspaces(): Promise<WorkspaceListResult>
   exportWorkspace(workspaceId: string): Promise<WorkspaceTransferResult>

@@ -22,6 +22,7 @@ import {
   SHELL_MINIMAP_URL,
   SHELL_ZOOM_URL
 } from '../../src/shared/shell'
+import { PROJECT_LINKS } from '../../src/shared/links'
 import { CANVAS_ZOOM_BAR_WIDTH } from '../../src/shared/zoom'
 import type { PaneViewport } from '../../src/shared/viewports'
 import type { WorkspaceData } from '../../src/shared/workspace'
@@ -2171,6 +2172,33 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       )
       .toBe(duplicateSource.url)
 
+    // The toolbar community actions open only the fixed project destinations.
+    await shellPage.getByRole('button', { name: 'Star BrowserDeck on GitHub' }).click()
+    await expect
+      .poll(() =>
+        (app as ElectronApplication).evaluate(
+          () =>
+            (globalThis as typeof globalThis & { __browserdeckOpenedExternal?: string | null })
+              .__browserdeckOpenedExternal ?? null
+        )
+      )
+      .toBe(PROJECT_LINKS.repository)
+    await shellPage.getByRole('button', { name: 'Sponsor BrowserDeck' }).click()
+    await expect
+      .poll(() =>
+        (app as ElectronApplication).evaluate(
+          () =>
+            (globalThis as typeof globalThis & { __browserdeckOpenedExternal?: string | null })
+              .__browserdeckOpenedExternal ?? null
+        )
+      )
+      .toBe(PROJECT_LINKS.sponsor)
+    const rejectedProjectLink = await shellEvaluate<{ ok: boolean }>(
+      app,
+      "window.browserdeck.openProjectLink('https://example.com')"
+    )
+    expect(rejectedProjectLink.ok).toBe(false)
+
     // Delete closes the selected device from shell focus, but never while the
     // user is editing pane chrome such as the address field.
     await focusPane(shellPage, duplicatedPane?.id as string)
@@ -3991,6 +4019,30 @@ test('Layout: pane header fits at the minimum window and 320 px', async () => {
       window.setSize(720, 520)
     })
     await fitAllDevices(runningApp)
+
+    const toolbar = shellPage.locator('.toolbar')
+    const toolbarMetrics = await toolbar.evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth
+    }))
+    expect(toolbarMetrics.scrollWidth).toBeLessThanOrEqual(toolbarMetrics.clientWidth + 1)
+    const toolbarBox = await toolbar.boundingBox()
+    if (!toolbarBox) {
+      throw new Error('Toolbar bounds are unavailable')
+    }
+    for (const name of [
+      'Star BrowserDeck on GitHub',
+      'Sponsor BrowserDeck',
+      'Add browser'
+    ]) {
+      const button = shellPage.getByRole('button', { name, exact: true })
+      await expect(button).toBeVisible()
+      const box = await button.boundingBox()
+      expect(box?.x ?? -Infinity).toBeGreaterThanOrEqual(toolbarBox.x - 0.5)
+      expect((box?.x ?? -Infinity) + (box?.width ?? 0)).toBeLessThanOrEqual(
+        toolbarBox.x + toolbarBox.width + 0.5
+      )
+    }
 
     const card = shellPage.locator(`.pane-card[data-pane-id="${pane.id}"]`)
     const header = card.locator('.pane-header')

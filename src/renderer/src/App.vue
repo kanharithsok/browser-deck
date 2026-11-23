@@ -4,6 +4,7 @@ import AppMenu from './components/AppMenu.vue'
 import PaneCard from './components/PaneCard.vue'
 import type { AppMenuIcon, AppMenuModel } from './menu'
 import { MAX_BULK_BROWSERS, parseBulkUrlInput } from '../../shared/bulk'
+import type { ProjectLink } from '../../shared/links'
 import {
   CANVAS_GAP,
   CANVAS_NEAR_GAP,
@@ -3401,6 +3402,18 @@ async function openPaneExternal(paneId: string): Promise<void> {
   }
 }
 
+async function openProjectLink(target: ProjectLink): Promise<void> {
+  actionError.value = null
+  try {
+    const result = await window.browserdeck.openProjectLink(target)
+    if (!result.ok) {
+      actionError.value = result.error
+    }
+  } catch {
+    actionError.value = 'Could not open the link.'
+  }
+}
+
 async function duplicatePane(paneId: string): Promise<void> {
   actionError.value = null
   const sourceFrame =
@@ -4693,20 +4706,44 @@ onBeforeUnmount(() => {
           </svg>
         </button>
       </div>
-      <button
-        class="icon-button toolbar-icon add-pane-button"
-        type="button"
-        title="Add browser"
-        aria-label="Add browser"
-        aria-haspopup="menu"
-        :aria-expanded="appMenuMode === 'add'"
-        :disabled="addingPane"
-        @click="openAddMenu"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M8 3v10M3 8h10" />
-        </svg>
-      </button>
+      <div class="toolbar-actions">
+        <button
+          class="icon-button toolbar-icon"
+          type="button"
+          title="Star BrowserDeck on GitHub"
+          aria-label="Star BrowserDeck on GitHub"
+          @click="openProjectLink('repository')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="m8 2.5 1.7 3.4 3.8.6-2.7 2.6.6 3.8L8 11.8l-3.4 1.8.6-3.8L2.5 6.5l3.8-.6Z" />
+          </svg>
+        </button>
+        <button
+          class="icon-button toolbar-icon"
+          type="button"
+          title="Sponsor BrowserDeck"
+          aria-label="Sponsor BrowserDeck"
+          @click="openProjectLink('sponsor')"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 13.2S2.8 10.2 2.8 6.4a2.8 2.8 0 0 1 5.2-1.4 2.8 2.8 0 0 1 5.2 1.4c0 3.8-5.2 6.8-5.2 6.8Z" />
+          </svg>
+        </button>
+        <button
+          class="icon-button toolbar-icon add-pane-button"
+          type="button"
+          title="Add browser"
+          aria-label="Add browser"
+          aria-haspopup="menu"
+          :aria-expanded="appMenuMode === 'add'"
+          :disabled="addingPane"
+          @click="openAddMenu"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+        </button>
+      </div>
     </header>
 
     <div v-if="errorMessage" class="error-banner" role="status">
@@ -5449,8 +5486,15 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
-.add-pane-button {
+.toolbar-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-left: auto;
+}
+
+.add-pane-button {
   color: var(--text-muted);
 }
 

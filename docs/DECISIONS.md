@@ -2420,6 +2420,37 @@ Record material technical decisions here. Keep entries short but include context
   - `npm view` confirms `electron-builder` 26.18.0 and 26.18.1 pin the vulnerable ranges, while 27.0.0-alpha.15 still uses `minimatch ^10.2.5`.
   - `npm run package:dir` remains the packaging regression check for the next dependency update.
 
+## ADR-081 — Project links use a fixed main-process allowlist
+
+- **Status:** Accepted
+- **Date:** 2026-11-23
+- **Context:** The top-right toolbar now exposes GitHub Star and Sponsor actions. These need to open external pages from the trusted shell, but a generic “open this URL” bridge would give remote-content-adjacent shell code an arbitrary `shell.openExternal` primitive. The app also cannot know whether the user has starred the repository without OAuth and a network request, so a filled star or live count would be misleading.
+
+- **Decision:**
+  1. Keep the repository and sponsor destinations in the pure shared module `src/shared/links.ts` as a fixed `PROJECT_LINKS` map.
+  2. Expose a typed `openProjectLink('repository' | 'sponsor')` IPC operation. Main re-validates the trusted shell sender and the target, then calls `shell.openExternal` with the mapped URL.
+  3. Never accept a URL from the renderer for this action, and make no network request until the user clicks.
+  4. Keep Add as the primary far-right action; Star and Sponsor are quiet icon buttons with accessible names and tooltips.
+  5. Do not render a live star count or persist a “starred” state.
+
+- **Alternatives considered:**
+  - **Expose a generic external-URL IPC.** Rejected; it would give the shell an arbitrary external-open primitive.
+  - **Open the link from the renderer with `window.open`.** Rejected; the trusted shell already routes external opens through main, and renderer-only behavior would bypass the boundary.
+  - **Put the actions in the native app menu only.** Rejected; the owner requested a visible top-right action, and two small icons fit the compact toolbar.
+  - **Show a live GitHub star count.** Rejected; it adds a network dependency, a failure state, and stale data without helping the core workflow.
+
+- **Consequences:**
+  - Changing the repository or sponsor URL requires an app update.
+  - Clicking either action opens the user's system browser; BrowserDeck does not embed GitHub or authenticate the user.
+  - The buttons remain inert only until clicked; there is no background traffic.
+  - The toolbar gains two 28 px controls but remains within the 720 px minimum window width.
+
+- **Evidence / verification:**
+  - Unit tests verify the exact repository/sponsor map and reject arbitrary URLs and unknown targets.
+  - E2e stubs `shell.openExternal`, verifies both fixed URLs, and confirms `https://example.com` is rejected by main.
+  - Accessibility e2e verifies both names/tooltips and the Star → Sponsor → Add tab order; axe coverage remains clean.
+  - A 720 × 520 window check confirms the toolbar does not overflow.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded
