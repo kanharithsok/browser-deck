@@ -25,7 +25,10 @@ Responsive, tablet, and phone viewports sharing one workspace in the light theme
 - Electron `BaseWindow` with a trusted Vue shell and native `WebContentsView` browser panes.
 - Two browser panes by default; add, duplicate, and close panes dynamically. The quiet toolbar **+** control opens a custom browser menu with responsive, iPhone, Samsung, Pixel, iPad, Galaxy Tab, desktop, and MacBook presets. Each browser header's viewport trigger opens the same custom menu and complete preset catalog for that pane. Duplicates copy URL/viewport into an independent session and land beside or below their source.
 - One internally generated persistent browser session per pane, owned by that pane and released when it closes.
+- If a website closes its own browser view, the pane is removed safely and a transient shell notice names the browser; a normal close shows no notice.
 - Independent navigation, address bar, history, reload, loading, and load-error states. Each browser header has two rows: title, viewport, and actions on top, with the viewport class, centered address bar, and resolution beneath it. Rotate viewport and capture screenshot live in the actions menu.
+- Remote non-local HTTP panes show a persistent **Not secure** warning with an accessible label and tooltip; HTTPS and local/private HTTP keep the normal pane-header state.
+- Pane headers stay usable at the 720 px minimum window and 320 px pane width: the custom viewport editor compacts to narrow fields and icon actions, and redundant load-error text drops out so the title keeps room.
 - Per-browser in-shell actions menu for back/forward/reload, copy URL, open in the system browser, rotate viewport, screenshot, duplicate, rename, clear site data, DevTools, and close, using the same menu component as the + browser menu.
 - **Open multiple browsers…** from the Add browser menu or the empty state: paste one URL per line, choose a default viewport, and create up to 50 independent browsers at once. The viewport defaults to the selected browser and is remembered for the next batch.
 - Marquee selection now exposes common actions in the top toolbar: change the viewport for every selected browser and reload selected browsers. Plain click and `Cmd`/`Ctrl`+click toggle a pane in the same selection without dragging, and selected panes use the same frame as the active browser. Clicking empty canvas clears the selection in both the persistent and temporary tools; `Delete` closes the selected set. Hold `Cmd` (macOS) or `Ctrl` (Windows/Linux) while shell chrome has focus to activate the Select tool temporarily, like holding Space for Hand.
@@ -47,7 +50,7 @@ Responsive, tablet, and phone viewports sharing one workspace in the light theme
 - Persisted System/Light/Dark theme from the bottom canvas bar appearance menu, custom canvas menu, and native View menu, with matching window chrome and shell tokens. Loaded website panes receive the effective appearance as a live `prefers-color-scheme` change without reloading. The **Workspace** manager lives in the native menu bar; Add remains in the top toolbar, while Find browser and Reload all live in the bottom canvas bar. Address validation errors are shown inline in the pane header and announced through a live status region. A bottom-bar magnifier button and `Cmd/Ctrl+K` open a searchable browser palette that filters by title, hostname, and viewport, with match highlighting and a compact viewport badge.
 - Atomic workspace writes with corrupt-file preservation, plus profile metadata reconciliation for referenced profile IDs.
 - **Clear Site Data…** in the browser actions menu, with confirmation; clears that pane's cookies, storage, cache, and auth state, then reloads it.
-- Workspace manager for create, rename, duplicate, switch, delete, and secret-free import/export. Imported/duplicated workspaces receive independent sessions.
+- Workspace manager for create, rename, duplicate, switch, delete, and import/export. Transfers include workspace configuration and pane URLs only—never profile IDs or session data—so imported browsers start signed out, and exported URLs can include query strings.
 - Repeated workspace-switch stress coverage that verifies webContents and native-view cleanup against a baseline, with a configurable loaded-page soak (50 cycles observed).
 - Automated accessibility coverage for the shell toolbar, pane cards, and workspace dialog: accessible roles and names, focus order and visible focus, dialog focus traps and focus return, Chromium CDP accessibility-tree checks, and axe-core WCAG/best-practice audits. Axe is injected through CDP because the production CSP deliberately blocks inline scripts.
 - Deterministic local fixture server, unit tests, and two Playwright Electron tests covering Canvas snapping and arrangements, anchored duplicate placement, the custom add/context menus, viewport presets, per-browser viewport controls, open-in-browser handoff, per-pane Clear Site Data, native-view hiding under menus, viewport emulation, a full workspace/session restart, workspace management, and the accessibility audit.
@@ -208,19 +211,22 @@ opencode
 
 Useful commands:
 
-- `/start` — complete or verify Phase 0 only.
-- `/next` — implement the next small, complete vertical slice.
+- `/start` — resume a session: check state, roadmap, Git status, and the next task.
+- `/next` — implement exactly one roadmap task end-to-end.
+- `/plan` — capture or refine roadmap tasks without changing code.
+- `/status` — report project and roadmap status without changing files.
 - `/verify` — run the available checks and report exact results.
 - `/review` — request a read-only code/security/UI review.
 
-OpenCode discovers `AGENTS.md`, `.opencode/agents/`, `.opencode/skills/`, and `.opencode/commands/` automatically. Do not copy these instructions into every prompt.
+The live queue is `docs/ROADMAP.md`; `.factory/STATE.md` keeps the current focus and last verification. OpenCode discovers `AGENTS.md`, `.opencode/skills/`, and `.opencode/commands/` automatically. Do not copy these instructions into every prompt.
 
 ## Repository map
 
 ```text
 .github/              GitHub Actions CI
-.opencode/            Project agents, skills, and slash commands
-docs/                 Architecture, decisions, manual checks, phase reports
+.opencode/            Project skills and slash commands
+.factory/             Durable session state for agent sessions
+docs/                 Architecture, decisions, manual checks, phase reports, roadmap
 Makefile              Developer commands with toolchain and dependency checks
 SECURITY.md           Threat boundaries and local-distribution checklist
 scripts/              Development and packaged-launch scripts
@@ -238,7 +244,7 @@ opencode.jsonc        Project-level OpenCode configuration
 
 - New browsers receive independent browser sessions. Sessions are never shared between panes.
 - Workspace switching destroys and recreates native pane views, so pages reload rather than staying warm in the background.
-- The selected browser is indicated by an accent ring around the whole frame and `aria-current`; menu triggers expose expanded state and dialogs opened from the native menubar return focus to the active-pane address. Automated axe/role/AX checks cover the shell, custom menus, and dialogs, but VoiceOver order/announcements, focus-ring usability, and minimum-window pane-header layout still need a manual pass.
+- The selected browser is indicated by an accent ring around the whole frame and `aria-current`; menu triggers expose expanded state and dialogs opened from the native menubar return focus to the active-pane address. Automated axe/role/AX checks cover the shell, custom menus, and dialogs, but VoiceOver order/announcements and focus-ring usability still need a manual pass.
 - Workspace import/export transfers configuration only; imported panes receive fresh sessions and require sign-in again. Native file dialogs are not automated by e2e.
 - Leak coverage includes a configurable switch soak (up to 50 cycles observed: 2 webContents, working set 589 MB → 684 MB on final `main`; earlier runs measured 577 MB → 577 MB, 581 MB → 677 MB, and 588 MB → 682 MB). Working set is sampled before/after rather than peak/per-process; multi-hour CPU/memory and heavy third-party page profiling are not yet run.
 - Canvas has 25–200% zoom but no device-bezel or frame-resize controls yet. Canvas zoom scales the whole pane as a unit, including its header chrome, while the declared viewport size stays fixed (a 100 × 100 frame remains a 100 × 100 viewport at 50% zoom, rendered at half size). Dragging a pane header repositions that frame with dashed proximity previews, a 16px-gap snap stop, and a flush edge/center snap, and stops once the header reaches 24 px below the top edge; website content stays interactive. Panning and Hand mode replace native pages with recent snapshots. At zoom levels where a frame no longer fits fully inside the workspace, panes clipped by the left, right, or bottom window edge stay live and keep their full page viewport; only panes that would overlap the top toolbar or an open menu switch to a snapshot and paused message. Clicking a paused pane selects it in place without moving or zooming the camera; use Fit all, the overview, Cmd/Ctrl+K, or canvas panning to bring it clear. Clicking a pane toggles it in the selection without moving the camera, and clicking empty canvas clears the active browser and selection until another pane or browser chrome is used. The top toolbar stays opaque above the Canvas backdrop with Add and quiet space; while browsers are selected it also carries the count, shared viewport, and reload action. Each pane header carries its own address bar, so selection changes do not move or resize the Canvas. The bottom-center canvas bar is a trusted native overlay with Hand, Select, zoom-out/zoom-in steps, a percentage menu for 25–200% plus Fit all/Reset, find-device, reload-all, Arrange, and appearance; it hides for dialogs and menus that cover it, and stays visible while its own zoom, Arrange, or appearance menu is open. Fit all uses a safe viewport that leaves clearance above this bar, so fitted panes do not sit behind its controls. The overview is a small trusted native view pinned to the bottom-right, always visible in Canvas without a reveal action; it adapts between 168 and 208 px wide, collapses to its header, and can cover a small part of the pane beneath it, but covered panes stay live outside that corner. The custom + and right-click menus hide only the native panes they overlap, showing those snapshots until the menu closes; menus stay hidden until their covered native views are hidden, so page content cannot flash over an opening menu. Use Fit all browsers in the overview header or the zoom menu for one-click recovery. Space activates the Hand tool only while shell chrome has focus; a focused website keeps normal keyboard input.
@@ -251,13 +257,11 @@ opencode.jsonc        Project-level OpenCode configuration
 - Clear Site Data is per pane and confirmed. It clears that pane's session and reloads it; other panes are untouched.
 - Overlapping canvas panes can cover each other's headers; use the overview or Fit all to locate and recover them.
 - Browser panes are separate persistent browser sessions inside the app's shared Chromium runtime. Cookies, storage, cache, and authentication are isolated per pane, but panes are not separate browser installations or OS sandboxes.
-- Remote HTTP addresses are not visually distinguished from HTTPS yet; this remains a known security-UI gap.
-- If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
 - Some identity providers and sites may block embedded browser user agents or behave differently from Chrome/Safari. Fixed presets send a category UA for layout fidelity; responsive and custom panes use Electron's default UA.
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, automatic updates, extensions, DRM, and cloud sync remain outside 1.0.
 - Workspace exports include pane URLs and therefore any query strings in them. Do not sign in through or store secret-bearing URLs when sharing an export.
-- `npm audit --omit=dev` reports 0 runtime vulnerabilities. `npm audit` reports 6 moderate development-toolchain advisories in `minimatch` via `electron-builder`/`@electron/universal`; the offered fix is a breaking downgrade, so it is tracked rather than applied.
+- `npm audit --omit=dev` reports 0 runtime vulnerabilities. `npm audit` reports 6 moderate development-toolchain advisories in `minimatch` (GHSA-g3hv-75wg-m249 / CVE-2026-118764) via `electron-builder`/`@electron/universal`; the patched line is 11.0.1+, but no stable packaging release consumes it yet. The build-time risk is accepted and reviewed before the next release packaging change; see ADR-080 and `SECURITY.md`.
 
 See section 21 of [`SPEC.md`](./SPEC.md) and [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md) for details.
 

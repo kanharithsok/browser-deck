@@ -1342,3 +1342,144 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | README links | Both relative image paths resolve from the repository root. |
 
 **Known behavior / limitations:** The screenshots use locally served demo sites, so the address bars show `localhost:5173`. The sites are illustrative demo content, not bundled with BrowserDeck.
+
+## Agent workflow — Lightweight roadmap and session state
+
+**Date:** 2026-11-22
+
+**Status:** Implemented.
+
+**Change:** Added a lightweight local agent workflow: `docs/ROADMAP.md` as the live dependency-aware queue, `.factory/STATE.md` as the one-screen session state, `/plan` and `/status` commands, upgraded `/start` and `/next` to use the roadmap and state, and `scripts/validate-agent-config.mjs` with `make agent-check`. The existing `docs/PHASE_REPORTS.md` remains the detailed evidence log; no second work log was added. No application code, dependencies, packaging, or runtime behavior changed.
+
+**Files changed:** `AGENTS.md`, `README.md`, `Makefile`, `package.json`, `.github/workflows/ci.yml`, `.opencode/commands/start.md`, `.opencode/commands/next.md`, `.opencode/commands/review.md`, `.opencode/commands/verify.md`, `.opencode/commands/plan.md` (new), `.opencode/commands/status.md` (new), `.opencode/skills/browserdeck-ux-design/SKILL.md`, `.factory/STATE.md` (new), `docs/ROADMAP.md` (new), `scripts/validate-agent-config.mjs` (new), and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `make agent-check` | Passed: required files, command frontmatter, four skill files, 18 roadmap tasks, and state references. |
+| `make check` | Passed: typecheck, lint, 176 unit tests, all light/dark contrast pairs, and `make agent-check`. |
+| `npm run build` | Passed: main 158.13 kB, preload 9.31 kB, renderer JS 358.96 kB, shell CSS 31.58 kB. |
+| `npm run test:e2e` | Not run — no native-view, IPC, session, or workspace behavior changed. |
+
+**Known behavior / limitations:** The roadmap is seeded from existing known limitations and post-MVP follow-ups; `/plan` must keep it current. Manual VoiceOver and profiling tasks still require a human-run pass. At the time, the checkout was `dev` at 1.1.0 and `main` contained the later 1.2.0 work; the branches were merged on 2026-11-23.
+
+**Next:** BD-004 — distinguish HTTP from HTTPS in the pane address bar.
+
+## Branch integration — Merge main 1.2.0 into dev
+
+**Date:** 2026-11-23
+
+**Status:** Complete.
+
+**Change:** Merged `main` (`cac3e26`, BrowserDeck 1.2.0) into `dev` (`7cd15b9`, 1.1.0 plus the agent workflow). The merge brings bulk URL opening, shared selected-browser viewport/reload actions, click and Cmd/Ctrl+click selection toggling, touch-drag scrolling for mobile presets, first-document fitted sizing, window-edge-clipped live panes, the Canvas menu reveal handshake, README screenshots, and ADR-074–079 into `dev`. The `dev` roadmap, session state, `/plan` and `/status` commands, validator, and `check:agent` script remain in place. The only conflict was `docs/PHASE_REPORTS.md`; both histories were kept, with the 1.2.0 entries before the agent-workflow entry. Package version is now 1.2.0.
+
+**Files changed by the merge:** `README.md`, `SPEC.md`, `.github/FUNDING.yml`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, `docs/MANUAL_CHECKS.md`, `docs/PHASE_REPORTS.md`, `docs/screenshots/`, `package.json`, `package-lock.json`, `src/main/browser-manager.ts`, `src/main/ipc.ts`, `src/preload/index.ts`, `src/renderer/src/App.vue`, `src/renderer/src/components/AppMenu.vue`, `src/renderer/src/components/PaneCard.vue`, `src/shared/bulk.ts` (new), `src/shared/geometry.ts`, `src/shared/ipc.ts`, `src/shared/layout.ts`, `tests/e2e/browser-panes.spec.ts`, `tests/fixtures/server.cjs`, `tests/unit/bulk.test.ts` (new), `tests/unit/geometry.test.ts`, and `tests/unit/layout.test.ts`. The merge commit also updates `.factory/STATE.md` and `docs/ROADMAP.md`.
+
+| Check | Result |
+| --- | --- |
+| `make check` | Passed: typecheck, lint, 184 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run build` | Passed: main 158.91 kB, preload 9.32 kB, renderer JS 382.90 kB, shell CSS 35.58 kB. |
+| `npm run test:e2e` | Passed: 3 Playwright tests in 31.9 s. Covers the accessibility/axe audit, the main native/auth/Canvas/persistence path, and the many-pane Canvas menu/native-view handshake. |
+
+**Known behavior / limitations:** The merge commit is local to `dev` and has not been pushed to `origin/dev`. Version 1.2.0 is not published; the Homebrew cask still points at 1.1.0 until `BD-001` is approved and completed. At merge time, `BD-004` remained the next eligible slice; it was completed later the same day.
+
+## Post-MVP — Insecure HTTP pane indicator
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-004 complete.
+
+**Change:** Added `addressSecurityState` to the pure shared URL module. It returns `insecure` only for remote non-local HTTP, `secure` for HTTPS, and `neutral` for local/private HTTP, `about:blank`, unsupported schemes, malformed URLs, and overlong URLs. `PaneNavigation` now shows a persistent **Not secure** warning with a warning icon, accessible label, and tooltip for insecure panes. The visible label collapses to the icon at a 480 px container width, while the accessible name and tooltip remain. HTTPS and local/private HTTP show no warning. Navigation policy, URL normalization, IPC, sessions, and native page content are unchanged.
+
+**Files changed:** `src/shared/url.ts`, `src/renderer/src/components/PaneNavigation.vue`, `tests/unit/url.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npx vitest run tests/unit/url.test.ts` | Passed: 16 tests, including remote HTTP, HTTPS, local/private HTTP, malformed, and overlong URL classification. |
+| Targeted Playwright | Passed: 1 security test in 1.3 s before the full suite. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 4 Playwright tests in 22.3 s. The security test verifies the warning and accessible name on a remote HTTP pane, no warning on HTTPS, the 320 px icon-only state, visibility while the custom viewport editor is open, and visibility in light and dark themes. |
+| `npm run build` | Passed: main 158.91 kB, preload 9.32 kB, renderer JS 384.26 kB, shell CSS 36.25 kB. |
+| Running-app visual check | 320 px light/dark screenshots inspected: the warning icon remained clear in both themes, the label was hidden as intended, and the accessible name stayed present. |
+
+**Known behavior / limitations:** The warning is advisory and does not block navigation. Local/private HTTP remains exempt because BrowserDeck intentionally supports development servers. The 320 px state is icon-only with a tooltip and accessible name; a human VoiceOver pass is still covered by BD-002.
+
+## Post-MVP — Self-closed pane notice
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-005 complete.
+
+**Change:** Unexpected pane destruction now sends a trusted-shell notice naming the browser. `BrowserManager` distinguishes normal teardown from unexpected destruction, truncates the display title to 120 characters, and emits a new `browserdeck:pane-self-closed` event before the usual state refresh and profile release. The shell shows a dismissible, non-blocking `role="status"` banner (`Browser “…” closed itself.`) that auto-dismisses after eight seconds; a normal close or workspace teardown stays silent. The removed native view is not recreated, and existing profile/session cleanup is unchanged.
+
+**Files changed:** `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/browser-manager.ts`, `src/main/index.ts`, `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Targeted Playwright integration test | Passed: 1 test in 18.4 s. Normal close shows no notice; unexpected destruction removes the pane, shows the named notice, dismisses it, and still releases the profile and webContents. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 4 Playwright tests in 22.5 s, including the self-close notice and dismissal assertions. |
+| `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 385.93 kB, shell CSS 36.53 kB. |
+
+**Known behavior / limitations:** The notice auto-dismisses after eight seconds and is replaced by a newer self-close notice; it does not queue multiple messages. The title is truncated at 120 characters. The notice does not imply that the page can be restored. The owner deprioritized the manual VoiceOver audit, so BD-002 is recorded as blocked rather than removed from the roadmap.
+
+## Post-MVP — Minimum-width pane header
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-006 complete.
+
+**Change:** Fixed the inline custom-viewport editor overflow at a 320 px pane. Before the change, the editor needed 357 px inside a 299 px row and pushed **Cancel** outside the header. The compact state now narrows the W/H/DPR fields, uses icon-only Apply/Cancel buttons with accessible names and tooltips, and keeps the whole editor inside the address row. At 360 px and below, the header also hides the redundant `Load failed` status because the error panel already carries the failure; this gives the browser title usable room instead of collapsing it to `b…`. The 720 × 520 minimum window and 320 px pane are covered by a dedicated e2e check for header/row/editor overflow, control containment, focus order, and light/dark rendering.
+
+**Files changed:** `src/renderer/src/components/PaneCard.vue`, `src/renderer/src/components/PaneNavigation.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Targeted Playwright layout test | Passed: 1 test in 1.4 s at 720 × 520 with a 320 px pane. Verifies zero header/editor overflow, every button inside the header, a non-truncated title width, preserved focus order, and light/dark rendering. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 5 Playwright tests in 23.0 s. |
+| `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 386.63 kB, shell CSS 37.47 kB. |
+| Running-app visual check | 320 px light/dark screenshots inspected. The compact editor shows `Custom W/H/DPR`, check/cancel icons, and the security warning without overflow; the title remains readable. |
+
+**Known behavior / limitations:** The compact editor applies at 400 px and below; wider panes keep the text Apply/Cancel layout. Very long page titles still truncate, but they retain usable width. The header `Load failed` text is hidden at 360 px and below because the error panel remains visible.
+
+## Dependency audit — minimatch dev-toolchain acceptance
+
+**Date:** 2026-11-23
+
+**Status:** Complete; BD-007 complete. No dependency versions changed.
+
+**Change:** Re-ran the runtime and full dependency audits and re-checked the upstream packaging tree. `npm audit --omit=dev` remains clean. The full audit reports six moderate `minimatch` advisories (GHSA-g3hv-75wg-m249 / CVE-2026-118764) in the `electron-builder` chain; the patched release is `minimatch` 11.0.1. BrowserDeck installs vulnerable `minimatch` 10.2.6 through `app-builder-lib` 26.18.0 and 9.0.9 through `@electron/universal` 2.0.3. `electron-builder` 26.18.1 still pins the same vulnerable ranges; 27.0.0-alpha.15 still uses `minimatch ^10.2.5`. The audit’s offered fix is a breaking downgrade to `electron-builder` 25.1.0. No stable non-breaking upgrade exists, so ADR-080 accepts the build-only risk and sets a release-time review trigger.
+
+**Files changed:** `README.md`, `SECURITY.md`, `docs/DECISIONS.md` (ADR-080), `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npm audit --omit=dev` | Passed: 0 runtime vulnerabilities. |
+| `npm audit` | 6 moderate development-toolchain advisories, all in the `minimatch` chain; exit code 1. The suggested fix is the breaking `electron-builder@25.1.0` downgrade. |
+| `npm audit fix --dry-run` | No changes; the non-force fix path cannot resolve the advisories. |
+| `npm run package:dir` | Passed: BrowserDeck 1.2.0 arm64 app packaged with electron-builder 26.18.0; fuses applied; signing skipped because `identity: null`. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Not run — no native-view, IPC, session, or workspace behavior changed. |
+
+**Known behavior / limitations:** The full audit continues to exit nonzero with six moderate advisories until a stable upstream packaging release consumes `minimatch` 11.0.1 or later. The vulnerable code is build-time only and is not included in the app runtime. A forced two-major-version override was rejected as unvalidated by upstream. Do not use untrusted glob patterns in build configuration; re-run both audits before the next release packaging change.
+
+## Workspace transfer copy — session and URL caveats
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-008 complete.
+
+**Change:** The Workspaces dialog now states both import/export caveats before its actions: transfers include workspace configuration only, browser sessions are not included so imported browsers start signed out, and exported URLs can include query strings, so secret-bearing addresses should not be exported. The note is also part of the dialog’s accessible description. The README capability copy now distinguishes configuration/URL transfer from profile IDs and session data, without adding any secret-bearing example. Export format, IPC, profiles, and persistence are unchanged.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/accessibility.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Targeted accessibility e2e | Passed: 1 test in 2.3 s. Asserts the visible transfer note, both text caveats, and the dialog accessible description. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 5 Playwright tests in 23.0 s. |
+| `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 387.03 kB, shell CSS 37.64 kB. |
+| README link check | 12 links parsed; 11 local links, 0 missing; 1 external link skipped. |
+| Dialog visual check | Light, dark, and 720 × 520 minimum-window screenshots inspected; the note wraps cleanly and stays above the import/export actions. |
+
+**Known behavior / limitations:** The note is informational and does not block export. Native Save/Open dialogs remain outside the automated e2e path. The export format still includes pane URLs and therefore their query strings; the copy warns users rather than stripping URLs. No example URL or secret is included in the dialog or docs.

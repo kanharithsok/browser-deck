@@ -13,7 +13,14 @@ The product requirements and acceptance criteria live in `SPEC.md`. Read the rel
 5. Do not commit, push, publish releases, change repository visibility, or modify GitHub settings unless the user explicitly asks.
 6. Never claim a feature or check works unless it was actually verified. Report failed, skipped, and unavailable checks accurately.
 7. Avoid speculative features, unnecessary abstractions, needless dependencies, and premature optimization.
-8. Keep documentation aligned with the implementation. Update `docs/PHASE_REPORTS.md` at the end of each phase.
+8. Keep documentation aligned with the implementation. Update `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md` with exact results after each slice.
+
+## Work tracking
+- At session start, read `.factory/STATE.md` and `docs/ROADMAP.md` alongside `AGENTS.md` and the relevant `SPEC.md` sections.
+- Work one roadmap task at a time. Pick the single `NEXT` task, or the first `READY` task by priority. `BLOCKED`, `IDEA`, and `DONE` tasks are not eligible without explicit promotion.
+- Keep `docs/ROADMAP.md` as the live queue, `.factory/STATE.md` as the one-screen session state, and `docs/PHASE_REPORTS.md` as the detailed evidence log. Do not create a second backlog or a second work log.
+- After each slice, update the roadmap status/evidence and the state file with the actual result. Mark `DONE` only when acceptance criteria and required checks passed.
+- Run `make agent-check` after changing commands, skills, the roadmap, or the state file.
 
 ## Product and UI direction
 - Minimal, clean, calm, and developer-focused. BrowserDeck is a tool, not a marketing website.
@@ -49,7 +56,8 @@ The product requirements and acceptance criteria live in `SPEC.md`. Read the rel
 - Run the narrowest relevant tests first, then the available typecheck, lint, unit tests, integration/e2e tests, and build.
 - Use scripts that actually exist in `package.json`; do not pretend unavailable scripts passed.
 - Before a phase is complete, verify its exit criteria in `SPEC.md` and record exact commands/results in `docs/PHASE_REPORTS.md`.
-- Use the read-only `security-reviewer` and `ui-reviewer` agents when their review scopes apply. Fix confirmed issues before calling the phase complete.
+- Run `make check` for the standard local gate; it includes typecheck, lint, unit tests, design-token contrast, and `make agent-check`.
+- Use the `/review` command and the relevant security/UX skills when their review scopes apply. Fix confirmed issues before calling the phase complete.
 
 ## Public repository hygiene
 - Never commit `.env` files, credentials, personal browser data, generated profile stores, local databases, or machine-specific paths.

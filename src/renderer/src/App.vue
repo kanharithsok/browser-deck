@@ -30,6 +30,7 @@ import {
 import type {
   PaneCommand,
   PaneNotice,
+  PaneSelfClosedNotice,
   PaneState,
   ScriptResult,
   ShellState
@@ -175,6 +176,7 @@ const marqueeRect = ref<Rect | null>(null)
 const isMarqueeSelecting = ref(false)
 const paneSnapshots = ref<Record<string, string>>({})
 const paneNotices = ref<Record<string, string>>({})
+const selfClosedNotice = ref<string | null>(null)
 const usesMacTitlebar = navigator.platform.startsWith('Mac')
 const workspaceEl = ref<HTMLElement | null>(null)
 const workspaceSize = ref<Size>({ width: 0, height: 0 })
@@ -300,6 +302,8 @@ const isDragging = ref(false)
 
 const paneNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const PANE_NOTICE_DURATION = 6000
+const SELF_CLOSED_NOTICE_DURATION = 8000
+let selfClosedNoticeTimer: ReturnType<typeof setTimeout> | null = null
 
 let disposeStateListener: (() => void) | null = null
 let disposeMinimapActionListener: (() => void) | null = null
@@ -308,6 +312,7 @@ let disposeMeasureListener: (() => void) | null = null
 let disposeCommandListener: (() => void) | null = null
 let disposeFocusListener: (() => void) | null = null
 let disposeNoticeListener: (() => void) | null = null
+let disposeSelfClosedListener: (() => void) | null = null
 let disposeRenameListener: (() => void) | null = null
 let resizeObserver: ResizeObserver | null = null
 let measureFrame = 0
@@ -1144,6 +1149,28 @@ function showPaneNotice(notice: PaneNotice): void {
   paneNoticeTimers.set(notice.paneId, timer)
 }
 
+function clearSelfClosedNotice(): void {
+  if (selfClosedNoticeTimer !== null) {
+    clearTimeout(selfClosedNoticeTimer)
+    selfClosedNoticeTimer = null
+  }
+  selfClosedNotice.value = null
+}
+
+function showSelfClosedNotice(notice: PaneSelfClosedNotice): void {
+  const title = notice.paneTitle.trim()
+  selfClosedNotice.value = title
+    ? `Browser “${title}” closed itself.`
+    : 'A browser closed itself.'
+  if (selfClosedNoticeTimer !== null) {
+    clearTimeout(selfClosedNoticeTimer)
+  }
+  selfClosedNoticeTimer = setTimeout(() => {
+    selfClosedNoticeTimer = null
+    selfClosedNotice.value = null
+  }, SELF_CLOSED_NOTICE_DURATION)
+}
+
 function clearAllPaneNotices(): void {
   for (const timer of paneNoticeTimers.values()) {
     clearTimeout(timer)
@@ -1152,6 +1179,7 @@ function clearAllPaneNotices(): void {
   if (Object.keys(paneNotices.value).length > 0) {
     paneNotices.value = {}
   }
+  clearSelfClosedNotice()
 }
 
 function blurActiveShellControl(): void {
@@ -4523,6 +4551,7 @@ onMounted(async () => {
   })
   disposeRenameListener = window.browserdeck.onPaneRenameRequested(requestPaneRename)
   disposeNoticeListener = window.browserdeck.onPaneNotice(showPaneNotice)
+  disposeSelfClosedListener = window.browserdeck.onPaneSelfClosed(showSelfClosedNotice)
 
   resizeObserver = new ResizeObserver(() => {
     readWorkspaceSize()
@@ -4568,6 +4597,7 @@ onBeforeUnmount(() => {
   disposeCommandListener?.()
   disposeFocusListener?.()
   disposeNoticeListener?.()
+  disposeSelfClosedListener?.()
   disposeRenameListener?.()
   resizeObserver?.disconnect()
   clearAllPaneNotices()
@@ -4682,6 +4712,27 @@ onBeforeUnmount(() => {
     <div v-if="errorMessage" class="error-banner" role="status">
       <span class="error-text">{{ errorMessage }}</span>
       <button class="dismiss-button" type="button" aria-label="Dismiss message" @click="dismissErrors">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </button>
+    </div>
+
+    <div
+      v-if="selfClosedNotice"
+      class="notice-banner"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <span class="notice-text">{{ selfClosedNotice }}</span>
+      <button
+        class="dismiss-button"
+        type="button"
+        title="Dismiss notice"
+        aria-label="Dismiss notice"
+        @click="clearSelfClosedNotice"
+      >
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" />
         </svg>
@@ -4920,7 +4971,7 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspaces-title"
-        aria-describedby="workspaces-description"
+        aria-describedby="workspaces-description workspaces-transfer-note"
         tabindex="-1"
         @keydown="onWorkspacesKeydown"
       >
@@ -5071,6 +5122,12 @@ onBeforeUnmount(() => {
             </div>
           </li>
         </ul>
+
+        <p id="workspaces-transfer-note" class="workspace-transfer-note">
+          Import and export transfer workspace configuration only. Browser sessions are not
+          included, so imported browsers start signed out. Exported URLs can include query
+          strings; avoid exporting secret-bearing addresses.
+        </p>
 
         <footer class="profiles-footer">
           <span class="profiles-count">
@@ -5450,7 +5507,20 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.error-text {
+.notice-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-inset);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.error-text,
+.notice-text {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -6142,6 +6212,15 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.workspace-transfer-note {
+  flex: none;
+  margin: 0 2px;
+  padding: 6px 7px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
 }
 
 .profiles-footer {

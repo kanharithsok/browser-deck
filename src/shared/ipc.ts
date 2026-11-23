@@ -58,6 +58,7 @@ export const IPC_CHANNELS = {
   paneCommand: 'browserdeck:pane-command',
   paneFocused: 'browserdeck:pane-focused',
   paneNotice: 'browserdeck:pane-notice',
+  paneSelfClosed: 'browserdeck:pane-self-closed',
   paneRenameRequested: 'browserdeck:pane-rename-requested',
   stateChanged: 'browserdeck:state-changed',
   requestMeasurement: 'browserdeck:request-measurement'
@@ -133,6 +134,10 @@ export interface PaneNotice {
   message: string
 }
 
+export interface PaneSelfClosedNotice {
+  paneTitle: string
+}
+
 export interface CanvasOverlayVisibility {
   minimap: boolean
   zoom: boolean
@@ -196,5 +201,6 @@ export interface BrowserDeckApi {
   onPaneCommand(listener: (command: PaneCommand) => void): () => void
   onPaneFocused(listener: (paneId: string) => void): () => void
   onPaneNotice(listener: (notice: PaneNotice) => void): () => void
+  onPaneSelfClosed(listener: (notice: PaneSelfClosedNotice) => void): () => void
   onPaneRenameRequested(listener: (paneId: string) => void): () => void
 }

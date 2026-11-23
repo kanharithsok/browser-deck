@@ -222,6 +222,12 @@ function sendPaneNotice(paneId: string, message: string): void {
   }
 }
 
+function sendPaneSelfClosed(paneTitle: string): void {
+  if (shellView && !shellView.webContents.isDestroyed()) {
+    shellView.webContents.send(IPC_CHANNELS.paneSelfClosed, { paneTitle })
+  }
+}
+
 function permissionNotice(permission: string): string {
   switch (permission) {
     case 'notifications':
@@ -358,6 +364,9 @@ function createBrowserManager(window: BaseWindow, profiles: ProfileStore): Brows
     },
     onPaneNotice: (notice) => {
       sendPaneNotice(notice.paneId, notice.message)
+    },
+    onPaneSelfClosed: (paneTitle) => {
+      sendPaneSelfClosed(paneTitle)
     },
     onPaneRenameRequested: (paneId) => {
       if (shellView && !shellView.webContents.isDestroyed()) {

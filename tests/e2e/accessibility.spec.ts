@@ -515,6 +515,13 @@ test('Accessibility: roles, names, focus, dialogs, and axe audit', async () => {
       await expect(dialog).toHaveAttribute('aria-modal', 'true')
       await expect(dialog).toHaveAccessibleName('Workspaces')
       await expect(dialog).toHaveAccessibleDescription(/Each workspace keeps its own browsers/)
+      await expect(dialog).toHaveAccessibleDescription(/Browser sessions are not included/)
+
+      const transferNote = dialog.locator('#workspaces-transfer-note')
+      await expect(transferNote).toBeVisible()
+      await expect(transferNote).toContainText('configuration only')
+      await expect(transferNote).toContainText('start signed out')
+      await expect(transferNote).toContainText('query strings')
 
       const dialogFocus = await readFocus(shellPage)
       expect(dialogFocus.tagName).toBe('SECTION')

@@ -24,7 +24,8 @@
     "test:e2e": "npm run build && playwright test",
     "package:mac": "npm run build && electron-builder --mac --arm64 --publish never",
     "package:dir": "npm run build && electron-builder --mac --arm64 --dir --publish never",
-    "check:contrast": "node scripts/check-contrast.mjs"
+    "check:contrast": "node scripts/check-contrast.mjs",
+    "check:agent": "node scripts/validate-agent-config.mjs"
   },
   "dependencies": {
     "vue": "3.5.45"

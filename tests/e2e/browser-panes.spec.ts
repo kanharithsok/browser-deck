@@ -2496,6 +2496,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'pane close'
     )
     expect(afterClose.panes[0]?.id).toBe(alicePaneId)
+    await expect(shellPage.locator('.notice-banner')).toHaveCount(0)
     await expect
       .poll(async () =>
         (await readPersistedProfiles(userDataDir)).some((profile) => profile.id === bobProfileId)
@@ -2569,6 +2570,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'self-closed pane removal'
     )
     expect(afterSelfClose.panes[0]?.id).toBe(alicePaneId)
+    const selfClosedTitle = newPane?.title ?? 'New browser'
+    await expect(shellPage.locator('.notice-banner')).toBeVisible()
+    await expect(shellPage.locator('.notice-banner')).toContainText(
+      `Browser “${selfClosedTitle}” closed itself.`
+    )
+    await shellPage.getByRole('button', { name: 'Dismiss notice' }).click()
+    await expect(shellPage.locator('.notice-banner')).toHaveCount(0)
     if (newPane?.profileId) {
       await expect
         .poll(async () =>
@@ -3823,6 +3831,299 @@ test('Canvas menus hide covered native views with many panes', async () => {
     }
     if (fixture) {
       await fixture.close().catch(() => undefined)
+    }
+    if (userDataDir) {
+      await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+})
+
+test('Security: remote HTTP panes show a persistent not-secure indicator', async () => {
+  test.setTimeout(90_000)
+
+  let userDataDir = ''
+  let app: ElectronApplication | null = null
+
+  try {
+    userDataDir = await mkdtemp(join(tmpdir(), 'browserdeck-security-'))
+    app = await launchApp(
+      userDataDir,
+      'http://browserdeck-insecure.invalid/,https://browserdeck-secure.invalid/'
+    )
+
+    const initial = await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.length === 2 &&
+        state.panes.some((pane) => pane.url === 'http://browserdeck-insecure.invalid/') &&
+        state.panes.some((pane) => pane.url === 'https://browserdeck-secure.invalid/'),
+      'insecure and secure pane state'
+    )
+    const shellPage = await waitFor(
+      async () =>
+        (app as ElectronApplication).windows().find((page) => isShellPage(page.url())) ?? null,
+      (page) => page !== null,
+      'security shell page'
+    )
+    if (!shellPage) {
+      throw new Error('Security shell page is unavailable')
+    }
+
+    const insecure = initial.panes.find((pane) => pane.url.startsWith('http://'))
+    const secure = initial.panes.find((pane) => pane.url.startsWith('https://'))
+    if (!insecure || !secure) {
+      throw new Error('Security test panes are unavailable')
+    }
+
+    const warningLabel = 'Not secure. This page uses HTTP; information can be intercepted.'
+    const warningTitle = 'Not secure: this page uses HTTP. Information can be intercepted.'
+    const insecureCard = shellPage.locator(`.pane-card[data-pane-id="${insecure.id}"]`)
+    const secureCard = shellPage.locator(`.pane-card[data-pane-id="${secure.id}"]`)
+    const warning = insecureCard.getByRole('img', { name: warningLabel })
+
+    await expect(warning).toBeVisible()
+    await expect(warning).toHaveAttribute('title', warningTitle)
+    await expect(insecureCard.locator('.pane-security-label')).toBeVisible()
+    await expect(secureCard.locator('.pane-security')).toHaveCount(0)
+
+    // A 320 px pane keeps the warning icon and accessible name.
+    const setViewport = await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.browserdeck.setPaneViewport(${JSON.stringify(insecure.id)}, { preset: 'custom', width: 320, height: 600, deviceScaleFactor: 1 })`
+    )
+    expect(setViewport.ok).toBe(true)
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.some(
+          (pane) =>
+            pane.id === insecure.id &&
+            pane.viewport.preset === 'custom' &&
+            pane.viewport.width === 320
+        ),
+      'narrow insecure pane viewport'
+    )
+    await fitAllDevices(app as ElectronApplication)
+    await expect(warning).toBeVisible()
+    await expect(insecureCard.locator('.pane-security-label')).toBeHidden()
+
+    // The warning stays visible while the inline custom viewport editor replaces
+    // the address row.
+    await insecureCard.getByRole('button', { name: 'Edit custom viewport' }).click()
+    await expect(insecureCard.locator('.viewport-custom-inline')).toBeVisible()
+    await expect(warning).toBeVisible()
+    await expect(insecureCard.locator('.pane-security-label')).toBeHidden()
+
+    // Both themes keep the persistent indicator visible.
+    await shellEvaluate<unknown>(app, "window.browserdeck.setTheme('dark')")
+    await expect(shellPage.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect(warning).toBeVisible()
+
+    await shellEvaluate<unknown>(app, "window.browserdeck.setTheme('light')")
+    await expect(shellPage.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect(warning).toBeVisible()
+  } finally {
+    if (app) {
+      await app.close().catch(() => undefined)
+    }
+    if (userDataDir) {
+      await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+})
+
+test('Layout: pane header fits at the minimum window and 320 px', async () => {
+  test.setTimeout(90_000)
+
+  let userDataDir = ''
+  let app: ElectronApplication | null = null
+
+  try {
+    userDataDir = await mkdtemp(join(tmpdir(), 'browserdeck-width-'))
+    app = await launchApp(
+      userDataDir,
+      'http://browserdeck-narrow.invalid/,http://browserdeck-second.invalid/'
+    )
+    const runningApp = app
+
+    const initial = await waitFor(
+      () => getSnapshot(runningApp),
+      (state) =>
+        state.panes.length === 2 &&
+        state.panes.some((pane) => pane.url === 'http://browserdeck-narrow.invalid/'),
+      'narrow pane state'
+    )
+    const shellPage = await waitFor(
+      async () => runningApp.windows().find((page) => isShellPage(page.url())) ?? null,
+      (page) => page !== null,
+      'narrow shell page'
+    )
+    if (!shellPage) {
+      throw new Error('Narrow shell page is unavailable')
+    }
+
+    const pane = initial.panes[0]
+    const other = initial.panes[1]
+    if (!pane || !other) {
+      throw new Error('Narrow test panes are unavailable')
+    }
+
+    const setViewport = await shellEvaluate<{ ok: boolean }>(
+      runningApp,
+      `window.browserdeck.setPaneViewport(${JSON.stringify(pane.id)}, { preset: 'custom', width: 320, height: 600, deviceScaleFactor: 1 })`
+    )
+    expect(setViewport.ok).toBe(true)
+    await shellEvaluate<unknown>(
+      runningApp,
+      `window.browserdeck.closePane(${JSON.stringify(other.id)})`
+    )
+    await waitFor(
+      () => getSnapshot(runningApp),
+      (state) => state.panes.length === 1,
+      'single narrow pane'
+    )
+
+    await runningApp.evaluate(({ BaseWindow }) => {
+      const window = BaseWindow.getAllWindows()[0]
+      if (!window) {
+        throw new Error('BrowserDeck window is unavailable')
+      }
+      window.setSize(720, 520)
+    })
+    await fitAllDevices(runningApp)
+
+    const card = shellPage.locator(`.pane-card[data-pane-id="${pane.id}"]`)
+    const header = card.locator('.pane-header')
+    await waitFor(
+      () => header.evaluate((element) => element.clientWidth),
+      (width) => width === 320,
+      '320 px pane header'
+    )
+
+    const readLayout = () =>
+      header.evaluate((element) => {
+        const headerRect = element.getBoundingClientRect()
+        const row = (selector: string) => {
+          const target = element.querySelector(selector)
+          return target instanceof HTMLElement
+            ? {
+                scrollWidth: target.scrollWidth,
+                clientWidth: target.clientWidth
+              }
+            : { scrollWidth: -1, clientWidth: -1 }
+        }
+        const address = element.querySelector('.address-input')
+        const title = element.querySelector('.pane-title')
+        return {
+          width: headerRect.width,
+          height: headerRect.height,
+          headerScrollWidth: element.scrollWidth,
+          headerClientWidth: element.clientWidth,
+          titleRow: row('.pane-header-row'),
+          addressRow: row('.pane-address-row'),
+          titleClientWidth: title instanceof HTMLElement ? title.clientWidth : 0,
+          addressWidth:
+            address instanceof HTMLElement ? address.getBoundingClientRect().width : 0,
+          buttons: Array.from(element.querySelectorAll('button')).map((button) => {
+            const box = button.getBoundingClientRect()
+            return {
+              label: button.getAttribute('aria-label'),
+              left: box.left - headerRect.left,
+              right: box.right - headerRect.left
+            }
+          })
+        }
+      })
+
+    const layout = await readLayout()
+    expect(layout.headerScrollWidth).toBeLessThanOrEqual(layout.headerClientWidth + 1)
+    expect(layout.titleRow.scrollWidth).toBeLessThanOrEqual(layout.titleRow.clientWidth + 1)
+    expect(layout.addressRow.scrollWidth).toBeLessThanOrEqual(
+      layout.addressRow.clientWidth + 1
+    )
+    expect(layout.addressWidth).toBeGreaterThan(40)
+    expect(layout.titleClientWidth).toBeGreaterThan(40)
+    expect(
+      layout.buttons.every(
+        (button) => button.left >= -0.5 && button.right <= layout.width + 0.5
+      )
+    ).toBe(true)
+
+    // The narrow header keeps the established keyboard order.
+    const viewportTrigger = card.getByRole('button', {
+      name: /^Viewport preset for browser/
+    })
+    await viewportTrigger.focus()
+    for (const name of ['Reload browser', 'Open in browser', 'Browser actions', 'Close browser']) {
+      await shellPage.keyboard.press('Tab')
+      expect(
+        await shellPage.evaluate(() =>
+          document.activeElement?.getAttribute('aria-label')
+        )
+      ).toBe(name)
+    }
+    await shellPage.keyboard.press('Tab')
+    expect(
+      await shellPage.evaluate(() => document.activeElement?.getAttribute('aria-label'))
+    ).toBe(`Address for browser ${pane.title}`)
+
+    // The inline custom viewport editor must also fit at 320 px.
+    await card.getByRole('button', { name: 'Edit custom viewport' }).click()
+    const editor = card.locator('.viewport-custom-inline')
+    await expect(editor).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Apply' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Cancel' })).toBeVisible()
+
+    const editorLayout = await header.evaluate((element) => {
+      const headerRect = element.getBoundingClientRect()
+      const addressRow = element.querySelector('.pane-address-row')
+      const inlineEditor = element.querySelector('.viewport-custom-inline')
+      const apply = element.querySelector('.custom-apply')
+      const cancel = element.querySelector('.custom-cancel')
+      const relativeRight = (target: Element | null) =>
+        target ? target.getBoundingClientRect().right - headerRect.left : -1
+      return {
+        width: headerRect.width,
+        addressRowScrollWidth:
+          addressRow instanceof HTMLElement ? addressRow.scrollWidth : -1,
+        addressRowClientWidth:
+          addressRow instanceof HTMLElement ? addressRow.clientWidth : -1,
+        editorScrollWidth:
+          inlineEditor instanceof HTMLElement ? inlineEditor.scrollWidth : -1,
+        editorClientWidth:
+          inlineEditor instanceof HTMLElement ? inlineEditor.clientWidth : -1,
+        applyRight: relativeRight(apply),
+        cancelRight: relativeRight(cancel)
+      }
+    })
+    expect(editorLayout.addressRowScrollWidth).toBeLessThanOrEqual(
+      editorLayout.addressRowClientWidth + 1
+    )
+    expect(editorLayout.editorScrollWidth).toBeLessThanOrEqual(
+      editorLayout.editorClientWidth + 1
+    )
+    expect(editorLayout.applyRight).toBeLessThanOrEqual(editorLayout.width + 0.5)
+    expect(editorLayout.cancelRight).toBeLessThanOrEqual(editorLayout.width + 0.5)
+
+    await card.getByRole('button', { name: 'Cancel' }).click()
+    await expect(editor).toHaveCount(0)
+
+    for (const theme of ['light', 'dark'] as const) {
+      await shellEvaluate<unknown>(
+        runningApp,
+        `window.browserdeck.setTheme('${theme}')`
+      )
+      await expect(shellPage.locator('html')).toHaveAttribute('data-theme', theme)
+      const themedLayout = await readLayout()
+      expect(themedLayout.headerScrollWidth).toBeLessThanOrEqual(
+        themedLayout.headerClientWidth + 1
+      )
+      await expect(viewportTrigger).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Close browser' })).toBeVisible()
+    }
+  } finally {
+    if (app) {
+      await app.close().catch(() => undefined)
     }
     if (userDataDir) {
       await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)

@@ -7,6 +7,7 @@ import {
   type PaneViewport,
   type ViewportPresetId
 } from '../../../shared/viewports'
+import { addressSecurityState } from '../../../shared/url'
 
 const props = withDefaults(
   defineProps<{
@@ -33,6 +34,7 @@ const emit = defineEmits<{
 const addressInput = ref<HTMLInputElement | null>(null)
 const customWidthInput = ref<HTMLInputElement | null>(null)
 const address = ref(displayAddress(props.pane.url))
+const insecure = computed(() => addressSecurityState(props.pane.url) === 'insecure')
 const addressError = ref<string | null>(null)
 const editing = ref(false)
 const selectedPreset = ref<ViewportPresetId>(props.pane.viewport.preset)
@@ -211,6 +213,21 @@ async function submitAddress(): Promise<void> {
 
 <template>
   <div class="pane-nav-row" :class="{ 'pane-nav-row-editing': customOpen }">
+    <span
+      v-if="insecure"
+      class="pane-security"
+      role="img"
+      aria-label="Not secure. This page uses HTTP; information can be intercepted."
+      title="Not secure: this page uses HTTP. Information can be intercepted."
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 2.5 14 13H2Z" />
+        <path d="M8 6.2v3.1" />
+        <path d="M8 11.4h.01" />
+      </svg>
+      <span class="pane-security-label" aria-hidden="true">Not secure</span>
+    </span>
+
     <template v-if="!customOpen">
       <form class="address-form" @submit.prevent="submitAddress">
         <input
@@ -326,8 +343,30 @@ async function submitAddress(): Promise<void> {
           @input="viewportError = null"
         />
       </label>
-      <button class="custom-apply" type="button" @click="applyCustomViewport">Apply</button>
-      <button class="custom-cancel" type="button" @click="cancelCustomViewport">Cancel</button>
+      <button
+        class="custom-apply"
+        type="button"
+        aria-label="Apply"
+        title="Apply custom viewport"
+        @click="applyCustomViewport"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m3.5 8.5 3 3 6-7" />
+        </svg>
+        <span class="custom-action-label">Apply</span>
+      </button>
+      <button
+        class="custom-cancel"
+        type="button"
+        aria-label="Cancel"
+        title="Cancel custom viewport"
+        @click="cancelCustomViewport"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+        <span class="custom-action-label">Cancel</span>
+      </button>
       <span v-if="viewportError" class="viewport-error" role="alert">{{ viewportError }}</span>
     </div>
   </div>
@@ -370,6 +409,36 @@ async function submitAddress(): Promise<void> {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.pane-security {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 2px;
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pane-security svg {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pane-security-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .address-form {
@@ -547,6 +616,10 @@ async function submitAddress(): Promise<void> {
 
 .custom-apply,
 .custom-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   height: 22px;
   padding: 0 7px;
   border: 1px solid var(--border-strong);
@@ -554,6 +627,18 @@ async function submitAddress(): Promise<void> {
   background: var(--surface-raised);
   color: var(--text);
   font-size: 10.5px;
+}
+
+.custom-apply svg,
+.custom-cancel svg {
+  display: none;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .custom-apply:hover,
@@ -567,6 +652,46 @@ async function submitAddress(): Promise<void> {
   color: var(--danger);
   font-size: 10.5px;
   line-height: 1.4;
+}
+
+@container (max-width: 400px) {
+  .viewport-custom-inline {
+    gap: 3px;
+  }
+
+  .viewport-custom-inline .custom-field input {
+    width: 42px;
+  }
+
+  .viewport-custom-inline .custom-field input[aria-label='Custom device scale factor'] {
+    width: 34px;
+  }
+
+  .custom-apply,
+  .custom-cancel {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  .custom-action-label {
+    display: none;
+  }
+
+  .custom-apply svg,
+  .custom-cancel svg {
+    display: block;
+  }
+}
+
+@container (max-width: 480px) {
+  .pane-security {
+    padding: 0;
+  }
+
+  .pane-security-label {
+    display: none;
+  }
 }
 
 @container (max-width: 900px) {

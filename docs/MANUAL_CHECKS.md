@@ -59,6 +59,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [ ] Theme preference is stored per workspace. (Theme is application-wide.)
 - [x] Workspace create/rename/duplicate/switch/delete. (E2e creates a second workspace, switches, adds a pane, renames, duplicates with independent sessions, switches back to the authenticated original, verifies active-state persistence, and deletes the extras.)
 - [x] Workspace export/import serialization excludes profiles and restores fresh identities. (Unit tests cover round-trip, profile stripping, fresh IDs, unsafe URLs/viewports, and invalid layout.)
+- [x] Workspaces dialog states the import/export session and URL caveats. (E2e checks the visible note and accessible description; light/dark screenshots inspected, 2026-11-23.)
 - [ ] Native workspace import/export dialogs. (Pure logic is unit-tested; the Save/Open dialog path is not automated or manually re-run in this slice.)
 - [ ] Workspace switching keeps background pages warm. (Switching destroys and recreates native views; pages reload.)
 
@@ -78,7 +79,7 @@ Legend: checked items were verified during Phase 0 (2026-11-18) on macOS 27.2.1,
 - [x] The right-click Canvas menu exposes Add pane, view, hand, manage, and appearance actions. (E2e uses Add pane, toggles Hand, and switches Light/System.)
 - [x] Custom menus do not flash page content over their opening frames. (The menu stays hidden while positioning, reports bounds, and waits for intersecting native views to hide before reveal. E2e opens a pane menu over 16 live panes after zooming and verifies no visible native view intersects it.)
 - [x] Invalid custom viewport values are rejected visibly. (E2e enters a 100 px width, sees the alert, and confirms the previous preset remains active.)
-- [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame; the address bar uses the full second row.)
+- [x] Two-row pane chrome remains usable at narrow widths. (E2e sets a 390 × 844 viewport and verifies every header control stays inside the frame. The 720 × 520 window / 320 px pane run also verifies no header or editor overflow, a readable title, preserved focus order, and light/dark rendering.)
 - [x] Canvas pans an infinite dotted workspace and hides native views during the gesture. (E2e pans, verifies all native views hide, and verifies visible bounds realign afterward.)
 - [x] Canvas snapshots cover native views during panning. (E2e waits for two `.pane-snapshot` images before panning; the image stays behind native views at rest.)
 - [x] Dragging a pane header moves only that pane; dragging empty canvas pans the world. (E2e drags a label and verifies the other frame and canvas background position do not move.)
@@ -130,7 +131,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] Custom menu keyboard behavior. (Accessibility e2e opens the **+** menu, uses ArrowDown to focus Responsive, and closes with Escape.)
 - [x] Contrast audit across defined light/dark token pairs. (`npm run check:contrast` verifies 13 pairs per theme; full control/state screenshot audit remains.)
 - [x] Reduced-motion behavior. (Global media rule disables animations/transitions/smooth scrolling when requested.)
-- [ ] Narrow-window and minimum-pane-width control usability. (Manual review at the 720 px minimum window.)
+- [x] Narrow-window and minimum-pane-width control usability. (720 × 520 window and 320 px pane e2e plus light/dark screenshots, 2026-11-23.)
 - [x] No visible control is knowingly inert. (Add, close, back, forward, reload, reload-all, address, retry, menu, dismiss are implemented.)
 
 ## Performance and lifecycle
@@ -157,13 +158,14 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Security and failure handling
 
 - [x] Dangerous URL schemes are rejected. (Main-process navigation test rejects `javascript:`; unit tests cover `data:`, `file:`, `chrome:`, embedded credentials, and oversized URLs.)
+- [x] Remote non-local HTTP panes show a persistent **Not secure** warning with an accessible label and tooltip; HTTPS and local/private HTTP keep the normal state. (Targeted e2e and 320 px light/dark running-app screenshots, 2026-11-23.)
 - [x] Remote pages cannot access the app preload bridge or Node APIs. (E2e checks `window.browserdeck`, `require`, and `process` are undefined.)
 - [x] Unsupported top-level navigation from a remote page is blocked. (E2e attempts `file:` and `data:` locations and verifies the pane URL is unchanged.)
 - [x] IPC rejects malformed payloads. (Unknown pane IDs and malformed bounds rejected in e2e/unit tests.)
 - [x] IPC rejects an invalid sender. (E2e creates a separate node-enabled `BrowserWindow` and verifies empty state plus `Unauthorized sender.`.)
 - [x] The shell loads from the secure internal protocol with an enforced CSP. (E2e observes `browserdeck://shell/index.html`, inline script blocked, and cross-origin fixture fetch blocked.)
 - [x] Popups and permissions follow the documented policy. (Popup and notification request denied in e2e; display/device/Bluetooth handlers deny by default.)
-- [x] A page that destroys its own `webContents` removes the pane cleanly. (E2e invokes `window.close()` in a pane; the other pane remains.)
+- [x] A page that destroys its own `webContents` removes the pane cleanly and shows a dismissible shell notice; a normal close does not. (E2e closes an added pane's `webContents`, verifies the named notice and dismissal, then checks the other pane and profile cleanup remain intact.)
 - [ ] Renderer crash/navigation failure does not crash the app shell. (Failure UI exists; crash recovery needs a dedicated check.)
 - [x] No secrets appear in logs, exports, fixtures, or repository files. (Repository review; fixtures contain only synthetic identities; credential-bearing URLs are rejected and export profiles are stripped.)
 - [ ] Window shutdown leaves no orphaned views/processes. (Teardown implemented and e2e closes panes/windows; repeat after Phase 2.)

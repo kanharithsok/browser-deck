@@ -2391,6 +2391,35 @@ Record material technical decisions here. Keep entries short but include context
   - E2e opens a pane menu over 16 live panes after zooming and verifies no visible native view intersects the menu while a covered view is hidden.
   - Typecheck, lint, unit tests, contrast, and the full e2e suite pass.
 
+## ADR-080 — Accept the build-tool minimatch advisory until upstream ships a stable patch
+
+- **Status:** Accepted
+- **Date:** 2026-11-23
+- **Context:** `npm audit` reports six moderate advisories for `minimatch` 7.0.0 through 11.0.0 (GHSA-g3hv-75wg-m249 / CVE-2026-118764); the patched release is 11.0.1. BrowserDeck 1.2.0 uses `electron-builder` 26.18.0, whose `app-builder-lib` 26.18.0 depends on `minimatch ^10.2.5` (installed 10.2.6), and `@electron/universal` 2.0.3 depends on `minimatch ^9.0.3` (installed 9.0.9). The audit’s offered fix is a breaking downgrade to `electron-builder` 25.1.0. The current v26 patch, 26.18.1, still pins the same vulnerable ranges; 27.0.0-alpha.15 uses `@electron/universal` 3.0.6 but still pins `minimatch ^10.2.5`. No stable upstream release currently consumes `minimatch` 11.0.1 or later.
+
+- **Decision:**
+  1. Accept the six moderate development-toolchain advisories for 1.2.0. They are confined to the packaging toolchain and are not shipped in the app runtime.
+  2. Do not add an npm `overrides` entry that crosses from `minimatch` 9/10 to 11. The affected consumers have not validated that major change, and package tests do not exercise every upstream packaging path.
+  3. Keep `npm audit --omit=dev` at zero and re-run both audits before the next release packaging change.
+  4. Re-review when a stable `electron-builder` release consumes `minimatch` 11.0.1 or later, or when `@electron/universal` 3.x removes the vulnerable `minimatch` dependency. Do not ship untrusted glob patterns in build configuration.
+
+- **Alternatives considered:**
+  - **Force `minimatch` 11.0.9 through overrides.** Rejected; it is a two-major-version override inside the packaging chain with no upstream validation. It could break file filtering or universal-app merging.
+  - **Downgrade to `electron-builder` 25.1.0 as the audit suggests.** Rejected; it is a breaking downgrade from the current packaging line and is not justified by a build-time-only DoS advisory.
+  - **Move to `electron-builder` 27.0.0-alpha.** Rejected; it is an alpha release, and it still pins the vulnerable `minimatch` major.
+  - **Ignore the audit without a record.** Rejected; the accepted risk and review trigger need durable evidence.
+
+- **Consequences:**
+  - The full development audit continues to report six moderate advisories; the production audit remains clean.
+  - BrowserDeck builds use trusted, reviewed configuration. Exploitation would require an attacker to control glob patterns in the build environment, and the impact is build-time CPU/memory exhaustion rather than app-runtime compromise.
+  - A future stable upstream update should clear the warning without a local override; the next release packaging check must verify that.
+
+- **Evidence / verification:**
+  - `npm audit --omit=dev` reports 0 vulnerabilities.
+  - `npm audit` reports 6 moderate advisories, all in the `electron-builder`/`@electron/universal`/`app-builder-lib` `minimatch` chain, with the breaking `electron-builder@25.1.0` fix offered.
+  - `npm view` confirms `electron-builder` 26.18.0 and 26.18.1 pin the vulnerable ranges, while 27.0.0-alpha.15 still uses `minimatch ^10.2.5`.
+  - `npm run package:dir` remains the packaging regression check for the next dependency update.
+
 ### ADR-NNN — Title
 
 - **Status:** Proposed / Accepted / Superseded

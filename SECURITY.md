@@ -194,7 +194,10 @@ Run from a clean checkout:
 ## Dependency audit
 
 - `npm audit --omit=dev` reports **0** vulnerabilities in production dependencies.
-- The full development-tool audit reports six moderate `minimatch` advisories in the `electron-builder` chain. They are build/packaging-only, are not shipped in the app runtime, and were not force-upgraded for 1.0 because a major override could break packaging.
+- The full development-tool audit reports six moderate `minimatch` advisories (GHSA-g3hv-75wg-m249 / CVE-2026-118764) in the `electron-builder` chain. The vulnerable range is 7.0.0 through 11.0.0; the patched release is 11.0.1.
+- The vulnerable copies are build/packaging-only and are not shipped in the app runtime. `electron-builder` 26.18.0 and 26.18.1 still pin `minimatch` 9/10 through `@electron/universal` and `app-builder-lib`; 27.0.0-alpha.15 still pins `minimatch ^10.2.5`. The audit’s offered fix is a breaking downgrade to `electron-builder` 25.1.0.
+- BrowserDeck accepts this build-time risk for 1.2.0 rather than forcing a two-major-version `minimatch` override or downgrading the packaging line. See ADR-080.
+- Re-run both audits before the next release packaging change, and re-review when a stable `electron-builder` release uses `minimatch` 11.0.1+ or `@electron/universal` 3.x removes the vulnerable dependency. Do not use untrusted glob patterns in build configuration.
 
 ## Reporting
 

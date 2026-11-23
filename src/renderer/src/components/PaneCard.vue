@@ -278,7 +278,10 @@ function requestClose(): void {
               <span
                 :id="statusId"
                 class="pane-status"
-                :class="{ 'pane-status-address-error': Boolean(addressError) }"
+                :class="{
+                  'pane-status-address-error': Boolean(addressError),
+                  'pane-status-load-error': Boolean(pane.error)
+                }"
                 role="status"
                 aria-live="polite"
                 :title="titleError ?? addressError ?? pane.error ?? notice ?? undefined"
@@ -948,7 +951,8 @@ function requestClose(): void {
 
 @container (max-width: 360px) {
   .pane-device-type,
-  .pane-resolution {
+  .pane-resolution,
+  .pane-status-load-error {
     display: none;
   }
 }
