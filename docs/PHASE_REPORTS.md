@@ -1462,3 +1462,24 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run test:e2e` | Not run — no native-view, IPC, session, or workspace behavior changed. |
 
 **Known behavior / limitations:** The full audit continues to exit nonzero with six moderate advisories until a stable upstream packaging release consumes `minimatch` 11.0.1 or later. The vulnerable code is build-time only and is not included in the app runtime. A forced two-major-version override was rejected as unvalidated by upstream. Do not use untrusted glob patterns in build configuration; re-run both audits before the next release packaging change.
+
+## Workspace transfer copy — session and URL caveats
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-008 complete.
+
+**Change:** The Workspaces dialog now states both import/export caveats before its actions: transfers include workspace configuration only, browser sessions are not included so imported browsers start signed out, and exported URLs can include query strings, so secret-bearing addresses should not be exported. The note is also part of the dialog’s accessible description. The README capability copy now distinguishes configuration/URL transfer from profile IDs and session data, without adding any secret-bearing example. Export format, IPC, profiles, and persistence are unchanged.
+
+**Files changed:** `src/renderer/src/App.vue`, `tests/e2e/accessibility.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Targeted accessibility e2e | Passed: 1 test in 2.3 s. Asserts the visible transfer note, both text caveats, and the dialog accessible description. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 5 Playwright tests in 23.0 s. |
+| `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 387.03 kB, shell CSS 37.64 kB. |
+| README link check | 12 links parsed; 11 local links, 0 missing; 1 external link skipped. |
+| Dialog visual check | Light, dark, and 720 × 520 minimum-window screenshots inspected; the note wraps cleanly and stays above the import/export actions. |
+
+**Known behavior / limitations:** The note is informational and does not block export. Native Save/Open dialogs remain outside the automated e2e path. The export format still includes pane URLs and therefore their query strings; the copy warns users rather than stripping URLs. No example URL or secret is included in the dialog or docs.

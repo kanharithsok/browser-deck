@@ -30,14 +30,7 @@ signing, credentials, or a destructive action, make the gate explicit.
 
 ## Next
 
-### BD-008 — Make workspace import/export session behavior explicit
-- Status: NEXT
-- Priority: P3
-- Depends: none
-- Source: `README.md` known limitations; `SPEC.md` §11.4.
-- Scope: Clarify in the import/export UI and docs that configuration transfers but sessions do not, and that exported URLs may contain query strings or secrets. Do not change the export format.
-- Done when: the dialog and README state both caveats, no secret-bearing example is added, and the docs remain aligned.
-- Verify: `make check`; manual dialog copy check; README link check.
+_None assigned. BD-003 is READY but requires a human multi-hour profiling run._
 
 ## Ready
 
@@ -202,3 +195,13 @@ task block; do not renumber it.
 - Done when: the dependency tree is re-checked, a documented decision exists, and the runtime audit remains clean.
 - Verify: `npm audit --omit=dev`; full `npm audit`; `make check`; `npm run package:dir` if packaging tooling changes.
 - Evidence: 2026-11-23 — runtime audit 0; full audit 6 moderate `minimatch` advisories; no stable non-breaking upstream fix. Accepted in ADR-080/`SECURITY.md` with a release-time review trigger. `npm run package:dir` and `make check` passed. See "Dependency audit — minimatch dev-toolchain acceptance" in `docs/PHASE_REPORTS.md`.
+
+### BD-008 — Make workspace import/export session behavior explicit
+- Status: DONE
+- Priority: P3
+- Depends: none
+- Source: `README.md` known limitations; `SPEC.md` §11.4.
+- Scope: Clarify in the import/export UI and docs that configuration transfers but sessions do not, and that exported URLs may contain query strings or secrets. Do not change the export format.
+- Done when: the dialog and README state both caveats, no secret-bearing example is added, and the docs remain aligned.
+- Verify: `make check`; manual dialog copy check; README link check.
+- Evidence: 2026-11-23 — Workspaces dialog and README state both caveats; accessibility e2e asserts the visible note and dialog description; light/dark dialog screenshots inspected; all 11 local README links resolve. `make check` passed 187 unit tests, `npm run test:e2e` passed 5 tests in 23.0 s. See "Workspace transfer copy — session and URL caveats" in `docs/PHASE_REPORTS.md`.

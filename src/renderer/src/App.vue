@@ -4971,7 +4971,7 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspaces-title"
-        aria-describedby="workspaces-description"
+        aria-describedby="workspaces-description workspaces-transfer-note"
         tabindex="-1"
         @keydown="onWorkspacesKeydown"
       >
@@ -5122,6 +5122,12 @@ onBeforeUnmount(() => {
             </div>
           </li>
         </ul>
+
+        <p id="workspaces-transfer-note" class="workspace-transfer-note">
+          Import and export transfer workspace configuration only. Browser sessions are not
+          included, so imported browsers start signed out. Exported URLs can include query
+          strings; avoid exporting secret-bearing addresses.
+        </p>
 
         <footer class="profiles-footer">
           <span class="profiles-count">
@@ -6206,6 +6212,15 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.workspace-transfer-note {
+  flex: none;
+  margin: 0 2px;
+  padding: 6px 7px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.45;
 }
 
 .profiles-footer {
