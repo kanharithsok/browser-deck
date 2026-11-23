@@ -210,7 +210,7 @@ Destruction:
 4. Delete the pane record and emit a new shell state.
 5. On window close, destroy every remaining pane, then close the shell `webContents`.
 
-If a remote page destroys its own `webContents` (for example via `window.close()`), the manager removes that pane record and its stale view instead of leaving controls whose commands would throw. Commands also reject destroyed pane records defensively.
+If a remote page destroys its own `webContents` (for example via `window.close()`), the manager removes that pane record and its stale view instead of leaving controls whose commands would throw. It also sends the trusted shell a non-blocking notice naming the browser, so the disappearance is explained without recreating the view. User-initiated close and workspace teardown stay silent; commands also reject destroyed pane records defensively.
 
 When a pane closes, its profile record, persistent session data, and partition are released. Workspace-switch and shutdown teardown bypass profile release because the workspace retains the pane definitions.
 

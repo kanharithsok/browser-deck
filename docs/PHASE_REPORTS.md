@@ -1402,3 +1402,22 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Running-app visual check | 320 px light/dark screenshots inspected: the warning icon remained clear in both themes, the label was hidden as intended, and the accessible name stayed present. |
 
 **Known behavior / limitations:** The warning is advisory and does not block navigation. Local/private HTTP remains exempt because BrowserDeck intentionally supports development servers. The 320 px state is icon-only with a tooltip and accessible name; a human VoiceOver pass is still covered by BD-002.
+
+## Post-MVP — Self-closed pane notice
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-005 complete.
+
+**Change:** Unexpected pane destruction now sends a trusted-shell notice naming the browser. `BrowserManager` distinguishes normal teardown from unexpected destruction, truncates the display title to 120 characters, and emits a new `browserdeck:pane-self-closed` event before the usual state refresh and profile release. The shell shows a dismissible, non-blocking `role="status"` banner (`Browser “…” closed itself.`) that auto-dismisses after eight seconds; a normal close or workspace teardown stays silent. The removed native view is not recreated, and existing profile/session cleanup is unchanged.
+
+**Files changed:** `src/shared/ipc.ts`, `src/preload/index.ts`, `src/main/browser-manager.ts`, `src/main/index.ts`, `src/renderer/src/App.vue`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| Targeted Playwright integration test | Passed: 1 test in 18.4 s. Normal close shows no notice; unexpected destruction removes the pane, shows the named notice, dismisses it, and still releases the profile and webContents. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 4 Playwright tests in 22.5 s, including the self-close notice and dismissal assertions. |
+| `npm run build` | Passed: main 159.35 kB, preload 9.64 kB, renderer JS 385.93 kB, shell CSS 36.53 kB. |
+
+**Known behavior / limitations:** The notice auto-dismisses after eight seconds and is replaced by a newer self-close notice; it does not queue multiple messages. The title is truncated at 120 characters. The notice does not imply that the page can be restored. The owner deprioritized the manual VoiceOver audit, so BD-002 is recorded as blocked rather than removed from the roadmap.

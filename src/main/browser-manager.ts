@@ -75,6 +75,7 @@ interface BrowserManagerOptions {
   onStateChanged: (state: ShellSnapshot) => void
   onPaneFocused?: (paneId: string) => void
   onPaneNotice?: (notice: PaneNotice) => void
+  onPaneSelfClosed?: (paneTitle: string) => void
   onPaneRenameRequested?: (paneId: string) => void
   onPaneRemoved?: (paneId: string, profileId: string) => void
   onPaneLayerChanged?: () => void
@@ -914,6 +915,8 @@ export class BrowserManager {
       this.window.contentView.removeChildView(record.view)
     }
 
+    const paneTitle = (record.customTitle ?? record.title).trim().slice(0, 120) || 'Untitled browser'
+    this.options.onPaneSelfClosed?.(paneTitle)
     this.options.onPaneRemoved?.(record.id, record.profile.id)
     this.emitState()
   }

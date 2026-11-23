@@ -25,6 +25,7 @@ Responsive, tablet, and phone viewports sharing one workspace in the light theme
 - Electron `BaseWindow` with a trusted Vue shell and native `WebContentsView` browser panes.
 - Two browser panes by default; add, duplicate, and close panes dynamically. The quiet toolbar **+** control opens a custom browser menu with responsive, iPhone, Samsung, Pixel, iPad, Galaxy Tab, desktop, and MacBook presets. Each browser header's viewport trigger opens the same custom menu and complete preset catalog for that pane. Duplicates copy URL/viewport into an independent session and land beside or below their source.
 - One internally generated persistent browser session per pane, owned by that pane and released when it closes.
+- If a website closes its own browser view, the pane is removed safely and a transient shell notice names the browser; a normal close shows no notice.
 - Independent navigation, address bar, history, reload, loading, and load-error states. Each browser header has two rows: title, viewport, and actions on top, with the viewport class, centered address bar, and resolution beneath it. Rotate viewport and capture screenshot live in the actions menu.
 - Remote non-local HTTP panes show a persistent **Not secure** warning with an accessible label and tooltip; HTTPS and local/private HTTP keep the normal pane-header state.
 - Per-browser in-shell actions menu for back/forward/reload, copy URL, open in the system browser, rotate viewport, screenshot, duplicate, rename, clear site data, DevTools, and close, using the same menu component as the + browser menu.
@@ -255,7 +256,6 @@ opencode.jsonc        Project-level OpenCode configuration
 - Clear Site Data is per pane and confirmed. It clears that pane's session and reloads it; other panes are untouched.
 - Overlapping canvas panes can cover each other's headers; use the overview or Fit all to locate and recover them.
 - Browser panes are separate persistent browser sessions inside the app's shared Chromium runtime. Cookies, storage, cache, and authentication are isolated per pane, but panes are not separate browser installations or OS sandboxes.
-- If a website closes its own browser view, the pane is removed safely but without an explanatory notice yet.
 - Some identity providers and sites may block embedded browser user agents or behave differently from Chrome/Safari. Fixed presets send a category UA for layout fidelity; responsive and custom panes use Electron's default UA.
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, automatic updates, extensions, DRM, and cloud sync remain outside 1.0.

@@ -6,6 +6,7 @@ import {
   type PaneCommand,
   type BrowserDeckApi,
   type PaneNotice,
+  type PaneSelfClosedNotice,
   type ShellState
 } from '../shared/ipc'
 import type {
@@ -160,6 +161,15 @@ const api: BrowserDeckApi = {
     ipcRenderer.on(IPC_CHANNELS.paneNotice, wrapped)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.paneNotice, wrapped)
+    }
+  },
+  onPaneSelfClosed: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, notice: PaneSelfClosedNotice): void => {
+      listener(notice)
+    }
+    ipcRenderer.on(IPC_CHANNELS.paneSelfClosed, wrapped)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.paneSelfClosed, wrapped)
     }
   },
   onPaneRenameRequested: (listener) => {

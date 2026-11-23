@@ -164,7 +164,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 - [x] IPC rejects an invalid sender. (E2e creates a separate node-enabled `BrowserWindow` and verifies empty state plus `Unauthorized sender.`.)
 - [x] The shell loads from the secure internal protocol with an enforced CSP. (E2e observes `browserdeck://shell/index.html`, inline script blocked, and cross-origin fixture fetch blocked.)
 - [x] Popups and permissions follow the documented policy. (Popup and notification request denied in e2e; display/device/Bluetooth handlers deny by default.)
-- [x] A page that destroys its own `webContents` removes the pane cleanly. (E2e invokes `window.close()` in a pane; the other pane remains.)
+- [x] A page that destroys its own `webContents` removes the pane cleanly and shows a dismissible shell notice; a normal close does not. (E2e closes an added pane's `webContents`, verifies the named notice and dismissal, then checks the other pane and profile cleanup remain intact.)
 - [ ] Renderer crash/navigation failure does not crash the app shell. (Failure UI exists; crash recovery needs a dedicated check.)
 - [x] No secrets appear in logs, exports, fixtures, or repository files. (Repository review; fixtures contain only synthetic identities; credential-bearing URLs are rejected and export profiles are stripped.)
 - [ ] Window shutdown leaves no orphaned views/processes. (Teardown implemented and e2e closes panes/windows; repeat after Phase 2.)

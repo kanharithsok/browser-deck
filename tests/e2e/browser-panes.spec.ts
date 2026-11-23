@@ -2496,6 +2496,7 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'pane close'
     )
     expect(afterClose.panes[0]?.id).toBe(alicePaneId)
+    await expect(shellPage.locator('.notice-banner')).toHaveCount(0)
     await expect
       .poll(async () =>
         (await readPersistedProfiles(userDataDir)).some((profile) => profile.id === bobProfileId)
@@ -2569,6 +2570,13 @@ test('Browser panes: native composition, isolated auth, lifecycle, and persisten
       'self-closed pane removal'
     )
     expect(afterSelfClose.panes[0]?.id).toBe(alicePaneId)
+    const selfClosedTitle = newPane?.title ?? 'New browser'
+    await expect(shellPage.locator('.notice-banner')).toBeVisible()
+    await expect(shellPage.locator('.notice-banner')).toContainText(
+      `Browser “${selfClosedTitle}” closed itself.`
+    )
+    await shellPage.getByRole('button', { name: 'Dismiss notice' }).click()
+    await expect(shellPage.locator('.notice-banner')).toHaveCount(0)
     if (newPane?.profileId) {
       await expect
         .poll(async () =>

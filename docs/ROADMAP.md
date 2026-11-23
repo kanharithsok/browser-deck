@@ -30,14 +30,14 @@ signing, credentials, or a destructive action, make the gate explicit.
 
 ## Next
 
-### BD-002 — Complete the manual VoiceOver and focus-ring pass
+### BD-006 — Keep the pane header usable at the minimum window width
 - Status: NEXT
-- Priority: P1
+- Priority: P2
 - Depends: none
-- Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`; `SPEC.md` §18.4.
-- Scope: Walk the toolbar, pane headers, selection state, status announcements, custom menus, Add dialog, Workspaces dialog, and bottom canvas bar with VoiceOver and keyboard only; fix confirmed defects.
-- Done when: the manual checklist has dated results, confirmed focus/order/announcement defects are fixed, and automated axe coverage still passes.
-- Verify: manual macOS VoiceOver pass; `make check`; `npm run test:e2e`.
+- Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`.
+- Scope: Adjust the two-row pane header, address field, and viewport controls so they remain usable at the minimum supported window and pane widths without clipped or overlapping controls.
+- Done when: minimum-width checks show no overlap or clipping; focus order remains address, Add, viewport, reload, open, actions, close; light/dark and 320 px pane widths pass.
+- Verify: `make check`; targeted Playwright at minimum window and pane sizes; manual light/dark check.
 
 ## Ready
 
@@ -49,24 +49,6 @@ signing, credentials, or a destructive action, make the gate explicit.
 - Scope: Run a multi-hour soak with loaded third-party pages; sample CPU and memory per process; profile drag, resize, zoom, pan, and scrolling; record leaks or regressions.
 - Done when: a repeatable profiling procedure and dated results exist, and confirmed leaks have a follow-up task.
 - Verify: documented profiling commands in `docs/MANUAL_CHECKS.md`; repeatable run with recorded process counts and working set.
-
-### BD-005 — Show a notice when a website closes its own pane
-- Status: READY
-- Priority: P2
-- Depends: none
-- Source: `README.md` known limitations.
-- Scope: Surface a non-blocking shell notice when a remote page closes its `WebContentsView`; preserve safe teardown and do not resurrect the view.
-- Done when: the pane is removed safely, a visible notice explains what happened, and no orphaned view, `webContents`, or listener remains; tests cover normal close versus self-close.
-- Verify: `make check`; targeted unit or e2e test; `npm run test:e2e`.
-
-### BD-006 — Keep the pane header usable at the minimum window width
-- Status: READY
-- Priority: P2
-- Depends: none
-- Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`.
-- Scope: Adjust the two-row pane header, address field, and viewport controls so they remain usable at the minimum supported window and pane widths without clipped or overlapping controls.
-- Done when: minimum-width checks show no overlap or clipping; focus order remains address, Add, viewport, reload, open, actions, close; light/dark and 320 px pane widths pass.
-- Verify: `make check`; targeted Playwright at minimum window and pane sizes; manual light/dark check.
 
 ### BD-007 — Resolve or explicitly accept the developer-toolchain audit advisories
 - Status: READY
@@ -97,6 +79,16 @@ signing, credentials, or a destructive action, make the gate explicit.
 - Scope: Confirm the release commit and version, build the arm64 DMG/ZIP, publish the GitHub release with `SHA256SUMS.txt`, and update `kanharithsok/tap/browser-deck` to the new version and checksum.
 - Done when: the release assets and checksums exist, `brew fetch` verifies the cask, and a clean `brew install --cask` installs the new version.
 - Verify: `npm run package:mac`; `shasum -a 256`; `brew fetch`; `brew install --cask`; launch smoke.
+
+### BD-002 — Complete the manual VoiceOver and focus-ring pass
+- Status: BLOCKED
+- Priority: P1
+- Depends: none
+- Blocker: owner deprioritized the manual VoiceOver pass; no VoiceOver feature is planned, and spoken-order/announcement review remains unverified.
+- Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`; `SPEC.md` §18.4.
+- Scope: Walk the toolbar, pane headers, selection state, status announcements, custom menus, Add dialog, Workspaces dialog, and bottom canvas bar with VoiceOver and keyboard only; fix confirmed defects.
+- Done when: the manual checklist has dated results, confirmed focus/order/announcement defects are fixed, and automated axe coverage still passes.
+- Verify: manual macOS VoiceOver pass; `make check`; `npm run test:e2e`.
 
 ### BD-009 — Add Developer ID signing, notarization, and stapling
 - Status: BLOCKED
@@ -198,3 +190,13 @@ task block; do not renumber it.
 - Done when: HTTP panes show a persistent warning indicator with an accessible label or tooltip; HTTPS panes show the normal state; light/dark and narrow pane widths remain readable; tests cover the state mapping.
 - Verify: `make check`; targeted Playwright e2e for HTTP and HTTPS panes; manual light/dark check at the minimum pane width.
 - Evidence: 2026-11-23 — `make check` passed with 187 unit tests; `npm run test:e2e` passed 4 Playwright tests in 22.3 s; 320 px light/dark screenshots were inspected. See "Post-MVP — Insecure HTTP pane indicator" in `docs/PHASE_REPORTS.md`.
+
+### BD-005 — Show a notice when a website closes its own pane
+- Status: DONE
+- Priority: P2
+- Depends: none
+- Source: `README.md` known limitations.
+- Scope: Surface a non-blocking shell notice when a remote page closes its `WebContentsView`; preserve safe teardown and do not resurrect the view.
+- Done when: the pane is removed safely, a visible notice explains what happened, and no orphaned view, `webContents`, or listener remains; tests cover normal close versus self-close.
+- Verify: `make check`; targeted unit or e2e test; `npm run test:e2e`.
+- Evidence: 2026-11-23 — `make check` passed with 187 unit tests; `npm run test:e2e` passed 4 Playwright tests in 22.5 s; the targeted self-close run passed. See "Post-MVP — Self-closed pane notice" in `docs/PHASE_REPORTS.md`.
