@@ -30,14 +30,14 @@ signing, credentials, or a destructive action, make the gate explicit.
 
 ## Next
 
-### BD-007 — Resolve or explicitly accept the developer-toolchain audit advisories
+### BD-008 — Make workspace import/export session behavior explicit
 - Status: NEXT
-- Priority: P2
+- Priority: P3
 - Depends: none
-- Source: `README.md` known limitations; `npm audit` output.
-- Scope: Re-check the moderate `minimatch` advisories in the `electron-builder` and `@electron/universal` chain; upgrade when a non-breaking fix exists, otherwise document the risk and the next review trigger.
-- Done when: the dependency tree is re-checked, a documented decision exists, and the runtime audit remains clean.
-- Verify: `npm audit --omit=dev`; full `npm audit`; `make check`; `npm run package:dir` if packaging tooling changes.
+- Source: `README.md` known limitations; `SPEC.md` §11.4.
+- Scope: Clarify in the import/export UI and docs that configuration transfers but sessions do not, and that exported URLs may contain query strings or secrets. Do not change the export format.
+- Done when: the dialog and README state both caveats, no secret-bearing example is added, and the docs remain aligned.
+- Verify: `make check`; manual dialog copy check; README link check.
 
 ## Ready
 
@@ -49,15 +49,6 @@ signing, credentials, or a destructive action, make the gate explicit.
 - Scope: Run a multi-hour soak with loaded third-party pages; sample CPU and memory per process; profile drag, resize, zoom, pan, and scrolling; record leaks or regressions.
 - Done when: a repeatable profiling procedure and dated results exist, and confirmed leaks have a follow-up task.
 - Verify: documented profiling commands in `docs/MANUAL_CHECKS.md`; repeatable run with recorded process counts and working set.
-
-### BD-008 — Make workspace import/export session behavior explicit
-- Status: READY
-- Priority: P3
-- Depends: none
-- Source: `README.md` known limitations; `SPEC.md` §11.4.
-- Scope: Clarify in the import/export UI and docs that configuration transfers but sessions do not, and that exported URLs may contain query strings or secrets. Do not change the export format.
-- Done when: the dialog and README state both caveats, no secret-bearing example is added, and the docs remain aligned.
-- Verify: `make check`; manual dialog copy check; README link check.
 
 ## Blocked
 
@@ -201,3 +192,13 @@ task block; do not renumber it.
 - Done when: minimum-width checks show no overlap or clipping; focus order remains address, Add, viewport, reload, open, actions, close; light/dark and 320 px pane widths pass.
 - Verify: `make check`; targeted Playwright at minimum window and pane sizes; manual light/dark check.
 - Evidence: 2026-11-23 — 720 × 520 window / 320 px pane e2e passed with no header or editor overflow, preserved focus order, and light/dark checks; `make check` passed 187 unit tests; `npm run test:e2e` passed 5 tests in 23.0 s. See "Post-MVP — Minimum-width pane header" in `docs/PHASE_REPORTS.md`.
+
+### BD-007 — Resolve or explicitly accept the developer-toolchain audit advisories
+- Status: DONE
+- Priority: P2
+- Depends: none
+- Source: `README.md` known limitations; `npm audit` output.
+- Scope: Re-check the moderate `minimatch` advisories in the `electron-builder` and `@electron/universal` chain; upgrade when a non-breaking fix exists, otherwise document the risk and the next review trigger.
+- Done when: the dependency tree is re-checked, a documented decision exists, and the runtime audit remains clean.
+- Verify: `npm audit --omit=dev`; full `npm audit`; `make check`; `npm run package:dir` if packaging tooling changes.
+- Evidence: 2026-11-23 — runtime audit 0; full audit 6 moderate `minimatch` advisories; no stable non-breaking upstream fix. Accepted in ADR-080/`SECURITY.md` with a release-time review trigger. `npm run package:dir` and `make check` passed. See "Dependency audit — minimatch dev-toolchain acceptance" in `docs/PHASE_REPORTS.md`.

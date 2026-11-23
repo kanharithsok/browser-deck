@@ -1441,3 +1441,24 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | Running-app visual check | 320 px light/dark screenshots inspected. The compact editor shows `Custom W/H/DPR`, check/cancel icons, and the security warning without overflow; the title remains readable. |
 
 **Known behavior / limitations:** The compact editor applies at 400 px and below; wider panes keep the text Apply/Cancel layout. Very long page titles still truncate, but they retain usable width. The header `Load failed` text is hidden at 360 px and below because the error panel remains visible.
+
+## Dependency audit — minimatch dev-toolchain acceptance
+
+**Date:** 2026-11-23
+
+**Status:** Complete; BD-007 complete. No dependency versions changed.
+
+**Change:** Re-ran the runtime and full dependency audits and re-checked the upstream packaging tree. `npm audit --omit=dev` remains clean. The full audit reports six moderate `minimatch` advisories (GHSA-g3hv-75wg-m249 / CVE-2026-118764) in the `electron-builder` chain; the patched release is `minimatch` 11.0.1. BrowserDeck installs vulnerable `minimatch` 10.2.6 through `app-builder-lib` 26.18.0 and 9.0.9 through `@electron/universal` 2.0.3. `electron-builder` 26.18.1 still pins the same vulnerable ranges; 27.0.0-alpha.15 still uses `minimatch ^10.2.5`. The audit’s offered fix is a breaking downgrade to `electron-builder` 25.1.0. No stable non-breaking upgrade exists, so ADR-080 accepts the build-only risk and sets a release-time review trigger.
+
+**Files changed:** `README.md`, `SECURITY.md`, `docs/DECISIONS.md` (ADR-080), `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npm audit --omit=dev` | Passed: 0 runtime vulnerabilities. |
+| `npm audit` | 6 moderate development-toolchain advisories, all in the `minimatch` chain; exit code 1. The suggested fix is the breaking `electron-builder@25.1.0` downgrade. |
+| `npm audit fix --dry-run` | No changes; the non-force fix path cannot resolve the advisories. |
+| `npm run package:dir` | Passed: BrowserDeck 1.2.0 arm64 app packaged with electron-builder 26.18.0; fuses applied; signing skipped because `identity: null`. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Not run — no native-view, IPC, session, or workspace behavior changed. |
+
+**Known behavior / limitations:** The full audit continues to exit nonzero with six moderate advisories until a stable upstream packaging release consumes `minimatch` 11.0.1 or later. The vulnerable code is build-time only and is not included in the app runtime. A forced two-major-version override was rejected as unvalidated by upstream. Do not use untrusted glob patterns in build configuration; re-run both audits before the next release packaging change.

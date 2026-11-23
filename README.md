@@ -261,7 +261,7 @@ opencode.jsonc        Project-level OpenCode configuration
 - Session-only cookies and `sessionStorage` are not guaranteed to survive pane recreation or an app restart.
 - Packaging is arm64-only and unsigned/ad-hoc; Developer ID signing, notarization, stapling, cookie encryption at rest, automatic updates, extensions, DRM, and cloud sync remain outside 1.0.
 - Workspace exports include pane URLs and therefore any query strings in them. Do not sign in through or store secret-bearing URLs when sharing an export.
-- `npm audit --omit=dev` reports 0 runtime vulnerabilities. `npm audit` reports 6 moderate development-toolchain advisories in `minimatch` via `electron-builder`/`@electron/universal`; the offered fix is a breaking downgrade, so it is tracked rather than applied.
+- `npm audit --omit=dev` reports 0 runtime vulnerabilities. `npm audit` reports 6 moderate development-toolchain advisories in `minimatch` (GHSA-g3hv-75wg-m249 / CVE-2026-118764) via `electron-builder`/`@electron/universal`; the patched line is 11.0.1+, but no stable packaging release consumes it yet. The build-time risk is accepted and reviewed before the next release packaging change; see ADR-080 and `SECURITY.md`.
 
 See section 21 of [`SPEC.md`](./SPEC.md) and [`docs/PHASE_REPORTS.md`](./docs/PHASE_REPORTS.md) for details.
 
