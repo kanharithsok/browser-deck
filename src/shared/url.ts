@@ -2,6 +2,8 @@ export type NormalizedUrl =
   | { ok: true; url: string; insecureRemote: boolean }
   | { ok: false; error: string }
 
+export type AddressSecurityState = 'secure' | 'insecure' | 'neutral'
+
 export const MAX_URL_LENGTH = 2048
 
 const BARE_HOST_PORT = /^(?:[a-zA-Z0-9._-]+|\[[0-9a-fA-F:.]+\]):\d{1,5}(?:[/?#].*)?$/
@@ -127,5 +129,29 @@ export function normalizeAddress(rawInput: string): NormalizedUrl {
     ok: true,
     url: parsed.toString(),
     insecureRemote: parsed.protocol === 'http:' && !isLocal
+  }
+}
+
+/**
+ * Classifies an absolute pane URL for the trusted security indicator.
+ * Local/private HTTP remains neutral because BrowserDeck intentionally
+ * supports development servers; only remote HTTP is insecure.
+ */
+export function addressSecurityState(url: string): AddressSecurityState {
+  if (url === 'about:blank' || url.length > MAX_URL_LENGTH) {
+    return 'neutral'
+  }
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:') {
+      return 'secure'
+    }
+    if (parsed.protocol !== 'http:') {
+      return 'neutral'
+    }
+    return isLoopbackOrLocalHostname(parsed.hostname) ? 'neutral' : 'insecure'
+  } catch {
+    return 'neutral'
   }
 }

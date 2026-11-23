@@ -3829,3 +3829,97 @@ test('Canvas menus hide covered native views with many panes', async () => {
     }
   }
 })
+
+test('Security: remote HTTP panes show a persistent not-secure indicator', async () => {
+  test.setTimeout(90_000)
+
+  let userDataDir = ''
+  let app: ElectronApplication | null = null
+
+  try {
+    userDataDir = await mkdtemp(join(tmpdir(), 'browserdeck-security-'))
+    app = await launchApp(
+      userDataDir,
+      'http://browserdeck-insecure.invalid/,https://browserdeck-secure.invalid/'
+    )
+
+    const initial = await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.length === 2 &&
+        state.panes.some((pane) => pane.url === 'http://browserdeck-insecure.invalid/') &&
+        state.panes.some((pane) => pane.url === 'https://browserdeck-secure.invalid/'),
+      'insecure and secure pane state'
+    )
+    const shellPage = await waitFor(
+      async () =>
+        (app as ElectronApplication).windows().find((page) => isShellPage(page.url())) ?? null,
+      (page) => page !== null,
+      'security shell page'
+    )
+    if (!shellPage) {
+      throw new Error('Security shell page is unavailable')
+    }
+
+    const insecure = initial.panes.find((pane) => pane.url.startsWith('http://'))
+    const secure = initial.panes.find((pane) => pane.url.startsWith('https://'))
+    if (!insecure || !secure) {
+      throw new Error('Security test panes are unavailable')
+    }
+
+    const warningLabel = 'Not secure. This page uses HTTP; information can be intercepted.'
+    const warningTitle = 'Not secure: this page uses HTTP. Information can be intercepted.'
+    const insecureCard = shellPage.locator(`.pane-card[data-pane-id="${insecure.id}"]`)
+    const secureCard = shellPage.locator(`.pane-card[data-pane-id="${secure.id}"]`)
+    const warning = insecureCard.getByRole('img', { name: warningLabel })
+
+    await expect(warning).toBeVisible()
+    await expect(warning).toHaveAttribute('title', warningTitle)
+    await expect(insecureCard.locator('.pane-security-label')).toBeVisible()
+    await expect(secureCard.locator('.pane-security')).toHaveCount(0)
+
+    // A 320 px pane keeps the warning icon and accessible name.
+    const setViewport = await shellEvaluate<{ ok: boolean }>(
+      app,
+      `window.browserdeck.setPaneViewport(${JSON.stringify(insecure.id)}, { preset: 'custom', width: 320, height: 600, deviceScaleFactor: 1 })`
+    )
+    expect(setViewport.ok).toBe(true)
+    await waitFor(
+      () => getSnapshot(app as ElectronApplication),
+      (state) =>
+        state.panes.some(
+          (pane) =>
+            pane.id === insecure.id &&
+            pane.viewport.preset === 'custom' &&
+            pane.viewport.width === 320
+        ),
+      'narrow insecure pane viewport'
+    )
+    await fitAllDevices(app as ElectronApplication)
+    await expect(warning).toBeVisible()
+    await expect(insecureCard.locator('.pane-security-label')).toBeHidden()
+
+    // The warning stays visible while the inline custom viewport editor replaces
+    // the address row.
+    await insecureCard.getByRole('button', { name: 'Edit custom viewport' }).click()
+    await expect(insecureCard.locator('.viewport-custom-inline')).toBeVisible()
+    await expect(warning).toBeVisible()
+    await expect(insecureCard.locator('.pane-security-label')).toBeHidden()
+
+    // Both themes keep the persistent indicator visible.
+    await shellEvaluate<unknown>(app, "window.browserdeck.setTheme('dark')")
+    await expect(shellPage.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect(warning).toBeVisible()
+
+    await shellEvaluate<unknown>(app, "window.browserdeck.setTheme('light')")
+    await expect(shellPage.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect(warning).toBeVisible()
+  } finally {
+    if (app) {
+      await app.close().catch(() => undefined)
+    }
+    if (userDataDir) {
+      await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+})

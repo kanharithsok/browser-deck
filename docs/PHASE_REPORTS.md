@@ -1380,4 +1380,25 @@ Canvas zoom now scales the whole pane as a unit. The pane slot is sized to the d
 | `npm run build` | Passed: main 158.91 kB, preload 9.32 kB, renderer JS 382.90 kB, shell CSS 35.58 kB. |
 | `npm run test:e2e` | Passed: 3 Playwright tests in 31.9 s. Covers the accessibility/axe audit, the main native/auth/Canvas/persistence path, and the many-pane Canvas menu/native-view handshake. |
 
-**Known behavior / limitations:** The merge commit is local to `dev` and has not been pushed to `origin/dev`. Version 1.2.0 is not published; the Homebrew cask still points at 1.1.0 until `BD-001` is approved and completed. `BD-004` remains the next eligible slice.
+**Known behavior / limitations:** The merge commit is local to `dev` and has not been pushed to `origin/dev`. Version 1.2.0 is not published; the Homebrew cask still points at 1.1.0 until `BD-001` is approved and completed. At merge time, `BD-004` remained the next eligible slice; it was completed later the same day.
+
+## Post-MVP — Insecure HTTP pane indicator
+
+**Date:** 2026-11-23
+
+**Status:** Implemented; BD-004 complete.
+
+**Change:** Added `addressSecurityState` to the pure shared URL module. It returns `insecure` only for remote non-local HTTP, `secure` for HTTPS, and `neutral` for local/private HTTP, `about:blank`, unsupported schemes, malformed URLs, and overlong URLs. `PaneNavigation` now shows a persistent **Not secure** warning with a warning icon, accessible label, and tooltip for insecure panes. The visible label collapses to the icon at a 480 px container width, while the accessible name and tooltip remain. HTTPS and local/private HTTP show no warning. Navigation policy, URL normalization, IPC, sessions, and native page content are unchanged.
+
+**Files changed:** `src/shared/url.ts`, `src/renderer/src/components/PaneNavigation.vue`, `tests/unit/url.test.ts`, `tests/e2e/browser-panes.spec.ts`, `README.md`, `docs/ARCHITECTURE.md`, `docs/MANUAL_CHECKS.md`, `docs/ROADMAP.md`, `.factory/STATE.md`, and `docs/PHASE_REPORTS.md`.
+
+| Check | Result |
+| --- | --- |
+| `npx vitest run tests/unit/url.test.ts` | Passed: 16 tests, including remote HTTP, HTTPS, local/private HTTP, malformed, and overlong URL classification. |
+| Targeted Playwright | Passed: 1 security test in 1.3 s before the full suite. |
+| `make check` | Passed: typecheck, lint, 187 unit tests, all 13 light + 13 dark contrast pairs, and `make agent-check`. |
+| `npm run test:e2e` | Passed: 4 Playwright tests in 22.3 s. The security test verifies the warning and accessible name on a remote HTTP pane, no warning on HTTPS, the 320 px icon-only state, visibility while the custom viewport editor is open, and visibility in light and dark themes. |
+| `npm run build` | Passed: main 158.91 kB, preload 9.32 kB, renderer JS 384.26 kB, shell CSS 36.25 kB. |
+| Running-app visual check | 320 px light/dark screenshots inspected: the warning icon remained clear in both themes, the label was hidden as intended, and the accessible name stayed present. |
+
+**Known behavior / limitations:** The warning is advisory and does not block navigation. Local/private HTTP remains exempt because BrowserDeck intentionally supports development servers. The 320 px state is icon-only with a tooltip and accessible name; a human VoiceOver pass is still covered by BD-002.

@@ -157,6 +157,7 @@ Phase 4 automated coverage (`tests/e2e/accessibility.spec.ts`): Playwright role/
 ## Security and failure handling
 
 - [x] Dangerous URL schemes are rejected. (Main-process navigation test rejects `javascript:`; unit tests cover `data:`, `file:`, `chrome:`, embedded credentials, and oversized URLs.)
+- [x] Remote non-local HTTP panes show a persistent **Not secure** warning with an accessible label and tooltip; HTTPS and local/private HTTP keep the normal state. (Targeted e2e and 320 px light/dark running-app screenshots, 2026-11-23.)
 - [x] Remote pages cannot access the app preload bridge or Node APIs. (E2e checks `window.browserdeck`, `require`, and `process` are undefined.)
 - [x] Unsupported top-level navigation from a remote page is blocked. (E2e attempts `file:` and `data:` locations and verifies the pane URL is unchanged.)
 - [x] IPC rejects malformed payloads. (Unknown pane IDs and malformed bounds rejected in e2e/unit tests.)

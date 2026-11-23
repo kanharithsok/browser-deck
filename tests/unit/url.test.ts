@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_URL_LENGTH,
+  addressSecurityState,
   isAllowedNavigationUrl,
   isLoopbackHostname,
   normalizeAddress
@@ -92,6 +93,31 @@ describe('normalizeAddress', () => {
       ok: false,
       error: 'Address is too long.'
     })
+  })
+})
+
+describe('addressSecurityState', () => {
+  it('marks remote HTTP addresses as insecure', () => {
+    expect(addressSecurityState('http://example.com/')).toBe('insecure')
+    expect(addressSecurityState('http://dev.example.com:8080/app')).toBe('insecure')
+    expect(addressSecurityState('HTTP://EXAMPLE.COM/')).toBe('insecure')
+  })
+
+  it('keeps HTTPS, local, and private addresses in the normal state', () => {
+    expect(addressSecurityState('https://example.com/')).toBe('secure')
+    expect(addressSecurityState('http://localhost:3000/')).toBe('neutral')
+    expect(addressSecurityState('http://127.0.0.1:8080/')).toBe('neutral')
+    expect(addressSecurityState('http://192.168.1.20:9000/')).toBe('neutral')
+    expect(addressSecurityState('http://studio.local/')).toBe('neutral')
+  })
+
+  it('does not warn for about:blank or invalid URLs', () => {
+    expect(addressSecurityState('about:blank')).toBe('neutral')
+    expect(addressSecurityState('not a url')).toBe('neutral')
+    expect(addressSecurityState('file:///tmp/page.html')).toBe('neutral')
+    expect(addressSecurityState(`http://example.com/${'a'.repeat(MAX_URL_LENGTH)}`)).toBe(
+      'neutral'
+    )
   })
 })
 

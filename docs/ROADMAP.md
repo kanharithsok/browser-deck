@@ -30,25 +30,16 @@ signing, credentials, or a destructive action, make the gate explicit.
 
 ## Next
 
-### BD-004 — Distinguish HTTP from HTTPS in the pane address bar
-- Status: NEXT
-- Priority: P1
-- Depends: none
-- Source: `README.md` known limitations; `SPEC.md` §13.3.
-- Scope: Add a compact, accessible security state to the trusted pane header for `http:` URLs. Do not change navigation policy, URL normalization, or native page content.
-- Done when: HTTP panes show a persistent warning indicator with an accessible label or tooltip; HTTPS panes show the normal state; light/dark and narrow pane widths remain readable; tests cover the state mapping.
-- Verify: `make check`; targeted Playwright e2e for HTTP and HTTPS panes; manual light/dark check at the minimum pane width.
-
-## Ready
-
 ### BD-002 — Complete the manual VoiceOver and focus-ring pass
-- Status: READY
+- Status: NEXT
 - Priority: P1
 - Depends: none
 - Source: `README.md` known limitations; `docs/MANUAL_CHECKS.md`; `SPEC.md` §18.4.
 - Scope: Walk the toolbar, pane headers, selection state, status announcements, custom menus, Add dialog, Workspaces dialog, and bottom canvas bar with VoiceOver and keyboard only; fix confirmed defects.
 - Done when: the manual checklist has dated results, confirmed focus/order/announcement defects are fixed, and automated axe coverage still passes.
 - Verify: manual macOS VoiceOver pass; `make check`; `npm run test:e2e`.
+
+## Ready
 
 ### BD-003 — Run multi-hour CPU and memory profiling with loaded pages
 - Status: READY
@@ -198,4 +189,12 @@ signing, credentials, or a destructive action, make the gate explicit.
 Completed tasks stay here with the completion date and evidence. Move the whole
 task block; do not renumber it.
 
-_None yet._
+### BD-004 — Distinguish HTTP from HTTPS in the pane address bar
+- Status: DONE
+- Priority: P1
+- Depends: none
+- Source: `README.md` known limitations; `SPEC.md` §13.3.
+- Scope: Add a compact, accessible security state to the trusted pane header for `http:` URLs. Do not change navigation policy, URL normalization, or native page content.
+- Done when: HTTP panes show a persistent warning indicator with an accessible label or tooltip; HTTPS panes show the normal state; light/dark and narrow pane widths remain readable; tests cover the state mapping.
+- Verify: `make check`; targeted Playwright e2e for HTTP and HTTPS panes; manual light/dark check at the minimum pane width.
+- Evidence: 2026-11-23 — `make check` passed with 187 unit tests; `npm run test:e2e` passed 4 Playwright tests in 22.3 s; 320 px light/dark screenshots were inspected. See "Post-MVP — Insecure HTTP pane indicator" in `docs/PHASE_REPORTS.md`.
